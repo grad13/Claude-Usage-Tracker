@@ -1,0 +1,50 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Xcode
+DerivedData/
+build/
+*.xcuserstate
+*.xcuserdata/
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM
+*.dSYM.zip
+*.xcscmblueprint
+*.xccheckout
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+Configurations/DevelopmentTeam.local.xcconfig
+
+# Swift Package Manager
+.build/
+.swiftpm/xcode/package.xcworkspace/
+
+# IDEs
+.vscode/
+.idea/
+
+# Local tools
+.serena/
+.claude/
+
+# Scripts (local utilities)
+scripts/
+
+# Reference code
+externals/
+
+# Documentation
+docs/
+
+# Prototype HTML files
+src/prototype/
+
+# Logs / temp
+*.log
+*.tmp
+*~
+handoff.md
