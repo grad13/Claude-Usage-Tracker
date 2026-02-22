@@ -43,12 +43,26 @@ enum UsageFetchError: LocalizedError {
 
 enum UsageFetcher {
 
+    // MARK: - Org ID (read from cookie on Swift side — no JS fallback)
+
+    @MainActor
+    static func readOrgId(from webView: WKWebView) async throws -> String {
+        let cookies = await webView.configuration.websiteDataStore.httpCookieStore.allCookies()
+        guard let orgCookie = cookies.first(where: {
+            $0.name == "lastActiveOrg" && $0.domain.hasSuffix("claude.ai")
+        }) else {
+            throw UsageFetchError.scriptFailed("Missing organization id")
+        }
+        return orgCookie.value
+    }
+
     // MARK: - Public
 
     @MainActor
     static func fetch(from webView: WKWebView) async throws -> UsageResult {
+        let orgId = try await readOrgId(from: webView)
         let raw = try await webView.callAsyncJavaScript(
-            usageScript, contentWorld: .page
+            usageScript, arguments: ["orgId": orgId], contentWorld: .page
         )
 
         guard let jsonString = raw as? String,
@@ -95,63 +109,14 @@ enum UsageFetcher {
         }
     }
 
-    // MARK: - JavaScript (org ID + API fetch in one script)
+    // MARK: - JavaScript (usage API fetch only — orgId passed from Swift)
 
     private static let usageScript = """
     return (async () => {
       try {
-        function readCookieValue(name) {
-          const pattern = new RegExp("(?:^|; )" + name + "=([^;]*)");
-          const match = document.cookie.match(pattern);
-          return match ? decodeURIComponent(match[1]) : null;
-        }
-
-        function findOrgIdFromResources() {
-          const entries = performance.getEntriesByType("resource");
-          for (const entry of entries) {
-            if (!entry || !entry.name) continue;
-            const match = entry.name.match(/\\/api\\/organizations\\/([a-f0-9-]{36})/);
-            if (match) return match[1];
-          }
-          return null;
-        }
-
-        function findOrgIdFromHtml() {
-          const html = document.documentElement ? document.documentElement.innerHTML : "";
-          const match = html.match(/\\/api\\/organizations\\/([a-f0-9-]{36})/);
-          return match ? match[1] : null;
-        }
-
-        async function findOrgIdFromApi() {
-          try {
-            const resp = await fetch("https://claude.ai/api/organizations", {
-              method: "GET", credentials: "include",
-              headers: { "Accept": "application/json" }
-            });
-            if (!resp.ok) return null;
-            const orgs = await resp.json();
-            if (Array.isArray(orgs) && orgs.length > 0) return orgs[0].uuid;
-          } catch (e) {}
-          return null;
-        }
-
-        let orgId = readCookieValue("lastActiveOrg")
-          || findOrgIdFromResources()
-          || findOrgIdFromHtml();
-        if (!orgId) {
-          orgId = await findOrgIdFromApi();
-        }
-        if (!orgId) {
-          throw new Error("Missing organization id");
-        }
-
         const response = await fetch(
           "https://claude.ai/api/organizations/" + orgId + "/usage",
-          {
-            method: "GET",
-            credentials: "include",
-            headers: { "Accept": "application/json" }
-          }
+          { method: "GET", credentials: "include", headers: { "Accept": "application/json" } }
         );
         if (!response.ok) throw new Error("HTTP " + response.status);
         return JSON.stringify(await response.json());
