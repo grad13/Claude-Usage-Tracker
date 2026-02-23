@@ -7,7 +7,7 @@
 DerivedData/
 build/
 *.xcuserstate
-*.xcuserdata/
+xcuserdata/
 *.moved-aside
 *.hmap
 *.ipa
@@ -15,8 +15,7 @@ build/
 *.dSYM.zip
 *.xcscmblueprint
 *.xccheckout
-*.xcodeproj/xcuserdata/
-*.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcodeproj/project.xcworkspace/
 Configurations/DevelopmentTeam.local.xcconfig
 
 # Swift Package Manager
