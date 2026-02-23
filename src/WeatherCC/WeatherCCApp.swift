@@ -75,7 +75,12 @@ private struct MenuContent: View {
         }
         .disabled(viewModel.isFetching)
 
-        Button("Visit Usage Page") {
+        Divider()
+
+        Text("Open in Browser")
+            .foregroundColor(.secondary)
+
+        Button("Usage Page") {
             if let url = URL(string: "https://claude.ai/settings/billing") {
                 NSWorkspace.shared.open(url)
             }
