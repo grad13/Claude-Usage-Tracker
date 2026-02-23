@@ -1,15 +1,12 @@
-// meta: created=2026-02-21 updated=2026-02-22 checked=never
+// meta: created=2026-02-21 updated=2026-02-23 checked=never
 import Foundation
-import Security
 import os
 
-/// Shares UsageSnapshot between the main app and widget extension via Keychain.
-/// Both apps must be sandboxed and signed by the same team.
+/// Shares UsageSnapshot between the main app and widget extension via App Group file.
+/// Keychain is unreliable for macOS Widget extensions (sandbox restrictions).
 public enum SnapshotStore {
 
     private static let log = Logger(subsystem: "grad13.weathercc", category: "SnapshotStore")
-    private static let keychainService = "grad13.weathercc.snapshot"
-    private static let keychainAccount = "usageSnapshot"
 
     private static let encoder: JSONEncoder = {
         let e = JSONEncoder()
@@ -25,57 +22,40 @@ public enum SnapshotStore {
     }()
 
     public static func save(_ snapshot: UsageSnapshot) {
-        do {
-            let data = try encoder.encode(snapshot)
-
-            // Try update first (faster than delete+add)
-            let searchQuery: [String: Any] = [
-                kSecClass as String: kSecClassGenericPassword,
-                kSecAttrService as String: keychainService,
-                kSecAttrAccount as String: keychainAccount,
-            ]
-            let updateAttrs: [String: Any] = [
-                kSecValueData as String: data,
-            ]
-            var status = SecItemUpdate(searchQuery as CFDictionary, updateAttrs as CFDictionary)
-
-            if status == errSecItemNotFound {
-                let addQuery: [String: Any] = [
-                    kSecClass as String: kSecClassGenericPassword,
-                    kSecAttrService as String: keychainService,
-                    kSecAttrAccount as String: keychainAccount,
-                    kSecValueData as String: data,
-                ]
-                status = SecItemAdd(addQuery as CFDictionary, nil)
-            }
-
-            if status == errSecSuccess {
-                log.info("save: \(data.count) bytes")
-            } else {
-                log.error("save: failed, status=\(status)")
-            }
-        } catch {
-            log.error("save: encode failed: \(error.localizedDescription)")
+        guard let url = AppGroupConfig.snapshotURL else {
+            log.error("save: App Group container not available")
+            return
         }
+        save(snapshot, to: url)
     }
 
     public static func load() -> UsageSnapshot? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: keychainAccount,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-
-        var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-
-        guard status == errSecSuccess, let data = result as? Data else {
-            log.error("load: status=\(status)")
+        guard let url = AppGroupConfig.snapshotURL else {
+            log.error("load: App Group container not available")
             return nil
         }
+        return load(from: url)
+    }
 
+    // MARK: - Testable overloads (explicit URL)
+
+    public static func save(_ snapshot: UsageSnapshot, to url: URL) {
+        do {
+            let dir = url.deletingLastPathComponent()
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let data = try encoder.encode(snapshot)
+            try data.write(to: url, options: .atomic)
+            log.info("save: \(data.count) bytes to \(url.lastPathComponent)")
+        } catch {
+            log.error("save: failed: \(error.localizedDescription)")
+        }
+    }
+
+    public static func load(from url: URL) -> UsageSnapshot? {
+        guard let data = try? Data(contentsOf: url) else {
+            log.error("load: file not found at \(url.lastPathComponent)")
+            return nil
+        }
         do {
             return try decoder.decode(UsageSnapshot.self, from: data)
         } catch {

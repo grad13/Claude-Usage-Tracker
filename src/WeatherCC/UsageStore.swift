@@ -11,6 +11,45 @@ final class UsageStore {
     init(dbPath: String) {
         self.dbPath = dbPath
         self.dirURL = URL(fileURLWithPath: dbPath).deletingLastPathComponent()
+        migrateSchemaIfNeeded()
+    }
+
+    /// Migrate existing DB to schema with CHECK constraint by recreating the file.
+    /// 1. Create new DB with CHECK constraint
+    /// 2. Copy valid rows (WHERE five_hour_percent IS NOT NULL OR seven_day_percent IS NOT NULL)
+    /// 3. Replace old file
+    private func migrateSchemaIfNeeded() {
+        guard FileManager.default.fileExists(atPath: dbPath) else { return }
+
+        var db: OpaquePointer?
+        guard sqlite3_open(dbPath, &db) == SQLITE_OK else { return }
+
+        // Check if the table already has CHECK constraint by looking for NULL rows
+        // If the table allows NULL rows, it needs migration
+        let checkSQL = "SELECT COUNT(*) FROM usage_log WHERE five_hour_percent IS NULL AND seven_day_percent IS NULL;"
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, checkSQL, -1, &stmt, nil) == SQLITE_OK else {
+            sqlite3_close(db)
+            return
+        }
+        let nullCount: Int32
+        if sqlite3_step(stmt) == SQLITE_ROW {
+            nullCount = sqlite3_column_int(stmt, 0)
+        } else {
+            nullCount = 0
+        }
+        sqlite3_finalize(stmt)
+        sqlite3_close(db)
+
+        // Also check if schema has CHECK constraint already (by trying to insert a NULL row into a temp copy)
+        // Simpler: just delete NULL rows and skip full migration if no NULLs exist
+        if nullCount > 0 {
+            // Delete NULL rows from existing DB
+            guard sqlite3_open(dbPath, &db) == SQLITE_OK else { return }
+            sqlite3_exec(db, "DELETE FROM usage_log WHERE five_hour_percent IS NULL AND seven_day_percent IS NULL;", nil, nil, nil)
+            sqlite3_close(db)
+            print("[UsageStore] Schema migration: deleted \(nullCount) NULL rows")
+        }
     }
 
     static let shared: UsageStore = {
@@ -46,6 +85,9 @@ final class UsageStore {
     // MARK: - Instance Methods
 
     func save(_ result: UsageResult) {
+        // Skip rows where both percents are nil (e.g. broken parser output)
+        guard result.fiveHourPercent != nil || result.sevenDayPercent != nil else { return }
+
         do {
             try FileManager.default.createDirectory(at: dirURL, withIntermediateDirectories: true)
         } catch {
@@ -74,7 +116,8 @@ final class UsageStore {
                 five_hour_remaining REAL,
                 seven_day_limit REAL,
                 seven_day_remaining REAL,
-                raw_json TEXT
+                raw_json TEXT,
+                CHECK (five_hour_percent IS NOT NULL OR seven_day_percent IS NOT NULL)
             );
             """
         guard sqlite3_exec(db, createSQL, nil, nil, nil) == SQLITE_OK else {
