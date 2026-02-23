@@ -2,6 +2,31 @@
 
 macOS menu bar app for Claude Code usage monitoring.
 
+## Thinking Process (MUST execute before proposing any solution)
+
+When encountering a problem, execute these steps BEFORE writing any solution:
+
+### 1. REPHRASE
+Restate the user's problem in your own words. Distinguish the surface symptom from the structural issue.
+"Settings got corrupted" = "a specific settings value changed" (symptom) or "tests can write to production state by design" (structure)?
+If you can't distinguish them, you haven't understood the problem yet.
+
+### 2. EXPAND
+List ALL known related issues. Check docs/plans/, docs/reference/, .claude/reflections/.
+If you find zero related issues, you're probably not looking hard enough.
+
+### 3. CLASSIFY
+Is this an INSTANCE (specific occurrence) or a CLASS (category of problem)?
+"Fix this parse bug" = INSTANCE. "Make parsing failures impossible by design" = CLASS.
+If you're only proposing INSTANCE-level fixes, you are minimizing.
+
+### 4. STRUCTURAL CHECK
+Does your proposed solution include code-level structural changes?
+NOT structural: doc updates, rule additions, "will be careful next time", adding comments.
+Structural: new protocols/interfaces, DI, architectural refactoring, test infrastructure changes, validation layers.
+
+**If you skip these steps, your solution is almost certainly minimized.**
+
 ## Process (STRICT ORDER — skipping steps is forbidden)
 
 1. **Read docs** — Read must-read files before any work

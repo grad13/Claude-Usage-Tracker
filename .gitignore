@@ -43,6 +43,10 @@ docs/
 # Prototype HTML files
 src/prototype/
 
+# Coverage / profiling
+*.profraw
+*.profdata
+
 # Logs / temp
 *.log
 *.tmp

@@ -22,9 +22,13 @@ final class UsageViewModel: ObservableObject {
     @Published var predictFiveHourCost: Double?
     @Published var predictSevenDayCost: Double?
 
-    private static let usageURL = URL(string: "https://claude.ai/settings/usage")!
+    private static let usageURL = URL(string: "https://claude.ai")!
     private static let targetHost = "claude.ai"
     let webView: WKWebView
+    private let settingsStore: any SettingsStoring
+    private let usageStore: any UsageStoring
+    private let snapshotWriter: any SnapshotWriting
+    private let tokenSync: any TokenSyncing
     private var coordinator: WebViewCoordinator?
     private var cookieObserver: CookieChangeObserver?
     private var refreshTimer: Timer?
@@ -78,12 +82,27 @@ final class UsageViewModel: ObservableObject {
         TimeInterval(settings.refreshIntervalMinutes) * 60
     }
 
-    init() {
+    init(
+        settingsStore: any SettingsStoring = SettingsStore.shared,
+        usageStore: any UsageStoring = UsageStore.shared,
+        snapshotWriter: any SnapshotWriting = DefaultSnapshotWriter(),
+        tokenSync: any TokenSyncing = TokenStore.shared
+    ) {
+        self.settingsStore = settingsStore
+        self.usageStore = usageStore
+        self.snapshotWriter = snapshotWriter
+        self.tokenSync = tokenSync
+
         let config = WKWebViewConfiguration()
-        config.websiteDataStore = .default()
+        // Use app-specific persistent data store to avoid macOS TCC prompt
+        // ("WeatherCC would like to access data from other apps")
+        // .default() shares data with Safari/other WebKit apps → triggers prompt every launch.
+        // forIdentifier: creates an isolated persistent store scoped to this app.
+        let storeId = UUID(uuidString: "A1B2C3D4-E5F6-7890-ABCD-EF1234567890")!
+        config.websiteDataStore = WKWebsiteDataStore(forIdentifier: storeId)
         config.preferences.javaScriptCanOpenWindowsAutomatically = true
         self.webView = WKWebView(frame: .zero, configuration: config)
-        self.settings = SettingsStore.load()
+        self.settings = settingsStore.load()
 
         let coord = WebViewCoordinator(viewModel: self)
         self.coordinator = coord
@@ -188,7 +207,7 @@ final class UsageViewModel: ObservableObject {
         sevenDayPercent = result.sevenDayPercent
         fiveHourResetsAt = result.fiveHourResetsAt
         sevenDayResetsAt = result.sevenDayResetsAt
-        UsageStore.save(result)
+        usageStore.save(result)
         reloadHistory()
         fetchPredict()
     }
@@ -196,6 +215,7 @@ final class UsageViewModel: ObservableObject {
     // MARK: - Predict (JSONL cost estimation)
 
     private func fetchPredict() {
+        let ts = self.tokenSync
         Task.detached { [weak self] in
             let dirs = Self.claudeProjectsDirectories()
             guard !dirs.isEmpty else {
@@ -206,10 +226,10 @@ final class UsageViewModel: ObservableObject {
                 }
                 return
             }
-            var allRecords: [TokenRecord] = []
-            for dir in dirs {
-                allRecords.append(contentsOf: JSONLParser.parseDirectory(dir))
-            }
+            ts.sync(directories: dirs)
+            let cutoff = Date().addingTimeInterval(-8 * 24 * 3600)
+            let allRecords = ts.loadRecords(since: cutoff)
+
             let now = Date()
             let fiveH = CostEstimator.estimate(records: allRecords, windowHours: 5, now: now)
             let sevenD = CostEstimator.estimate(records: allRecords, windowHours: 168, now: now)
@@ -223,12 +243,11 @@ final class UsageViewModel: ObservableObject {
     }
 
     private nonisolated static func claudeProjectsDirectories() -> [URL] {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        let candidates = [
-            home.appendingPathComponent(".claude/projects"),
-            home.appendingPathComponent(".config/claude/projects")
-        ]
-        return candidates.filter { FileManager.default.fileExists(atPath: $0.path) }
+        // Disabled: accessing ~/.claude/projects triggers macOS TCC prompt
+        // ("would like to access data from other apps") because it belongs to Claude CLI.
+        // Predict feature requires user-granted file access (NSOpenPanel) to work with sandbox.
+        // TODO: Re-enable when Predict feature is properly integrated with file access consent.
+        return []
     }
 
     // MARK: - Widget Snapshot
@@ -252,13 +271,13 @@ final class UsageViewModel: ObservableObject {
             predictFiveHourCost: predictFiveHourCost,
             predictSevenDayCost: predictSevenDayCost
         )
-        SnapshotStore.save(snapshot)
+        snapshotWriter.save(snapshot)
         WidgetCenter.shared.reloadAllTimelines()
     }
 
     private func reloadHistory() {
-        fiveHourHistory = UsageStore.loadHistory(windowSeconds: 5 * 3600)
-        sevenDayHistory = UsageStore.loadHistory(windowSeconds: 7 * 24 * 3600)
+        fiveHourHistory = usageStore.loadHistory(windowSeconds: 5 * 3600)
+        sevenDayHistory = usageStore.loadHistory(windowSeconds: 7 * 24 * 3600)
     }
 
     // MARK: - Navigation
@@ -274,7 +293,7 @@ final class UsageViewModel: ObservableObject {
 
     private func isOnUsagePage() -> Bool {
         guard let url = webView.url else { return false }
-        return url.host == Self.usageURL.host && url.path == Self.usageURL.path
+        return url.host == Self.targetHost
     }
 
     private func canRedirect() -> Bool {
@@ -315,39 +334,39 @@ final class UsageViewModel: ObservableObject {
 
     func setRefreshInterval(minutes: Int) {
         settings.refreshIntervalMinutes = minutes
-        SettingsStore.save(settings)
+        settingsStore.save(settings)
         restartAutoRefresh()
     }
 
     func toggleStartAtLogin() {
         settings.startAtLogin.toggle()
-        SettingsStore.save(settings)
+        settingsStore.save(settings)
         syncLoginItem()
     }
 
     func setShowHourlyGraph(_ show: Bool) {
         settings.showHourlyGraph = show
-        SettingsStore.save(settings)
+        settingsStore.save(settings)
     }
 
     func setShowWeeklyGraph(_ show: Bool) {
         settings.showWeeklyGraph = show
-        SettingsStore.save(settings)
+        settingsStore.save(settings)
     }
 
     func setChartWidth(_ width: Int) {
         settings.chartWidth = width
-        SettingsStore.save(settings)
+        settingsStore.save(settings)
     }
 
     func setHourlyColorPreset(_ preset: ChartColorPreset) {
         settings.hourlyColorPreset = preset
-        SettingsStore.save(settings)
+        settingsStore.save(settings)
     }
 
     func setWeeklyColorPreset(_ preset: ChartColorPreset) {
         settings.weeklyColorPreset = preset
-        SettingsStore.save(settings)
+        settingsStore.save(settings)
     }
 
     func signOut() {

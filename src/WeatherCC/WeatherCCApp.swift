@@ -1,4 +1,4 @@
-// meta: created=2026-02-21 updated=2026-02-21 checked=never
+// meta: created=2026-02-21 updated=2026-02-23 checked=never
 import SwiftUI
 import WebKit
 
@@ -76,9 +76,13 @@ private struct MenuContent: View {
         .disabled(viewModel.isFetching)
 
         Button("Visit Usage Page") {
-            if let url = URL(string: "https://claude.ai/settings/usage") {
+            if let url = URL(string: "https://claude.ai/settings/billing") {
                 NSWorkspace.shared.open(url)
             }
+        }
+
+        Button("Analysis") {
+            AnalysisExporter.exportAndOpen()
         }
 
         Divider()

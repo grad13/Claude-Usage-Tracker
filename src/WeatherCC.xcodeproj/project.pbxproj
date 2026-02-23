@@ -22,6 +22,9 @@
 		AA100006 /* Settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000008 /* Settings.swift */; };
 		AA100007 /* JSONLParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000009 /* JSONLParser.swift */; };
 		AA100008 /* CostEstimator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000A /* CostEstimator.swift */; };
+		AA10000B /* AnalysisExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000B /* AnalysisExporter.swift */; };
+		AA10000C /* TokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000C /* TokenStore.swift */; };
+		AA10000D /* Protocols.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000D /* Protocols.swift */; };
 		BB100001 /* SettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000001 /* SettingsTests.swift */; };
 		BB100002 /* FetcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000002 /* FetcherTests.swift */; };
 		BB100003 /* ViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000003 /* ViewModelTests.swift */; };
@@ -29,6 +32,12 @@
 		BB100005 /* CostEstimatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000005 /* CostEstimatorTests.swift */; };
 		BB100006 /* DisplayHelpersTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000006 /* DisplayHelpersTests.swift */; };
 		BB100007 /* SnapshotModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000007 /* SnapshotModelTests.swift */; };
+		BB100008 /* AnalysisExporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000008 /* AnalysisExporterTests.swift */; };
+		BB100009 /* TokenStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000009 /* TokenStoreTests.swift */; };
+		BB10000A /* UsageStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00000A /* UsageStoreTests.swift */; };
+		BB10000B /* SettingsStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00000B /* SettingsStoreTests.swift */; };
+		BB10000C /* SnapshotStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00000C /* SnapshotStoreTests.swift */; };
+		BB10000D /* AppGroupConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00000D /* AppGroupConfigTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -113,6 +122,9 @@
 		AA000008 /* Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Settings.swift; sourceTree = "<group>"; };
 		AA000009 /* JSONLParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONLParser.swift; sourceTree = "<group>"; };
 		AA00000A /* CostEstimator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CostEstimator.swift; sourceTree = "<group>"; };
+		AA00000B /* AnalysisExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisExporter.swift; sourceTree = "<group>"; };
+		AA00000C /* TokenStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenStore.swift; sourceTree = "<group>"; };
+		AA00000D /* Protocols.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Protocols.swift; sourceTree = "<group>"; };
 		AA000010 /* WeatherCC.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WeatherCC.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BB000001 /* SettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsTests.swift; sourceTree = "<group>"; };
 		BB000002 /* FetcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FetcherTests.swift; sourceTree = "<group>"; };
@@ -121,6 +133,12 @@
 		BB000005 /* CostEstimatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CostEstimatorTests.swift; sourceTree = "<group>"; };
 		BB000006 /* DisplayHelpersTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplayHelpersTests.swift; sourceTree = "<group>"; };
 		BB000007 /* SnapshotModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapshotModelTests.swift; sourceTree = "<group>"; };
+		BB000008 /* AnalysisExporterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisExporterTests.swift; sourceTree = "<group>"; };
+		BB000009 /* TokenStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenStoreTests.swift; sourceTree = "<group>"; };
+		BB00000A /* UsageStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageStoreTests.swift; sourceTree = "<group>"; };
+		BB00000B /* SettingsStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStoreTests.swift; sourceTree = "<group>"; };
+		BB00000C /* SnapshotStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapshotStoreTests.swift; sourceTree = "<group>"; };
+		BB00000D /* AppGroupConfigTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGroupConfigTests.swift; sourceTree = "<group>"; };
 		BB000010 /* WeatherCCTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = WeatherCCTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -197,6 +215,9 @@
 				AA000008 /* Settings.swift */,
 				AA000009 /* JSONLParser.swift */,
 				AA00000A /* CostEstimator.swift */,
+				AA00000B /* AnalysisExporter.swift */,
+				AA00000C /* TokenStore.swift */,
+				AA00000D /* Protocols.swift */,
 				AA000005 /* Info.plist */,
 				AA000006 /* WeatherCC.entitlements */,
 			);
@@ -232,6 +253,12 @@
 				BB000005 /* CostEstimatorTests.swift */,
 				BB000006 /* DisplayHelpersTests.swift */,
 				BB000007 /* SnapshotModelTests.swift */,
+				BB000008 /* AnalysisExporterTests.swift */,
+				BB000009 /* TokenStoreTests.swift */,
+				BB00000A /* UsageStoreTests.swift */,
+				BB00000B /* SettingsStoreTests.swift */,
+				BB00000C /* SnapshotStoreTests.swift */,
+				BB00000D /* AppGroupConfigTests.swift */,
 			);
 			path = WeatherCCTests;
 			sourceTree = "<group>";
@@ -432,6 +459,9 @@
 				AA100006 /* Settings.swift in Sources */,
 				AA100007 /* JSONLParser.swift in Sources */,
 				AA100008 /* CostEstimator.swift in Sources */,
+				AA10000B /* AnalysisExporter.swift in Sources */,
+				AA10000C /* TokenStore.swift in Sources */,
+				AA10000D /* Protocols.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -446,6 +476,12 @@
 				BB100005 /* CostEstimatorTests.swift in Sources */,
 				BB100006 /* DisplayHelpersTests.swift in Sources */,
 				BB100007 /* SnapshotModelTests.swift in Sources */,
+				BB100008 /* AnalysisExporterTests.swift in Sources */,
+				BB100009 /* TokenStoreTests.swift in Sources */,
+				BB10000A /* UsageStoreTests.swift in Sources */,
+				BB10000B /* SettingsStoreTests.swift in Sources */,
+				BB10000C /* SnapshotStoreTests.swift in Sources */,
+				BB10000D /* AppGroupConfigTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -826,7 +862,7 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = C3WA2TT222;
-				ENABLE_APP_SANDBOX = YES;
+				ENABLE_APP_SANDBOX = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = WeatherCC/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = WeatherCC;
@@ -852,7 +888,7 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = C3WA2TT222;
-				ENABLE_APP_SANDBOX = YES;
+				ENABLE_APP_SANDBOX = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = WeatherCC/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = WeatherCC;
