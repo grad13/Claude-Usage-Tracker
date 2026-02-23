@@ -14,6 +14,14 @@ final class TokenStore {
     }
 
     static let shared: TokenStore = {
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+            let tmpDir = FileManager.default.temporaryDirectory
+                .appendingPathComponent("WeatherCC-test-shared")
+            try? FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+            return TokenStore(dbPath: tmpDir.appendingPathComponent("tokens.db").path)
+        }
+        #endif
         guard let container = AppGroupConfig.containerURL else {
             fatalError("[TokenStore] App Group container not available")
         }
