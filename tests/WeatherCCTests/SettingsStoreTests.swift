@@ -185,6 +185,16 @@ final class SettingsStoreTests: XCTestCase {
                        "Failed save should not create file; load returns defaults")
     }
 
+    // MARK: - Shared instance test guard
+
+    func testShared_usesTemporaryDirectory_duringTests() {
+        let sharedPath = SettingsStore.shared.fileURL.path
+        XCTAssertTrue(sharedPath.contains("WeatherCC-test-shared"),
+                      "SettingsStore.shared must use temp dir during tests, but got: \(sharedPath)")
+        XCTAssertFalse(sharedPath.contains("Group Containers"),
+                       "SettingsStore.shared must NOT touch App Group during tests")
+    }
+
     // MARK: - Load with camelCase keys (strategy mismatch)
 
     func testLoad_camelCaseKeys_stillMatches() throws {

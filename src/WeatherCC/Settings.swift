@@ -92,6 +92,14 @@ final class SettingsStore {
     }
 
     static let shared: SettingsStore = {
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+            let tmpDir = FileManager.default.temporaryDirectory
+                .appendingPathComponent("WeatherCC-test-shared")
+            try? FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+            return SettingsStore(fileURL: tmpDir.appendingPathComponent("settings.json"))
+        }
+        #endif
         guard let container = AppGroupConfig.containerURL else {
             fatalError("[SettingsStore] App Group container not available")
         }

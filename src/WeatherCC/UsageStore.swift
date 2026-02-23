@@ -14,6 +14,14 @@ final class UsageStore {
     }
 
     static let shared: UsageStore = {
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+            let tmpDir = FileManager.default.temporaryDirectory
+                .appendingPathComponent("WeatherCC-test-shared")
+            try? FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+            return UsageStore(dbPath: tmpDir.appendingPathComponent("usage.db").path)
+        }
+        #endif
         guard let container = AppGroupConfig.containerURL else {
             fatalError("[UsageStore] App Group container not available")
         }
