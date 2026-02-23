@@ -24,13 +24,13 @@ public enum DisplayHelpers {
     }
 
     /// Whether percent text should render below the marker (true) or above (false).
-    /// Shows below when marker is near top edge or in upper half of graph.
+    /// Prefer above (away from area fill). Only show below when marker is near top edge.
     public static func percentTextShowsBelow(
         markerY: CGFloat,
         graphHeight: CGFloat,
         topMargin: CGFloat = 14
     ) -> Bool {
-        markerY < topMargin || markerY <= graphHeight * 0.5
+        markerY < topMargin
     }
 
     /// Horizontal anchor for percent text (0 = leading, 0.5 = center, 1 = trailing).
