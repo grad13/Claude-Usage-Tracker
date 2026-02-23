@@ -1,4 +1,4 @@
-// meta: created=2026-02-21 updated=2026-02-21 checked=never
+// meta: created=2026-02-21 updated=2026-02-23 checked=never
 import SwiftUI
 import WidgetKit
 import WeatherCCShared
@@ -56,7 +56,7 @@ struct UsageWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: UsageTimelineProvider()) { entry in
             UsageWidgetEntryView(entry: entry)
-                .containerBackground(.fill.tertiary, for: .widget)
+                .containerBackground(.clear, for: .widget)
         }
         .configurationDisplayName("Claude Usage")
         .description("Monitor Claude Code usage limits")

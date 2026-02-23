@@ -75,7 +75,15 @@ enum UsageFetcher {
             throw UsageFetchError.decodingFailed
         }
 
+        // Log response to both NSLog and file for diagnostics
         NSLog("[WeatherCC] API response: %@", jsonString)
+        let logLine = "\(ISO8601DateFormatter().string(from: Date())) API response: \(jsonString)\n"
+        let logURL = FileManager.default.temporaryDirectory.appendingPathComponent("WeatherCC-debug.log")
+        if let handle = try? FileHandle(forWritingTo: logURL) {
+            handle.seekToEndOfFile()
+            handle.write(logLine.data(using: .utf8)!)
+            handle.closeFile()
+        }
         return try parse(jsonString: jsonString)
     }
 
@@ -94,16 +102,26 @@ enum UsageFetcher {
             throw UsageFetchError.scriptFailed(error)
         }
 
-        // API response: {"windows":{"5h":{"status":"within_limit","resets_at":1234567890,"limit":100,"remaining":75},"7d":{...}}}
-        let windows = json["windows"] as? [String: Any]
-        let fiveH = windows?["5h"] as? [String: Any]
-        let sevenD = windows?["7d"] as? [String: Any]
+        // API has two known formats:
+        // Format A (current): {"five_hour":{"utilization":25,"resets_at":"ISO8601"},"seven_day":{...}}
+        // Format B (documented): {"windows":{"5h":{"limit":N,"remaining":N,"resets_at":unixTs},"7d":{...}}}
+        let fiveH: [String: Any]?
+        let sevenD: [String: Any]?
+        if let windows = json["windows"] as? [String: Any] {
+            // Format B
+            fiveH = windows["5h"] as? [String: Any]
+            sevenD = windows["7d"] as? [String: Any]
+        } else {
+            // Format A
+            fiveH = json["five_hour"] as? [String: Any]
+            sevenD = json["seven_day"] as? [String: Any]
+        }
 
         return UsageResult(
-            fiveHourPercent: calcPercent(limit: fiveH?["limit"], remaining: fiveH?["remaining"]),
-            sevenDayPercent: calcPercent(limit: sevenD?["limit"], remaining: sevenD?["remaining"]),
-            fiveHourResetsAt: parseUnixTimestamp(fiveH?["resets_at"]),
-            sevenDayResetsAt: parseUnixTimestamp(sevenD?["resets_at"]),
+            fiveHourPercent: parsePercent(fiveH),
+            sevenDayPercent: parsePercent(sevenD),
+            fiveHourResetsAt: parseResetsAt(fiveH?["resets_at"]),
+            sevenDayResetsAt: parseResetsAt(sevenD?["resets_at"]),
             fiveHourStatus: parseStatus(fiveH?["status"] as? String),
             sevenDayStatus: parseStatus(sevenD?["status"] as? String),
             fiveHourLimit: fiveH?["limit"] as? Double,
@@ -119,11 +137,18 @@ enum UsageFetcher {
     @MainActor
     static func hasValidSession(using webView: WKWebView) async -> Bool {
         let cookies = await webView.configuration.websiteDataStore.httpCookieStore.allCookies()
+        let claudeCookies = cookies.filter { $0.domain.hasSuffix("claude.ai") }
+        NSLog("[WeatherCC] hasValidSession: %d cookies total, %d claude.ai", cookies.count, claudeCookies.count)
         let now = Date()
-        return cookies.contains {
+        let hasSession = cookies.contains {
             $0.name == "sessionKey" && $0.domain.hasSuffix("claude.ai")
                 && ($0.expiresDate.map { $0 > now } ?? true)
         }
+        if !hasSession {
+            let names = claudeCookies.map(\.name).joined(separator: ", ")
+            NSLog("[WeatherCC] hasValidSession: NO sessionKey found. claude.ai cookies: %@", names)
+        }
+        return hasSession
     }
 
     // MARK: - JavaScript (org ID extraction + usage API fetch in one script)
@@ -131,21 +156,28 @@ enum UsageFetcher {
     private static let usageScript = """
     return (async () => {
       try {
-        // 4-stage org ID extraction
+        const diag = [];
         let orgId = null;
 
         // Stage 1: document.cookie
         const cookieMatch = document.cookie.match(/lastActiveOrg=([^;]+)/);
-        if (cookieMatch) orgId = cookieMatch[1].trim();
+        if (cookieMatch) {
+          orgId = cookieMatch[1].trim();
+          diag.push("S1:OK");
+        } else {
+          diag.push("S1:MISS(cookies=" + document.cookie.split(";").length + ")");
+        }
 
         // Stage 2: performance API (resource URLs containing /api/organizations/{UUID}/)
         if (!orgId) {
           const uuidPattern = /\\/api\\/organizations\\/([0-9a-f-]{36})\\//;
           const entries = performance.getEntriesByType("resource");
+          diag.push("S2:entries=" + entries.length);
           for (let i = entries.length - 1; i >= 0; i--) {
             const m = entries[i].name.match(uuidPattern);
-            if (m) { orgId = m[1]; break; }
+            if (m) { orgId = m[1]; diag.push("S2:OK"); break; }
           }
+          if (!orgId) diag.push("S2:MISS");
         }
 
         // Stage 3: HTML content
@@ -153,7 +185,8 @@ enum UsageFetcher {
           const htmlMatch = document.documentElement.innerHTML.match(
             /\\/api\\/organizations\\/([0-9a-f-]{36})\\//
           );
-          if (htmlMatch) orgId = htmlMatch[1];
+          if (htmlMatch) { orgId = htmlMatch[1]; diag.push("S3:OK"); }
+          else diag.push("S3:MISS");
         }
 
         // Stage 4: /api/organizations endpoint
@@ -162,23 +195,30 @@ enum UsageFetcher {
             credentials: "include",
             headers: { "Accept": "application/json" }
           });
+          diag.push("S4:HTTP" + orgResp.status);
           if (orgResp.ok) {
             const orgs = await orgResp.json();
             if (Array.isArray(orgs) && orgs.length > 0) {
               orgId = orgs[0].uuid || orgs[0].id;
+              diag.push("S4:OK");
+            } else {
+              diag.push("S4:EMPTY(len=" + (Array.isArray(orgs) ? orgs.length : typeof orgs) + ")");
             }
           }
         }
 
-        if (!orgId) throw new Error("Missing organization id");
+        if (!orgId) throw new Error("Missing organization id [" + diag.join(",") + "]");
 
         // Fetch usage API
+        diag.push("orgId=" + orgId.substring(0, 8) + "...");
         const response = await fetch(
           "https://claude.ai/api/organizations/" + orgId + "/usage",
           { method: "GET", credentials: "include", headers: { "Accept": "application/json" } }
         );
-        if (!response.ok) throw new Error("HTTP " + response.status);
-        return JSON.stringify(await response.json());
+        if (!response.ok) throw new Error("HTTP " + response.status + " [" + diag.join(",") + "]");
+        const body = await response.json();
+        body.__diag = diag.join(",");
+        return JSON.stringify(body);
       } catch (error) {
         const message = error && error.message ? error.message : String(error);
         return JSON.stringify({ "__error": message });
@@ -197,7 +237,20 @@ enum UsageFetcher {
         }
     }
 
-    // MARK: - Usage Percent Calculation
+    // MARK: - Usage Percent Parsing
+
+    /// Parse usage percent from a window dict.
+    /// Format A: {"utilization": 25} → 25.0 (direct percentage)
+    /// Format B: {"limit": 100, "remaining": 75} → 25.0 (calculated)
+    static func parsePercent(_ window: [String: Any]?) -> Double? {
+        guard let window else { return nil }
+        // Format A: utilization field (direct percentage)
+        if let util = (window["utilization"] as? Double) ?? (window["utilization"] as? Int).map(Double.init) {
+            return util
+        }
+        // Format B: limit/remaining fields
+        return calcPercent(limit: window["limit"], remaining: window["remaining"])
+    }
 
     /// Calculate usage percent from limit and remaining values.
     /// Returns nil if inputs are invalid (nil, non-numeric, or zero limit).
@@ -208,10 +261,19 @@ enum UsageFetcher {
         return (l - r) / l * 100.0
     }
 
-    // MARK: - Unix Timestamp Parsing
+    // MARK: - resets_at Parsing (handles both Unix timestamp and ISO 8601 string)
+
+    /// Parse resets_at from either Unix seconds (number) or ISO 8601 string.
+    static func parseResetsAt(_ value: Any?) -> Date? {
+        // Format B: Unix timestamp (number)
+        if let ts = value as? Double { return Date(timeIntervalSince1970: ts) }
+        if let ts = value as? Int { return Date(timeIntervalSince1970: Double(ts)) }
+        // Format A: ISO 8601 string
+        if let str = value as? String { return parseResetDate(str) }
+        return nil
+    }
 
     /// Parse a Unix timestamp (seconds since epoch) to Date.
-    /// API returns resets_at as a number (Unix seconds), not ISO 8601 string.
     static func parseUnixTimestamp(_ value: Any?) -> Date? {
         if let ts = value as? Double {
             return Date(timeIntervalSince1970: ts)

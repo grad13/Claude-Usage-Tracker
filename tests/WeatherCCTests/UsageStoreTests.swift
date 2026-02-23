@@ -89,16 +89,20 @@ final class UsageStoreTests: XCTestCase {
         XCTAssertNotNil(dp.sevenDayResetsAt)
     }
 
-    func testSave_nullableColumnsHandled() {
-        store.save(makeResult()) // all nil
+    func testSave_bothPercentsNil_skipped() {
+        store.save(makeResult()) // all nil → should be skipped
         let history = store.loadAllHistory()
-        XCTAssertEqual(history.count, 1)
+        XCTAssertEqual(history.count, 0,
+                       "Rows with both percents nil should not be saved")
+    }
 
-        let dp = history[0]
-        XCTAssertNil(dp.fiveHourPercent)
-        XCTAssertNil(dp.sevenDayPercent)
-        XCTAssertNil(dp.fiveHourResetsAt)
-        XCTAssertNil(dp.sevenDayResetsAt)
+    func testSave_onePercentNil_otherValid_saved() {
+        store.save(makeResult(fiveHourPercent: nil, sevenDayPercent: 10.0))
+        let history = store.loadAllHistory()
+        XCTAssertEqual(history.count, 1,
+                       "Row with at least one non-nil percent should be saved")
+        XCTAssertNil(history[0].fiveHourPercent)
+        XCTAssertEqual(history[0].sevenDayPercent, 10.0)
     }
 
     // MARK: - Load All History
@@ -127,7 +131,7 @@ final class UsageStoreTests: XCTestCase {
 
     func testLoadAllHistory_resetsAtParsed() {
         let resetsAt = Date(timeIntervalSince1970: 1_740_000_000)
-        store.save(makeResult(fiveHourResetsAt: resetsAt, sevenDayResetsAt: resetsAt))
+        store.save(makeResult(fiveHourPercent: 10.0, fiveHourResetsAt: resetsAt, sevenDayResetsAt: resetsAt))
 
         let history = store.loadAllHistory()
         XCTAssertEqual(history.count, 1)
@@ -209,14 +213,13 @@ final class UsageStoreTests: XCTestCase {
         XCTAssertEqual(history[2].fiveHourPercent, 150.0, "Values >100% should be stored as-is")
     }
 
-    // MARK: - Both Percents Nil
+    // MARK: - Both Percents Nil (duplicate of testSave_bothPercentsNil_skipped above)
 
-    func testSave_bothPercentsNil() {
+    func testSave_bothPercentsNil_doesNotInsert() {
         store.save(makeResult()) // both nil
         let history = store.loadAllHistory()
-        XCTAssertEqual(history.count, 1)
-        XCTAssertNil(history[0].fiveHourPercent)
-        XCTAssertNil(history[0].sevenDayPercent)
+        XCTAssertEqual(history.count, 0,
+                       "Both percents nil → row should be skipped")
     }
 
     // MARK: - Verify all columns stored via direct SQL
@@ -269,7 +272,8 @@ final class UsageStoreTests: XCTestCase {
     }
 
     func testSave_statusLimitRemainingRawJSON_nilStoredAsNull() {
-        store.save(makeResult()) // all nil
+        // Need at least one percent to pass the nil guard
+        store.save(makeResult(fiveHourPercent: 10.0))
 
         var db: OpaquePointer?
         guard sqlite3_open(store.dbPath, &db) == SQLITE_OK else {
@@ -367,5 +371,74 @@ final class UsageStoreTests: XCTestCase {
         let history = store.loadAllHistory()
         XCTAssertEqual(history.count, 0,
                        "Corrupt DB should return empty array, not crash")
+    }
+
+    // MARK: - NULL percent rows in loadHistory
+
+    func testLoadHistory_includesRowsWithPartialNilPercents() {
+        // One percent nil, the other valid → still saved
+        store.save(makeResult(fiveHourPercent: nil, sevenDayPercent: 10.0))
+        usleep(5_000)
+        store.save(makeResult(fiveHourPercent: 26.0, sevenDayPercent: 54.0))
+
+        let history = store.loadHistory(windowSeconds: 3600)
+        XCTAssertEqual(history.count, 2,
+                       "loadHistory should return rows including those with partial nil percents")
+        XCTAssertNil(history[0].fiveHourPercent)
+        XCTAssertEqual(history[0].sevenDayPercent, 10.0)
+        XCTAssertEqual(history[1].fiveHourPercent, 26.0)
+    }
+
+    func testLoadAllHistory_mixedNilAndValid() {
+        store.save(makeResult(fiveHourPercent: nil, sevenDayPercent: 10.0))
+        usleep(5_000)
+        store.save(makeResult(fiveHourPercent: 25.0, sevenDayPercent: nil))
+        usleep(5_000)
+        store.save(makeResult(fiveHourPercent: 30.0, sevenDayPercent: 50.0))
+
+        let history = store.loadAllHistory()
+        XCTAssertEqual(history.count, 3)
+
+        // First row: nil 5h, valid 7d
+        XCTAssertNil(history[0].fiveHourPercent)
+        XCTAssertEqual(history[0].sevenDayPercent, 10.0)
+
+        // Second row: valid 5h, nil 7d
+        XCTAssertEqual(history[1].fiveHourPercent, 25.0)
+        XCTAssertNil(history[1].sevenDayPercent)
+
+        // Third row: both valid
+        XCTAssertEqual(history[2].fiveHourPercent, 30.0)
+        XCTAssertEqual(history[2].sevenDayPercent, 50.0)
+    }
+
+    // MARK: - rawJSON stored and retrievable
+
+    func testSave_rawJSON_retrievableViaDirect() {
+        let rawJSON = #"{"five_hour":{"utilization":26},"seven_day":{"utilization":54}}"#
+        store.save(makeResult(
+            fiveHourPercent: 26.0,
+            sevenDayPercent: 54.0,
+            rawJSON: rawJSON
+        ))
+
+        var db: OpaquePointer?
+        guard sqlite3_open(store.dbPath, &db) == SQLITE_OK else {
+            XCTFail("Failed to open DB")
+            return
+        }
+        defer { sqlite3_close(db) }
+
+        var stmt: OpaquePointer?
+        let sql = "SELECT raw_json FROM usage_log ORDER BY id DESC LIMIT 1;"
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+            XCTFail("Failed to prepare")
+            return
+        }
+        defer { sqlite3_finalize(stmt) }
+
+        XCTAssertEqual(sqlite3_step(stmt), SQLITE_ROW)
+        let stored = sqlite3_column_text(stmt, 0).map { String(cString: $0) }
+        XCTAssertEqual(stored, rawJSON)
     }
 }

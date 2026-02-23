@@ -263,9 +263,194 @@ final class FetcherTests: XCTestCase {
         XCTAssertEqual(result.fiveHourPercent!, 75.0, accuracy: 0.001)
     }
 
+    // MARK: - Format A: five_hour/utilization (actual API response 2026-02)
+
+    func testParse_formatA_realResponse() throws {
+        let json = """
+        {"five_hour":{"utilization":25,"resets_at":"2026-02-23T10:00:00.696818+00:00"},\
+        "seven_day":{"utilization":54,"resets_at":"2026-02-27T08:00:00.696853+00:00"},\
+        "seven_day_sonnet":{"utilization":11,"resets_at":"2026-02-25T06:59:59.696861+00:00"}}
+        """
+        let result = try UsageFetcher.parse(jsonString: json)
+        XCTAssertEqual(result.fiveHourPercent!, 25.0, accuracy: 0.001)
+        XCTAssertEqual(result.sevenDayPercent!, 54.0, accuracy: 0.001)
+        XCTAssertNotNil(result.fiveHourResetsAt)
+        XCTAssertNotNil(result.sevenDayResetsAt)
+    }
+
+    func testParse_formatA_integerUtilization() throws {
+        let json = #"{"five_hour":{"utilization":0},"seven_day":{"utilization":100}}"#
+        let result = try UsageFetcher.parse(jsonString: json)
+        XCTAssertEqual(result.fiveHourPercent!, 0.0, accuracy: 0.001)
+        XCTAssertEqual(result.sevenDayPercent!, 100.0, accuracy: 0.001)
+    }
+
+    func testParsePercent_utilization() {
+        let window: [String: Any] = ["utilization": 42]
+        XCTAssertEqual(UsageFetcher.parsePercent(window)!, 42.0, accuracy: 0.001)
+    }
+
+    func testParsePercent_limitRemaining() {
+        let window: [String: Any] = ["limit": 100.0, "remaining": 25.0]
+        XCTAssertEqual(UsageFetcher.parsePercent(window)!, 75.0, accuracy: 0.001)
+    }
+
+    func testParsePercent_nil() {
+        XCTAssertNil(UsageFetcher.parsePercent(nil))
+    }
+
+    func testParseResetsAt_isoString() {
+        let date = UsageFetcher.parseResetsAt("2026-02-23T10:00:00.696818+00:00")
+        XCTAssertNotNil(date)
+    }
+
+    func testParseResetsAt_unixTimestamp() {
+        let date = UsageFetcher.parseResetsAt(1740000000.0)
+        XCTAssertNotNil(date)
+        XCTAssertEqual(date!.timeIntervalSince1970, 1740000000.0, accuracy: 0.001)
+    }
+
+    func testParseResetsAt_nil() {
+        XCTAssertNil(UsageFetcher.parseResetsAt(nil))
+    }
+
     func testParse_preservesRawJSON() throws {
         let json = #"{"windows":{"5h":{"limit":100,"remaining":50}}}"#
         let result = try UsageFetcher.parse(jsonString: json)
         XCTAssertEqual(result.rawJSON, json)
+    }
+
+    // MARK: - Format A: Real API response from debug log (2026-02-23)
+
+    func testParse_formatA_realDebugLogResponse() throws {
+        // Exact response captured in WeatherCC-debug.log
+        let json = """
+        {"five_hour":{"utilization":26,"resets_at":"2026-02-23T10:00:00.739124+00:00"},\
+        "seven_day":{"utilization":54,"resets_at":"2026-02-27T08:00:00.739142+00:00"},\
+        "seven_day_oauth_apps":null,"seven_day_opus":null,\
+        "seven_day_sonnet":{"utilization":11,"resets_at":"2026-02-25T06:59:59.739150+00:00"},\
+        "seven_day_cowork":null,"iguana_necktie":null,"extra_usage":null,\
+        "__diag":"S1:OK,orgId=d7315981..."}
+        """
+        let result = try UsageFetcher.parse(jsonString: json)
+        XCTAssertEqual(result.fiveHourPercent!, 26.0, accuracy: 0.001)
+        XCTAssertEqual(result.sevenDayPercent!, 54.0, accuracy: 0.001)
+        XCTAssertNotNil(result.fiveHourResetsAt)
+        XCTAssertNotNil(result.sevenDayResetsAt)
+        // Verify that extra keys (seven_day_sonnet, iguana_necktie, etc.) don't break parsing
+    }
+
+    func testParse_formatA_onlyFiveHour() throws {
+        let json = #"{"five_hour":{"utilization":50}}"#
+        let result = try UsageFetcher.parse(jsonString: json)
+        XCTAssertEqual(result.fiveHourPercent!, 50.0, accuracy: 0.001)
+        XCTAssertNil(result.sevenDayPercent, "Missing seven_day should yield nil")
+    }
+
+    func testParse_formatA_onlySevenDay() throws {
+        let json = #"{"seven_day":{"utilization":75}}"#
+        let result = try UsageFetcher.parse(jsonString: json)
+        XCTAssertNil(result.fiveHourPercent, "Missing five_hour should yield nil")
+        XCTAssertEqual(result.sevenDayPercent!, 75.0, accuracy: 0.001)
+    }
+
+    func testParse_formatA_utilizationAsDouble() throws {
+        let json = #"{"five_hour":{"utilization":25.5},"seven_day":{"utilization":54.3}}"#
+        let result = try UsageFetcher.parse(jsonString: json)
+        XCTAssertEqual(result.fiveHourPercent!, 25.5, accuracy: 0.001)
+        XCTAssertEqual(result.sevenDayPercent!, 54.3, accuracy: 0.001)
+    }
+
+    func testParse_formatA_diagFieldIgnored() throws {
+        let json = #"{"five_hour":{"utilization":10},"__diag":"S1:OK"}"#
+        let result = try UsageFetcher.parse(jsonString: json)
+        XCTAssertEqual(result.fiveHourPercent!, 10.0, accuracy: 0.001)
+    }
+
+    func testParse_formatA_nullWindowsIgnored() throws {
+        let json = #"{"five_hour":{"utilization":10},"seven_day_opus":null,"iguana_necktie":null}"#
+        let result = try UsageFetcher.parse(jsonString: json)
+        XCTAssertEqual(result.fiveHourPercent!, 10.0, accuracy: 0.001)
+    }
+
+    // MARK: - Format B: limit/remaining edge cases
+
+    func testParse_formatB_onlyFiveHour() throws {
+        let json = #"{"windows":{"5h":{"limit":100,"remaining":75}}}"#
+        let result = try UsageFetcher.parse(jsonString: json)
+        XCTAssertEqual(result.fiveHourPercent!, 25.0, accuracy: 0.001)
+        XCTAssertNil(result.sevenDayPercent, "Missing 7d window should yield nil")
+    }
+
+    func testParse_formatB_zeroRemaining() throws {
+        let json = #"{"windows":{"5h":{"limit":100,"remaining":0},"7d":{"limit":200,"remaining":0}}}"#
+        let result = try UsageFetcher.parse(jsonString: json)
+        XCTAssertEqual(result.fiveHourPercent!, 100.0, accuracy: 0.001)
+        XCTAssertEqual(result.sevenDayPercent!, 100.0, accuracy: 0.001)
+    }
+
+    // MARK: - parseResetsAt edge cases
+
+    func testParseResetsAt_intTimestamp() {
+        let date = UsageFetcher.parseResetsAt(1740000000 as Int)
+        XCTAssertNotNil(date)
+        XCTAssertEqual(date!.timeIntervalSince1970, 1740000000.0, accuracy: 0.001)
+    }
+
+    func testParseResetsAt_invalidType() {
+        let date = UsageFetcher.parseResetsAt([1, 2, 3])  // Array, not String or Number
+        XCTAssertNil(date, "Invalid type should return nil")
+    }
+
+    // MARK: - parsePercent edge cases
+
+    func testParsePercent_emptyDict() {
+        let result = UsageFetcher.parsePercent([:])
+        XCTAssertNil(result, "Empty dict has neither utilization nor limit/remaining")
+    }
+
+    func testParsePercent_utilizationZero() {
+        let result = UsageFetcher.parsePercent(["utilization": 0])
+        XCTAssertEqual(result!, 0.0, accuracy: 0.001)
+    }
+
+    func testParsePercent_utilizationDouble() {
+        let result = UsageFetcher.parsePercent(["utilization": 33.3])
+        XCTAssertEqual(result!, 33.3, accuracy: 0.001)
+    }
+
+    func testParsePercent_utilizationTakesPrecedence() {
+        // If both utilization and limit/remaining exist, utilization wins
+        let window: [String: Any] = [
+            "utilization": 42,
+            "limit": 100.0,
+            "remaining": 25.0
+        ]
+        XCTAssertEqual(UsageFetcher.parsePercent(window)!, 42.0, accuracy: 0.001,
+                       "utilization should take precedence over limit/remaining")
+    }
+
+    // MARK: - Error response edge cases
+
+    func testParse_errorWithEmptyMessage() {
+        let json = #"{"__error":""}"#
+        XCTAssertThrowsError(try UsageFetcher.parse(jsonString: json)) { error in
+            guard let fetchError = error as? UsageFetchError else {
+                XCTFail("Expected UsageFetchError")
+                return
+            }
+            XCTAssertFalse(fetchError.isAuthError, "Empty error message is not auth error")
+        }
+    }
+
+    func testParse_errorWithHTTPStatus() {
+        let json = #"{"__error":"HTTP 500 [S1:OK,S2:MISS]"}"#
+        XCTAssertThrowsError(try UsageFetcher.parse(jsonString: json)) { error in
+            guard let fetchError = error as? UsageFetchError else {
+                XCTFail("Expected UsageFetchError")
+                return
+            }
+            XCTAssertFalse(fetchError.isAuthError, "HTTP 500 is not auth error")
+        }
     }
 }

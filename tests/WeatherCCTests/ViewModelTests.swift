@@ -359,4 +359,130 @@ final class ViewModelTests: XCTestCase {
         XCTAssertNotNil(text)
         XCTAssertTrue(text!.contains("h"))
     }
+
+    // MARK: - reloadHistory (via init → InMemoryUsageStore)
+
+    func testInit_loadsHistoryFromStore() {
+        let dp1 = UsageStore.DataPoint(
+            timestamp: Date().addingTimeInterval(-3600),
+            fiveHourPercent: 10.0, sevenDayPercent: 5.0
+        )
+        let dp2 = UsageStore.DataPoint(
+            timestamp: Date(),
+            fiveHourPercent: 20.0, sevenDayPercent: 10.0
+        )
+        usageStore.historyToReturn = [dp1, dp2]
+
+        let vm = makeVM()
+        XCTAssertEqual(vm.fiveHourHistory.count, 2,
+                       "init should load history from injected store")
+        XCTAssertEqual(vm.sevenDayHistory.count, 2)
+    }
+
+    func testInit_emptyHistory() {
+        usageStore.historyToReturn = []
+        let vm = makeVM()
+        XCTAssertTrue(vm.fiveHourHistory.isEmpty)
+        XCTAssertTrue(vm.sevenDayHistory.isEmpty)
+    }
+
+    // MARK: - Snapshot writing: compactMap filters NIL data points
+
+    func testSnapshot_filtersNilFiveHourPercent() {
+        let now = Date()
+        usageStore.historyToReturn = [
+            UsageStore.DataPoint(timestamp: now.addingTimeInterval(-120),
+                                fiveHourPercent: nil, sevenDayPercent: 10.0),
+            UsageStore.DataPoint(timestamp: now.addingTimeInterval(-60),
+                                fiveHourPercent: 25.0, sevenDayPercent: nil),
+            UsageStore.DataPoint(timestamp: now,
+                                fiveHourPercent: 30.0, sevenDayPercent: 20.0),
+        ]
+
+        let vm = makeVM()
+        // Wait for fetchPredict → writeSnapshot async task
+        let expectation = expectation(description: "snapshot written")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 2.0)
+
+        guard let snapshot = snapshotWriter.savedSnapshots.last else {
+            XCTFail("Expected at least one snapshot to be written")
+            return
+        }
+
+        // fiveHourHistory: should exclude the first dp (nil fiveHourPercent)
+        XCTAssertEqual(snapshot.fiveHourHistory.count, 2,
+                       "compactMap should filter out DataPoints with nil fiveHourPercent")
+        XCTAssertEqual(snapshot.fiveHourHistory[0].percent, 25.0, accuracy: 0.001)
+        XCTAssertEqual(snapshot.fiveHourHistory[1].percent, 30.0, accuracy: 0.001)
+
+        // sevenDayHistory: should exclude the second dp (nil sevenDayPercent)
+        XCTAssertEqual(snapshot.sevenDayHistory.count, 2,
+                       "compactMap should filter out DataPoints with nil sevenDayPercent")
+        XCTAssertEqual(snapshot.sevenDayHistory[0].percent, 10.0, accuracy: 0.001)
+        XCTAssertEqual(snapshot.sevenDayHistory[1].percent, 20.0, accuracy: 0.001)
+    }
+
+    func testSnapshot_allNilPercents_emptyHistory() {
+        usageStore.historyToReturn = [
+            UsageStore.DataPoint(timestamp: Date(),
+                                fiveHourPercent: nil, sevenDayPercent: nil),
+        ]
+
+        let vm = makeVM()
+        let expectation = expectation(description: "snapshot written")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 2.0)
+
+        guard let snapshot = snapshotWriter.savedSnapshots.last else {
+            XCTFail("Expected snapshot")
+            return
+        }
+        XCTAssertTrue(snapshot.fiveHourHistory.isEmpty,
+                      "All nil fiveHourPercent → empty history")
+        XCTAssertTrue(snapshot.sevenDayHistory.isEmpty,
+                      "All nil sevenDayPercent → empty history")
+    }
+
+    // MARK: - Snapshot isLoggedIn state
+
+    func testSnapshot_reflectsLoggedInState() {
+        let vm = makeVM()
+        // Initially not logged in
+        let expectation = expectation(description: "snapshot written")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 2.0)
+
+        guard let snapshot = snapshotWriter.savedSnapshots.last else {
+            XCTFail("Expected snapshot")
+            return
+        }
+        XCTAssertFalse(snapshot.isLoggedIn,
+                       "Snapshot should reflect current isLoggedIn state")
+    }
+
+    // MARK: - sevenDayRemainingText with date
+
+    func testSevenDayRemainingText_withDate() {
+        let vm = makeVM()
+        vm.sevenDayResetsAt = Date().addingTimeInterval(3 * 24 * 3600 + 2 * 3600)
+        let text = vm.sevenDayRemainingText
+        XCTAssertNotNil(text)
+        XCTAssertTrue(text!.contains("d") || text!.contains("h"))
+    }
+
+    // MARK: - remainingTimeText: past date
+
+    func testRemainingTimeText_pastDate() {
+        let vm = makeVM()
+        let text = vm.remainingTimeText(for: Date().addingTimeInterval(-100))
+        // Past date: DisplayHelpers returns "0m" or similar
+        XCTAssertNotNil(text, "Past date should still return a string, not nil")
+    }
 }
