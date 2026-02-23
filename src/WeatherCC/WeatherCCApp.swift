@@ -339,6 +339,7 @@ private struct MiniUsageGraph: View {
     private static let bgColorSignedOut = Color(red: 0x3A/255, green: 0x10/255, blue: 0x10/255)
     private static let tickColor = Color.white.opacity(0.07)
     private static let usageLineColor = Color.white.opacity(0.3)
+    private static let noDataFill = Color.white.opacity(0.06)
 
     private func xPosition(for timestamp: Date, windowStart: Date) -> Double {
         let elapsed = timestamp.timeIntervalSince(windowStart)
@@ -393,18 +394,25 @@ private struct MiniUsageGraph: View {
 
             guard !points.isEmpty else { return }
 
-            // Prepend: hold first value back to window start (don't assume 0%)
+            // No-data gray fill: window start → first data point
             if points[0].x > 1 {
-                points.insert((x: 0, y: points[0].y), at: 0)
+                context.fill(
+                    Path(CGRect(x: 0, y: 0, width: points[0].x, height: h)),
+                    with: .color(Self.noDataFill)
+                )
             }
 
-            // Extend last point to current time
+            // No-data gray fill: last data point → current time
             let now = Date()
             let nowElapsed = now.timeIntervalSince(windowStart)
             let nowXFrac = min(max(nowElapsed / windowSeconds, 0.0), 1.0)
-            let lastY = points.last!.y
-            if CGFloat(nowXFrac) * w > points.last!.x + 1 {
-                points.append((x: CGFloat(nowXFrac) * w, y: lastY))
+            let nowX = CGFloat(nowXFrac) * w
+            let lastX = points.last!.x
+            if nowX > lastX + 1 {
+                context.fill(
+                    Path(CGRect(x: lastX, y: 0, width: nowX - lastX, height: h)),
+                    with: .color(Self.noDataFill)
+                )
             }
 
             // Area fill (step interpolation — usage is constant between measurements)
@@ -420,7 +428,7 @@ private struct MiniUsageGraph: View {
             areaPath.closeSubpath()
             context.fill(areaPath, with: .color(areaColor.opacity(areaOpacity)))
 
-            // Usage level: white dashed horizontal line (use points array directly for alignment)
+            // Usage level: white dashed horizontal line
             let usageY = points.last!.y
             var usageLine = Path()
             usageLine.move(to: CGPoint(x: 0, y: usageY))
