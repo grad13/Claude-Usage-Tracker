@@ -2,7 +2,7 @@
 import Foundation
 
 public enum AppGroupConfig {
-    public static let groupId = "group.grad13.weathercc"
+    public static let groupId = "C3WA2TT222.grad13.weathercc"
     public static let appName = "WeatherCC"
 
     public static var containerURL: URL? {

@@ -1,30 +1,43 @@
-// meta: created=2026-02-21 updated=2026-02-22 checked=never
+// meta: created=2026-02-21 updated=2026-02-23 checked=never
 import Foundation
 import SQLite3
 import WeatherCCShared
 
-enum UsageStore {
+final class UsageStore {
 
-    private static let dirURL: URL = {
+    let dbPath: String
+    private let dirURL: URL
+
+    init(dbPath: String) {
+        self.dbPath = dbPath
+        self.dirURL = URL(fileURLWithPath: dbPath).deletingLastPathComponent()
+    }
+
+    static let shared: UsageStore = {
         guard let container = AppGroupConfig.containerURL else {
             fatalError("[UsageStore] App Group container not available")
         }
-        return container
+        let dir = container
             .appendingPathComponent("Library/Application Support", isDirectory: true)
             .appendingPathComponent(AppGroupConfig.appName, isDirectory: true)
+        return UsageStore(dbPath: dir.appendingPathComponent("usage.db").path)
     }()
 
-    private static let dbPath: String = {
-        dirURL.appendingPathComponent("usage.db").path
-    }()
-
-    private static let iso: ISO8601DateFormatter = {
+    private let iso: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return f
     }()
 
-    static func save(_ result: UsageResult) {
+    // MARK: - Static convenience (delegates to shared)
+
+    static func save(_ result: UsageResult) { shared.save(result) }
+    static func loadAllHistory() -> [DataPoint] { shared.loadAllHistory() }
+    static func loadHistory(windowSeconds: TimeInterval) -> [DataPoint] { shared.loadHistory(windowSeconds: windowSeconds) }
+
+    // MARK: - Instance Methods
+
+    func save(_ result: UsageResult) {
         do {
             try FileManager.default.createDirectory(at: dirURL, withIntermediateDirectories: true)
         } catch {
@@ -115,9 +128,57 @@ enum UsageStore {
         let timestamp: Date
         let fiveHourPercent: Double?
         let sevenDayPercent: Double?
+        let fiveHourResetsAt: Date?
+        let sevenDayResetsAt: Date?
+
+        init(timestamp: Date, fiveHourPercent: Double?, sevenDayPercent: Double?,
+             fiveHourResetsAt: Date? = nil, sevenDayResetsAt: Date? = nil) {
+            self.timestamp = timestamp
+            self.fiveHourPercent = fiveHourPercent
+            self.sevenDayPercent = sevenDayPercent
+            self.fiveHourResetsAt = fiveHourResetsAt
+            self.sevenDayResetsAt = sevenDayResetsAt
+        }
     }
 
-    static func loadHistory(windowSeconds: TimeInterval) -> [DataPoint] {
+    func loadAllHistory() -> [DataPoint] {
+        var db: OpaquePointer?
+        guard sqlite3_open(dbPath, &db) == SQLITE_OK else { return [] }
+        defer { sqlite3_close(db) }
+
+        let sql = """
+            SELECT timestamp, five_hour_percent, seven_day_percent,
+                   five_hour_resets_at, seven_day_resets_at
+            FROM usage_log
+            ORDER BY timestamp ASC;
+            """
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
+        defer { sqlite3_finalize(stmt) }
+
+        var results: [DataPoint] = []
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            guard let tsRaw = sqlite3_column_text(stmt, 0),
+                  let ts = iso.date(from: String(cString: tsRaw)) else { continue }
+            let fiveH: Double? = sqlite3_column_type(stmt, 1) != SQLITE_NULL ? sqlite3_column_double(stmt, 1) : nil
+            let sevenD: Double? = sqlite3_column_type(stmt, 2) != SQLITE_NULL ? sqlite3_column_double(stmt, 2) : nil
+            let fiveHResets: Date? = {
+                guard sqlite3_column_type(stmt, 3) != SQLITE_NULL,
+                      let raw = sqlite3_column_text(stmt, 3) else { return nil }
+                return iso.date(from: String(cString: raw))
+            }()
+            let sevenDResets: Date? = {
+                guard sqlite3_column_type(stmt, 4) != SQLITE_NULL,
+                      let raw = sqlite3_column_text(stmt, 4) else { return nil }
+                return iso.date(from: String(cString: raw))
+            }()
+            results.append(DataPoint(timestamp: ts, fiveHourPercent: fiveH, sevenDayPercent: sevenD,
+                                     fiveHourResetsAt: fiveHResets, sevenDayResetsAt: sevenDResets))
+        }
+        return results
+    }
+
+    func loadHistory(windowSeconds: TimeInterval) -> [DataPoint] {
         var db: OpaquePointer?
         guard sqlite3_open(dbPath, &db) == SQLITE_OK else { return [] }
         defer { sqlite3_close(db) }
@@ -146,7 +207,7 @@ enum UsageStore {
         return results
     }
 
-    private static func bindInt(_ stmt: OpaquePointer?, _ index: Int32, _ value: Int?) {
+    private func bindInt(_ stmt: OpaquePointer?, _ index: Int32, _ value: Int?) {
         if let v = value {
             sqlite3_bind_int(stmt, index, Int32(v))
         } else {
@@ -154,7 +215,7 @@ enum UsageStore {
         }
     }
 
-    private static func bindDouble(_ stmt: OpaquePointer?, _ index: Int32, _ value: Double?) {
+    private func bindDouble(_ stmt: OpaquePointer?, _ index: Int32, _ value: Double?) {
         if let v = value {
             sqlite3_bind_double(stmt, index, v)
         } else {
@@ -162,7 +223,7 @@ enum UsageStore {
         }
     }
 
-    private static func bindText(_ stmt: OpaquePointer?, _ index: Int32, _ value: String?) {
+    private func bindText(_ stmt: OpaquePointer?, _ index: Int32, _ value: String?) {
         if let v = value {
             sqlite3_bind_text(stmt, index, (v as NSString).utf8String, -1, nil)
         } else {

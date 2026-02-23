@@ -81,22 +81,34 @@ struct AppSettings: Codable {
     }
 }
 
-enum SettingsStore {
+final class SettingsStore {
 
-    private static let dirURL: URL = {
+    let fileURL: URL
+    private let dirURL: URL
+
+    init(fileURL: URL) {
+        self.fileURL = fileURL
+        self.dirURL = fileURL.deletingLastPathComponent()
+    }
+
+    static let shared: SettingsStore = {
         guard let container = AppGroupConfig.containerURL else {
             fatalError("[SettingsStore] App Group container not available")
         }
-        return container
+        let dir = container
             .appendingPathComponent("Library/Application Support", isDirectory: true)
             .appendingPathComponent(AppGroupConfig.appName, isDirectory: true)
+        return SettingsStore(fileURL: dir.appendingPathComponent("settings.json"))
     }()
 
-    private static let fileURL: URL = {
-        dirURL.appendingPathComponent("settings.json")
-    }()
+    // MARK: - Static convenience (delegates to shared)
 
-    static func load() -> AppSettings {
+    static func load() -> AppSettings { shared.load() }
+    static func save(_ settings: AppSettings) { shared.save(settings) }
+
+    // MARK: - Instance Methods
+
+    func load() -> AppSettings {
         ensureDirectory()
 
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
@@ -117,7 +129,7 @@ enum SettingsStore {
         }
     }
 
-    static func save(_ settings: AppSettings) {
+    func save(_ settings: AppSettings) {
         ensureDirectory()
 
         do {
@@ -131,7 +143,7 @@ enum SettingsStore {
         }
     }
 
-    private static func ensureDirectory() {
+    private func ensureDirectory() {
         try? FileManager.default.createDirectory(at: dirURL, withIntermediateDirectories: true)
     }
 }

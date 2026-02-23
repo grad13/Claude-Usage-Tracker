@@ -8,11 +8,7 @@
 	<true/>
 	<key>com.apple.security.application-groups</key>
 	<array>
-		<string>group.grad13.weathercc</string>
-	</array>
-	<key>com.apple.security.temporary-exception.files.absolute-path.read-only</key>
-	<array>
-		<string>/Users/</string>
+		<string>C3WA2TT222.grad13.weathercc</string>
 	</array>
 </dict>
 </plist>

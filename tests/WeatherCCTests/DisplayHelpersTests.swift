@@ -89,4 +89,93 @@ final class DisplayHelpersTests: XCTestCase {
         // markerX = 124, NOT > 124 → center (0.5)
         XCTAssertEqual(DisplayHelpers.percentTextAnchorX(markerX: 124, graphWidth: 140), 0.5)
     }
+
+    // MARK: - remainingText Boundary Cases
+
+    func testRemainingText_exactly24Hours() {
+        let now = Date()
+        let target = now.addingTimeInterval(24 * 3600)
+        // hours=24, >= 24 → "1d 0h"
+        XCTAssertEqual(DisplayHelpers.remainingText(until: target, now: now), "1d 0h")
+    }
+
+    func testRemainingText_exactly1Hour() {
+        let now = Date()
+        let target = now.addingTimeInterval(3600)
+        XCTAssertEqual(DisplayHelpers.remainingText(until: target, now: now), "1h 0m")
+    }
+
+    func testRemainingText_1Second() {
+        let now = Date()
+        let target = now.addingTimeInterval(1)
+        // Int(1) / 3600 = 0 hours, Int(1) % 3600 / 60 = 0 minutes
+        XCTAssertEqual(DisplayHelpers.remainingText(until: target, now: now), "0m")
+    }
+
+    func testRemainingText_veryLarge() {
+        let now = Date()
+        let target = now.addingTimeInterval(365 * 24 * 3600) // 1 year
+        let text = DisplayHelpers.remainingText(until: target, now: now)
+        XCTAssertTrue(text.hasSuffix("h"), "Very large time should produce 'Xd Xh' format")
+        XCTAssertTrue(text.contains("d"))
+    }
+
+    // MARK: - Non-default topMargin
+
+    func testShowsBelow_customTopMargin() {
+        // markerY = 20, custom topMargin = 30 → 20 < 30 → near top → shows below
+        XCTAssertTrue(DisplayHelpers.percentTextShowsBelow(markerY: 20, graphHeight: 60, topMargin: 30))
+        // markerY = 35, topMargin = 30, graphHeight * 0.5 = 30 → 35 > 30 (not near top) AND 35 > 30 (lower half) → false
+        XCTAssertFalse(DisplayHelpers.percentTextShowsBelow(markerY: 35, graphHeight: 60, topMargin: 30))
+    }
+
+    // MARK: - Non-default margin for anchorX
+
+    func testAnchorX_customMargin() {
+        // Custom margin = 30
+        // markerX = 25 < 30 → leading (0)
+        XCTAssertEqual(DisplayHelpers.percentTextAnchorX(markerX: 25, graphWidth: 140, margin: 30), 0)
+        // markerX = 115 > 140 - 30 = 110 → trailing (1)
+        XCTAssertEqual(DisplayHelpers.percentTextAnchorX(markerX: 115, graphWidth: 140, margin: 30), 1)
+        // markerX = 70, within margins → center (0.5)
+        XCTAssertEqual(DisplayHelpers.percentTextAnchorX(markerX: 70, graphWidth: 140, margin: 30), 0.5)
+    }
+
+    // MARK: - Edge case: zero/very small graphHeight/graphWidth
+
+    func testShowsBelow_zeroGraphHeight() {
+        // graphHeight = 0: markerY < topMargin(14) depends on markerY
+        // markerY = 0 < 14 → true
+        XCTAssertTrue(DisplayHelpers.percentTextShowsBelow(markerY: 0, graphHeight: 0))
+    }
+
+    func testAnchorX_verySmallGraphWidth() {
+        // graphWidth = 10, margin = 16 → graphWidth - margin = -6
+        // markerX = 5 < 16 → leading (0)
+        XCTAssertEqual(DisplayHelpers.percentTextAnchorX(markerX: 5, graphWidth: 10), 0)
+    }
+
+    // MARK: - Sub-second remaining
+
+    func testRemainingText_halfSecond() {
+        let now = Date()
+        let target = now.addingTimeInterval(0.5)
+        // remaining = 0.5 > 0 → passes guard. Int(0.5) = 0 → hours=0, minutes=0 → "0m"
+        XCTAssertEqual(DisplayHelpers.remainingText(until: target, now: now), "0m",
+                       "Sub-second remaining (0.5s) rounds down to 0 total seconds → 0m")
+    }
+
+    // MARK: - Negative markerY / markerX
+
+    func testShowsBelow_negativeMarkerY() {
+        // -5 < topMargin(14) → near top → true
+        XCTAssertTrue(DisplayHelpers.percentTextShowsBelow(markerY: -5, graphHeight: 60),
+                      "Negative markerY should be considered near top → shows below")
+    }
+
+    func testAnchorX_negativeMarkerX() {
+        // -10 < margin(16) → leading (0)
+        XCTAssertEqual(DisplayHelpers.percentTextAnchorX(markerX: -10, graphWidth: 140), 0,
+                       "Negative markerX should return leading anchor (0)")
+    }
 }

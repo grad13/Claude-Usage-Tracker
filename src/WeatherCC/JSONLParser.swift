@@ -29,17 +29,26 @@ enum JSONLParser {
 
     // MARK: - Public
 
-    static func parseDirectory(_ directory: URL) -> [TokenRecord] {
+    /// Parse all JSONL files in a directory.
+    /// - Parameter maxAge: Skip files older than this interval (nil = no filter)
+    static func parseDirectory(_ directory: URL, maxAge: TimeInterval? = nil) -> [TokenRecord] {
         guard let enumerator = FileManager.default.enumerator(
             at: directory,
-            includingPropertiesForKeys: [.isRegularFileKey],
+            includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey],
             options: [.skipsHiddenFiles]
         ) else { return [] }
 
+        let cutoff: Date? = maxAge.map { Date().addingTimeInterval(-$0) }
         var allRecords: [TokenRecord] = []
 
         for case let fileURL as URL in enumerator {
             guard fileURL.pathExtension == "jsonl" else { continue }
+            if let cutoff,
+               let values = try? fileURL.resourceValues(forKeys: [.contentModificationDateKey]),
+               let modDate = values.contentModificationDate,
+               modDate < cutoff {
+                continue
+            }
             let records = parseFile(fileURL)
             allRecords.append(contentsOf: records)
         }
@@ -59,7 +68,7 @@ enum JSONLParser {
 
     // MARK: - File Parsing
 
-    private static func parseFile(_ url: URL) -> [TokenRecord] {
+    static func parseFile(_ url: URL) -> [TokenRecord] {
         guard let data = try? Data(contentsOf: url),
               let content = String(data: data, encoding: .utf8) else { return [] }
 

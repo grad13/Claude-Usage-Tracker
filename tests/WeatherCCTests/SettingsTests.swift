@@ -180,4 +180,83 @@ final class SettingsTests: XCTestCase {
             XCTAssertEqual(decoded, preset)
         }
     }
+
+    // MARK: - chartWidth Boundary Values
+
+    func testValidation_chartWidthExactLowerBound() {
+        var settings = AppSettings()
+        settings.chartWidth = 12
+        let validated = settings.validated()
+        XCTAssertEqual(validated.chartWidth, 12, "chartWidth 12 is valid (lower bound)")
+    }
+
+    func testValidation_chartWidthExactUpperBound() {
+        var settings = AppSettings()
+        settings.chartWidth = 120
+        let validated = settings.validated()
+        XCTAssertEqual(validated.chartWidth, 120, "chartWidth 120 is valid (upper bound)")
+    }
+
+    func testValidation_chartWidthJustBelowLowerBound() {
+        var settings = AppSettings()
+        settings.chartWidth = 11
+        let validated = settings.validated()
+        XCTAssertEqual(validated.chartWidth, 48, "chartWidth 11 should reset to default")
+    }
+
+    func testValidation_chartWidthJustAboveUpperBound() {
+        var settings = AppSettings()
+        settings.chartWidth = 121
+        let validated = settings.validated()
+        XCTAssertEqual(validated.chartWidth, 48, "chartWidth 121 should reset to default")
+    }
+
+    func testChartWidthPresetsContent() {
+        XCTAssertEqual(AppSettings.chartWidthPresets, [12, 24, 36, 48, 60, 72])
+    }
+
+    // MARK: - validated() both invalid simultaneously
+
+    func testValidation_bothInvalid() {
+        var settings = AppSettings()
+        settings.refreshIntervalMinutes = -5
+        settings.chartWidth = 999
+        let validated = settings.validated()
+        XCTAssertEqual(validated.refreshIntervalMinutes, 5,
+                       "Both invalid: interval should reset to default")
+        XCTAssertEqual(validated.chartWidth, 48,
+                       "Both invalid: chartWidth should reset to default")
+    }
+
+    // MARK: - ChartColorPreset.color (verify no crash for each preset)
+
+    func testChartColorPreset_colorDoesNotCrash() {
+        for preset in ChartColorPreset.allCases {
+            // Accessing .color should not crash
+            let _ = preset.color
+        }
+    }
+
+    // MARK: - Decode with wrong type (type mismatch → throws)
+
+    func testDecode_wrongType_throws() {
+        // refreshIntervalMinutes is Int, but JSON has String → decodeIfPresent throws
+        let json = #"{"refresh_interval_minutes": "five"}"#
+        let data = json.data(using: .utf8)!
+
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        XCTAssertThrowsError(try decoder.decode(AppSettings.self, from: data),
+                             "Type mismatch (String instead of Int) should throw, not use default")
+    }
+
+    func testDecode_wrongType_boolAsString_throws() {
+        let json = #"{"start_at_login": "yes"}"#
+        let data = json.data(using: .utf8)!
+
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        XCTAssertThrowsError(try decoder.decode(AppSettings.self, from: data),
+                             "Type mismatch (String instead of Bool) should throw")
+    }
 }
