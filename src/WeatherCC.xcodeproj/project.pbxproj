@@ -25,6 +25,7 @@
 		AA10000B /* AnalysisExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000B /* AnalysisExporter.swift */; };
 		AA10000C /* TokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000C /* TokenStore.swift */; };
 		AA10000D /* Protocols.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000D /* Protocols.swift */; };
+		AA10000E /* AnalysisSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000E /* AnalysisSchemeHandler.swift */; };
 		BB100001 /* SettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000001 /* SettingsTests.swift */; };
 		BB100002 /* FetcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000002 /* FetcherTests.swift */; };
 		BB100003 /* ViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000003 /* ViewModelTests.swift */; };
@@ -125,6 +126,7 @@
 		AA00000B /* AnalysisExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisExporter.swift; sourceTree = "<group>"; };
 		AA00000C /* TokenStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenStore.swift; sourceTree = "<group>"; };
 		AA00000D /* Protocols.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Protocols.swift; sourceTree = "<group>"; };
+		AA00000E /* AnalysisSchemeHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisSchemeHandler.swift; sourceTree = "<group>"; };
 		AA000010 /* WeatherCC.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WeatherCC.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BB000001 /* SettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsTests.swift; sourceTree = "<group>"; };
 		BB000002 /* FetcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FetcherTests.swift; sourceTree = "<group>"; };
@@ -218,6 +220,7 @@
 				AA00000B /* AnalysisExporter.swift */,
 				AA00000C /* TokenStore.swift */,
 				AA00000D /* Protocols.swift */,
+				AA00000E /* AnalysisSchemeHandler.swift */,
 				AA000005 /* Info.plist */,
 				AA000006 /* WeatherCC.entitlements */,
 			);
@@ -462,6 +465,7 @@
 				AA10000B /* AnalysisExporter.swift in Sources */,
 				AA10000C /* TokenStore.swift in Sources */,
 				AA10000D /* Protocols.swift in Sources */,
+				AA10000E /* AnalysisSchemeHandler.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -111,13 +111,7 @@ struct WidgetLargeView: View {
     }
 
     private func remainingText(_ date: Date) -> String {
-        let remaining = date.timeIntervalSinceNow
-        guard remaining > 0 else { return "expired" }
-        let hours = Int(remaining) / 3600
-        let minutes = (Int(remaining) % 3600) / 60
-        if hours >= 24 {
-            return "in \(hours / 24)d \(hours % 24)h"
-        }
-        return "in \(hours)h \(minutes)m"
+        let text = DisplayHelpers.remainingText(until: date)
+        return text == "expired" ? text : "in " + text
     }
 }

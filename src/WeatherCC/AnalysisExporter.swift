@@ -1,70 +1,12 @@
-// meta: created=2026-02-22 updated=2026-02-22 checked=never
-// Sandbox OFF (v0.3.2) — getpwuid hack removed, uses homeDirectoryForCurrentUser directly
+// meta: created=2026-02-22 updated=2026-02-24 checked=never
 import Foundation
-import AppKit
 
+/// Provides the HTML template for the Analysis window.
+/// Data loading moved from Swift JSON serialization to JS-side sql.js queries.
+/// The HTML is served via AnalysisSchemeHandler (wcc:// scheme) in a WKWebView.
 enum AnalysisExporter {
 
-    static func exportAndOpen() {
-        let dir = NSTemporaryDirectory() + "WeatherCC-Analysis/"
-        let htmlPath = dir + "analysis.html"
-        let dataPath = dir + "data.js"
-
-        // 1. Write empty data + HTML, open browser instantly
-        do {
-            try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
-            try "var usageData=[];var tokenData=[];".write(toFile: dataPath, atomically: true, encoding: .utf8)
-            try htmlTemplate.write(toFile: htmlPath, atomically: true, encoding: .utf8)
-            NSWorkspace.shared.open(URL(fileURLWithPath: htmlPath))
-        } catch {
-            NSLog("[WeatherCC] AnalysisExporter error: %@", error.localizedDescription)
-            return
-        }
-
-        // 2. Generate real data in background → overwrite data.js
-        DispatchQueue.global(qos: .userInitiated).async {
-            let history = UsageStore.loadAllHistory()
-            let allRecords = TokenStore.loadAll()
-            let usageJSON = usageDataJSON(from: history)
-            let tokenJSON = tokenDataJSON(from: allRecords)
-            let js = "var usageData = \(usageJSON);\nvar tokenData = \(tokenJSON);\n"
-            try? js.write(toFile: dataPath, atomically: true, encoding: .utf8)
-        }
-    }
-
-    // MARK: - JSON Serialization
-
-    private static let iso: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return f
-    }()
-
-    static func usageDataJSON(from history: [UsageStore.DataPoint]) -> String {
-        let entries = history.map { dp -> String in
-            let ts = iso.string(from: dp.timestamp)
-            let fiveH = dp.fiveHourPercent.map { String($0) } ?? "null"
-            let sevenD = dp.sevenDayPercent.map { String($0) } ?? "null"
-            let fiveHResets = dp.fiveHourResetsAt.map { #""\#(iso.string(from: $0))""# } ?? "null"
-            let sevenDResets = dp.sevenDayResetsAt.map { #""\#(iso.string(from: $0))""# } ?? "null"
-            return #"{"timestamp":"\#(ts)","five_hour_percent":\#(fiveH),"seven_day_percent":\#(sevenD),"five_hour_resets_at":\#(fiveHResets),"seven_day_resets_at":\#(sevenDResets)}"#
-        }
-        return "[\(entries.joined(separator: ","))]"
-    }
-
-    static func tokenDataJSON(from records: [TokenRecord]) -> String {
-        let entries = records.map { record -> String in
-            let ts = iso.string(from: record.timestamp)
-            let cost = CostEstimator.cost(for: record)
-            return #"{"timestamp":"\#(ts)","costUSD":\#(cost)}"#
-        }
-        return "[\(entries.joined(separator: ","))]"
-    }
-
-    // MARK: - HTML Template
-    // Based on src/prototype/analysis.html with fetch() replaced by inline data
-
-    private static let htmlTemplate = #"""
+    static let htmlTemplate = #"""
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -73,7 +15,7 @@ enum AnalysisExporter {
 <title>WeatherCC — Usage Analysis</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
-<script src="data.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sql.js@1/dist/sql-wasm.js"></script>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
@@ -223,7 +165,7 @@ h2 {
 </head>
 <body>
 <h1>WeatherCC — Usage Analysis</h1>
-<div id="loading">Loading data...</div>
+<div id="loading">Loading sql.js...</div>
 <div id="app" style="display:none;">
 
 <div class="stats" id="stats"></div>
@@ -238,6 +180,11 @@ h2 {
 <div class="tab-content active" id="tab-usage">
   <div class="card full">
     <h2>Usage Timeline (5h% / 7d%)</h2>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+      <label style="color:#8b949e;font-size:12px;">Gap threshold:</label>
+      <input type="range" id="gapSlider" min="5" max="360" step="5" value="30" style="width:200px;">
+      <span id="gapVal" style="color:#e6edf3;font-size:12px;font-weight:600;min-width:50px;">30 min</span>
+    </div>
     <div class="chart-container tall"><canvas id="usageTimeline"></canvas></div>
   </div>
 </div>
@@ -287,33 +234,114 @@ h2 {
 </div>
 
 <script>
-const CHART_DEFAULTS = {
-  responsive: true,
-  maintainAspectRatio: false,
-  plugins: {
-    legend: { labels: { color: '#8b949e', font: { size: 11 } } },
-  },
-  scales: {
-    x: {
-      type: 'time',
-      ticks: { color: '#484f58', font: { size: 10 } },
-      grid: { color: '#21262d' },
-    },
-    y: {
-      ticks: { color: '#484f58', font: { size: 10 } },
-      grid: { color: '#21262d' },
-    },
-  },
+// ============================================================
+// Data loading: sql.js queries SQLite databases via wcc:// scheme
+// ============================================================
+
+// Model pricing (USD per 1M tokens, mirrors CostEstimator.swift)
+const MODEL_PRICING = {
+  opus:   { input: 15.0,  output: 75.0, cacheWrite: 18.75, cacheRead: 1.50 },
+  sonnet: { input: 3.0,   output: 15.0, cacheWrite: 3.75,  cacheRead: 0.30 },
+  haiku:  { input: 0.80,  output: 4.0,  cacheWrite: 1.0,   cacheRead: 0.08 },
 };
 
-function deepClone(obj) { return JSON.parse(JSON.stringify(obj)); }
+function pricingForModel(model) {
+  if (model.includes('opus')) return MODEL_PRICING.opus;
+  if (model.includes('haiku')) return MODEL_PRICING.haiku;
+  return MODEL_PRICING.sonnet;
+}
 
-// --- Shared state ---
+function costForRecord(r) {
+  const p = pricingForModel(r.model);
+  const M = 1_000_000;
+  return r.input_tokens / M * p.input
+       + r.output_tokens / M * p.output
+       + r.cache_creation_tokens / M * p.cacheWrite
+       + r.cache_read_tokens / M * p.cacheRead;
+}
+
+async function loadData() {
+  document.getElementById('loading').textContent = 'Loading sql.js...';
+
+  const SQL = await initSqlJs({
+    locateFile: f => `https://cdn.jsdelivr.net/npm/sql.js@1/dist/${f}`
+  });
+
+  document.getElementById('loading').textContent = 'Loading databases...';
+
+  // Fetch DB files from wcc:// scheme handler and open with sql.js
+  async function fetchDb(url) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      const buf = await res.arrayBuffer();
+      return new SQL.Database(new Uint8Array(buf));
+    } catch { return null; }
+  }
+  const [usageDb, tokenDb] = await Promise.all([
+    fetchDb('wcc://usage.db'),
+    fetchDb('wcc://tokens.db'),
+  ]);
+
+  // Query usage data
+  let usageData = [];
+  if (usageDb) {
+    try {
+      const rows = usageDb.exec(`
+        SELECT timestamp, five_hour_percent, seven_day_percent,
+               five_hour_resets_at, seven_day_resets_at
+        FROM usage_log ORDER BY timestamp ASC
+      `);
+      if (rows.length > 0) {
+        usageData = rows[0].values.map(row => ({
+          timestamp: row[0],
+          five_hour_percent: row[1],
+          seven_day_percent: row[2],
+          five_hour_resets_at: row[3],
+          seven_day_resets_at: row[4],
+        }));
+      }
+    } catch (e) { console.warn('usage query error:', e); }
+    usageDb.close();
+  }
+
+  // Query token data and calculate cost in JS
+  let tokenData = [];
+  if (tokenDb) {
+    try {
+      const rows = tokenDb.exec(`
+        SELECT timestamp, model, input_tokens, output_tokens,
+               cache_read_tokens, cache_creation_tokens
+        FROM token_records ORDER BY timestamp ASC
+      `);
+      if (rows.length > 0) {
+        tokenData = rows[0].values.map(row => {
+          const r = {
+            timestamp: row[0],
+            model: row[1],
+            input_tokens: row[2],
+            output_tokens: row[3],
+            cache_read_tokens: row[4],
+            cache_creation_tokens: row[5],
+          };
+          return { timestamp: r.timestamp, costUSD: costForRecord(r) };
+        });
+      }
+    } catch (e) { console.warn('token query error:', e); }
+    tokenDb.close();
+  }
+
+  return { usageData, tokenData };
+}
+
+// ============================================================
+// Chart rendering (preserved from previous implementation)
+// ============================================================
+
 let _usageData, _tokenData, _allDeltas;
 const _charts = {};
 const _rendered = {};
 
-// --- Time slot config ---
 const timeSlots = [
   { label: 'Night (0\u20136h)',     color: 'rgba(100,150,255,0.7)', filter: d => d.hour < 6 },
   { label: 'Morning (6\u201312h)',  color: 'rgba(255,200,80,0.7)',  filter: d => d.hour >= 6 && d.hour < 12 },
@@ -321,7 +349,6 @@ const timeSlots = [
   { label: 'Evening (18\u201324h)', color: 'rgba(180,100,255,0.7)', filter: d => d.hour >= 18 },
 ];
 
-// --- KDE ---
 function computeKDE(values) {
   const n = values.length;
   if (n < 2) return { xs: [], ys: [] };
@@ -346,13 +373,13 @@ function computeKDE(values) {
   return { xs, ys };
 }
 
-// --- Compute deltas from usage + token data ---
 function computeDeltas(usageData, tokenData) {
   const deltas = [];
   for (let i = 1; i < usageData.length; i++) {
     const prev = usageData[i - 1];
     const curr = usageData[i];
-    const d5h = (curr.five_hour_percent ?? 0) - (prev.five_hour_percent ?? 0);
+    if (curr.five_hour_percent == null || prev.five_hour_percent == null) continue;
+    const d5h = curr.five_hour_percent - prev.five_hour_percent;
     const t0 = new Date(prev.timestamp).getTime();
     const t1 = new Date(curr.timestamp).getTime();
     const intervalCost = tokenData
@@ -366,7 +393,6 @@ function computeDeltas(usageData, tokenData) {
   return deltas;
 }
 
-// --- Heatmap builder ---
 function buildHeatmap(deltas) {
   const heatData = {};
   for (const d of deltas) {
@@ -408,7 +434,6 @@ function buildHeatmap(deltas) {
   document.getElementById('heatmap').innerHTML = html;
 }
 
-// --- Scatter chart builder (reusable for Cost tab and Efficiency tab) ---
 function buildScatterChart(canvasId, deltas) {
   return new Chart(document.getElementById(canvasId), {
     type: 'scatter',
@@ -450,32 +475,35 @@ function buildScatterChart(canvasId, deltas) {
   });
 }
 
-// --- Insert synthetic 0% points at reset boundaries ---
-// When resets_at from a previous data point is before the next data point's timestamp,
-// a reset occurred between them. Insert 0% at that reset time.
 function insertResetPoints(data, percentKey, resetsAtKey) {
   const result = [];
+  let lastValidIdx = -1;
   for (let i = 0; i < data.length; i++) {
     const curr = data[i];
-    if (i > 0) {
-      const prev = data[i - 1];
+    if (curr[percentKey] == null) continue;
+    if (lastValidIdx >= 0) {
+      const prev = data[lastValidIdx];
       const prevResets = prev[resetsAtKey];
       if (prevResets) {
         const resetTime = new Date(prevResets).getTime();
         const currTime = new Date(curr.timestamp).getTime();
         const prevTime = new Date(prev.timestamp).getTime();
-        // Reset occurred between prev and curr
         if (resetTime > prevTime && resetTime < currTime) {
           result.push({ x: prevResets, y: 0 });
         }
       }
     }
     result.push({ x: curr.timestamp, y: curr[percentKey] });
+    lastValidIdx = i;
   }
   return result;
 }
 
-// --- Tab renderers ---
+let gapThresholdMs = 30 * 60 * 1000;
+function isGapSegment(ctx) {
+  return ctx.p1.parsed.x - ctx.p0.parsed.x > gapThresholdMs;
+}
+
 function renderUsageTab() {
   const fiveHData = insertResetPoints(_usageData, 'five_hour_percent', 'five_hour_resets_at');
   const sevenDData = insertResetPoints(_usageData, 'seven_day_percent', 'seven_day_resets_at');
@@ -489,12 +517,20 @@ function renderUsageTab() {
           data: fiveHData,
           borderColor: '#64b4ff', backgroundColor: 'rgba(100,180,255,0.1)',
           fill: true, borderWidth: 1.5, pointRadius: 1, tension: 0,
+          segment: {
+            borderColor: ctx => isGapSegment(ctx) ? 'transparent' : undefined,
+            backgroundColor: ctx => isGapSegment(ctx) ? 'transparent' : undefined,
+          },
         },
         {
           label: '7-day %',
           data: sevenDData,
           borderColor: '#ff82b4', backgroundColor: 'rgba(255,130,180,0.1)',
           fill: true, borderWidth: 1.5, pointRadius: 1, tension: 0,
+          segment: {
+            borderColor: ctx => isGapSegment(ctx) ? 'transparent' : undefined,
+            backgroundColor: ctx => isGapSegment(ctx) ? 'transparent' : undefined,
+          },
         },
       ],
     },
@@ -506,6 +542,21 @@ function renderUsageTab() {
         y: { min: 0, max: 100, ticks: { color: '#484f58', font: { size: 10 } }, grid: { color: '#21262d' }, title: { display: true, text: '%', color: '#484f58' } },
       },
     },
+  });
+
+  const slider = document.getElementById('gapSlider');
+  const valLabel = document.getElementById('gapVal');
+  function formatMin(m) {
+    if (m < 60) return m + ' min';
+    const h = Math.floor(m / 60);
+    const r = m % 60;
+    return r === 0 ? h + 'h' : h + 'h ' + r + 'min';
+  }
+  slider.addEventListener('input', () => {
+    const min = parseInt(slider.value);
+    valLabel.textContent = formatMin(min);
+    gapThresholdMs = min * 60 * 1000;
+    _charts.usageTimeline.update();
   });
 }
 
@@ -538,7 +589,6 @@ function renderEfficiencyTab(deltas) {
 
   _charts.effScatter = buildScatterChart('effScatter', deltas);
 
-  // KDE
   const ratios = deltas.filter(d => d.x > 0.001).map(d => d.y / d.x);
   const { xs, ys } = computeKDE(ratios);
   if (xs.length > 0) {
@@ -616,7 +666,6 @@ function renderTab(tabId) {
   }
 }
 
-// --- Date range filter ---
 function getFilteredDeltas() {
   const fromVal = document.getElementById('dateFrom').value;
   const toVal = document.getElementById('dateTo').value;
@@ -629,7 +678,6 @@ function getFilteredDeltas() {
   });
 }
 
-// --- Tab switching ---
 function initTabs() {
   const tabs = document.querySelectorAll('.tab-btn');
   const contents = document.querySelectorAll('.tab-content');
@@ -648,21 +696,23 @@ function initTabs() {
     });
   });
 
-  // Date range: Apply button
   document.getElementById('applyRange').addEventListener('click', () => {
     const filtered = getFilteredDeltas();
     renderEfficiencyTab(filtered);
     _rendered['efficiency'] = true;
   });
 
-  // Set default date range: 3 days ago to today
+  function localDateStr(d) {
+    return d.getFullYear() + '-'
+      + String(d.getMonth() + 1).padStart(2, '0') + '-'
+      + String(d.getDate()).padStart(2, '0');
+  }
   const today = new Date();
   const threeDaysAgo = new Date(Date.now() - 3 * 86400000);
-  document.getElementById('dateTo').value = today.toISOString().slice(0, 10);
-  document.getElementById('dateFrom').value = threeDaysAgo.toISOString().slice(0, 10);
+  document.getElementById('dateTo').value = localDateStr(today);
+  document.getElementById('dateFrom').value = localDateStr(threeDaysAgo);
 }
 
-// --- Main ---
 function main(usageData, tokenData) {
   document.getElementById('loading').textContent = 'Drawing charts...';
   document.getElementById('app').style.display = '';
@@ -671,44 +721,42 @@ function main(usageData, tokenData) {
   _tokenData = tokenData;
   _allDeltas = computeDeltas(usageData, tokenData);
 
-  // Stats
   const totalCost = tokenData.reduce((s, r) => s + r.costUSD, 0);
   const usageSpan = usageData.length > 1
     ? ((new Date(usageData[usageData.length-1].timestamp) - new Date(usageData[0].timestamp)) / 3600000).toFixed(1)
     : '0';
-  const latestFiveH = usageData[usageData.length - 1]?.five_hour_percent ?? '-';
-  const latestSevenD = usageData[usageData.length - 1]?.seven_day_percent ?? '-';
+  const latestFiveH = usageData[usageData.length - 1]?.five_hour_percent;
+  const latestSevenD = usageData[usageData.length - 1]?.seven_day_percent;
+  const fiveHDisplay = latestFiveH != null ? latestFiveH + '%' : '-';
+  const sevenDDisplay = latestSevenD != null ? latestSevenD + '%' : '-';
 
   document.getElementById('stats').innerHTML = `
     <div class="stat"><div class="stat-value">${usageData.length}</div><div class="stat-label">Usage Records</div></div>
     <div class="stat"><div class="stat-value">${tokenData.length.toLocaleString()}</div><div class="stat-label">Token Records</div></div>
     <div class="stat"><div class="stat-value">$${totalCost.toFixed(2)}</div><div class="stat-label">Total Est. Cost</div></div>
     <div class="stat"><div class="stat-value">${usageSpan}h</div><div class="stat-label">Usage Span</div></div>
-    <div class="stat"><div class="stat-value">${latestFiveH}%</div><div class="stat-label">Latest 5h</div></div>
-    <div class="stat"><div class="stat-value">${latestSevenD}%</div><div class="stat-label">Latest 7d</div></div>
+    <div class="stat"><div class="stat-value">${fiveHDisplay}</div><div class="stat-label">Latest 5h</div></div>
+    <div class="stat"><div class="stat-value">${sevenDDisplay}</div><div class="stat-label">Latest 7d</div></div>
   `;
 
   initTabs();
-
-  // Render initial tab (Usage)
   renderTab('usage');
   _rendered['usage'] = true;
-
   document.getElementById('loading').style.display = 'none';
 }
 
-// data.js is loaded via <script src="data.js"> in <head>
-if (usageData.length === 0 && tokenData.length === 0) {
-  setTimeout(() => location.reload(), 500);
-} else {
+// ============================================================
+// Entry point: load data via sql.js, then render
+// ============================================================
+(async () => {
   try {
-    document.getElementById('loading').textContent = 'Drawing charts...';
+    const { usageData, tokenData } = await loadData();
     main(usageData, tokenData);
-  } catch(err) {
+  } catch (err) {
     document.getElementById('loading').textContent = 'Error: ' + err.message;
     console.error(err);
   }
-}
+})();
 </script>
 </body>
 </html>
