@@ -1,4 +1,4 @@
-// meta: created=2026-02-21 updated=2026-02-23 checked=never
+// meta: created=2026-02-21 updated=2026-02-24 checked=never
 import SwiftUI
 import WebKit
 
@@ -18,6 +18,11 @@ struct WeatherCCApp: App {
             LoginWindowView(viewModel: viewModel)
         }
         .defaultSize(width: 900, height: 700)
+
+        Window("WeatherCC — Analysis", id: "analysis") {
+            AnalysisWindowView()
+        }
+        .defaultSize(width: 1200, height: 800)
     }
 }
 
@@ -77,17 +82,15 @@ private struct MenuContent: View {
 
         Divider()
 
-        Text("Open in Browser")
-            .foregroundColor(.secondary)
+        Button("Analysis") {
+            openWindow(id: "analysis")
+            NSApp.activate(ignoringOtherApps: true)
+        }
 
-        Button("Usage Page") {
+        Button("Usage Page (Browser)") {
             if let url = URL(string: "https://claude.ai/settings/billing") {
                 NSWorkspace.shared.open(url)
             }
-        }
-
-        Button("Analysis") {
-            AnalysisExporter.exportAndOpen()
         }
 
         Divider()
@@ -254,6 +257,34 @@ private struct PopupSheetView: View {
 private struct PopupWebViewWrapper: NSViewRepresentable {
     let webView: WKWebView
     func makeNSView(context: Context) -> WKWebView { webView }
+    func updateNSView(_ nsView: WKWebView, context: Context) {}
+}
+
+// MARK: - Analysis Window (WKWebView + sql.js)
+
+private struct AnalysisWindowView: View {
+    var body: some View {
+        AnalysisWebView()
+    }
+}
+
+/// WKWebView configured with AnalysisSchemeHandler to serve local SQLite databases.
+/// sql.js in the HTML fetches wcc://usage.db and wcc://tokens.db directly.
+private struct AnalysisWebView: NSViewRepresentable {
+    func makeNSView(context: Context) -> WKWebView {
+        let handler = AnalysisSchemeHandler(
+            usageDbPath: UsageStore.shared.dbPath,
+            tokensDbPath: TokenStore.shared.dbPath,
+            htmlProvider: { AnalysisExporter.htmlTemplate }
+        )
+        let config = WKWebViewConfiguration()
+        config.setURLSchemeHandler(handler, forURLScheme: AnalysisSchemeHandler.scheme)
+
+        let webView = WKWebView(frame: .zero, configuration: config)
+        webView.load(URLRequest(url: URL(string: "\(AnalysisSchemeHandler.scheme)://analysis.html")!))
+        return webView
+    }
+
     func updateNSView(_ nsView: WKWebView, context: Context) {}
 }
 

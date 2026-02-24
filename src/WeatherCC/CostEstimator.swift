@@ -58,8 +58,8 @@ enum CostEstimator {
     // MARK: - Private
 
     static func pricingForModel(_ model: String) -> ModelPricing {
-        if model.hasPrefix("claude-opus") { return opus }
-        if model.hasPrefix("claude-haiku") { return haiku }
+        if model.contains("opus") { return opus }
+        if model.contains("haiku") { return haiku }
         return sonnet // default
     }
 

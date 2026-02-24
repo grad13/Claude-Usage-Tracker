@@ -54,13 +54,13 @@ final class DisplayHelpersTests: XCTestCase {
     }
 
     func testShowsBelow_upperHalf() {
-        // markerY = 25 (<= 60*0.5=30), not near top (25 > 14) → shows below
-        XCTAssertTrue(DisplayHelpers.percentTextShowsBelow(markerY: 25, graphHeight: 60))
+        // markerY = 25 (> topMargin 14) → not near top → shows above (false)
+        XCTAssertFalse(DisplayHelpers.percentTextShowsBelow(markerY: 25, graphHeight: 60))
     }
 
     func testShowsBelow_exactMiddle() {
-        // markerY = 30, h*0.5 = 30 → markerY <= h*0.5 → shows below
-        XCTAssertTrue(DisplayHelpers.percentTextShowsBelow(markerY: 30, graphHeight: 60))
+        // markerY = 30 (> topMargin 14) → not near top → shows above (false)
+        XCTAssertFalse(DisplayHelpers.percentTextShowsBelow(markerY: 30, graphHeight: 60))
     }
 
     // MARK: - percentTextAnchorX

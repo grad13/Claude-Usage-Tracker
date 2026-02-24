@@ -25,9 +25,11 @@ final class UsageViewModel: ObservableObject {
     private static let usageURL = URL(string: "https://claude.ai")!
     private static let targetHost = "claude.ai"
     let webView: WKWebView
+    private let fetcher: any UsageFetching
     private let settingsStore: any SettingsStoring
     private let usageStore: any UsageStoring
     private let snapshotWriter: any SnapshotWriting
+    private let widgetReloader: any WidgetReloading
     private let tokenSync: any TokenSyncing
     private var coordinator: WebViewCoordinator?
     private var cookieObserver: CookieChangeObserver?
@@ -99,14 +101,18 @@ final class UsageViewModel: ObservableObject {
     }
 
     init(
+        fetcher: any UsageFetching = DefaultUsageFetcher(),
         settingsStore: any SettingsStoring = SettingsStore.shared,
         usageStore: any UsageStoring = UsageStore.shared,
         snapshotWriter: any SnapshotWriting = DefaultSnapshotWriter(),
+        widgetReloader: any WidgetReloading = DefaultWidgetReloader(),
         tokenSync: any TokenSyncing = TokenStore.shared
     ) {
+        self.fetcher = fetcher
         self.settingsStore = settingsStore
         self.usageStore = usageStore
         self.snapshotWriter = snapshotWriter
+        self.widgetReloader = widgetReloader
         self.tokenSync = tokenSync
 
         let config = WKWebViewConfiguration()
@@ -146,7 +152,7 @@ final class UsageViewModel: ObservableObject {
         let currentURL = webView.url?.absoluteString ?? "nil"
         debug("handlePageReady: url=\(currentURL)")
         Task {
-            let isLoggedIn = await UsageFetcher.hasValidSession(using: webView)
+            let isLoggedIn = await fetcher.hasValidSession(using: webView)
             debug("handlePageReady: hasValidSession=\(isLoggedIn)")
             guard isLoggedIn else {
                 debug("handlePageReady: no session, skipping")
@@ -184,7 +190,7 @@ final class UsageViewModel: ObservableObject {
 
         Task {
             do {
-                let result = try await UsageFetcher.fetch(from: webView)
+                let result = try await fetcher.fetch(from: webView)
                 applyResult(result)
                 isLoggedIn = true
                 isAutoRefreshEnabled = true
@@ -210,7 +216,7 @@ final class UsageViewModel: ObservableObject {
 
         Task {
             do {
-                let result = try await UsageFetcher.fetch(from: webView)
+                let result = try await fetcher.fetch(from: webView)
                 debug("fetchSilently: success 5h=\(result.fiveHourPercent ?? -1) 7d=\(result.sevenDayPercent ?? -1)")
                 applyResult(result)
                 isLoggedIn = true
@@ -282,6 +288,12 @@ final class UsageViewModel: ObservableObject {
     // MARK: - Widget Snapshot
 
     private func writeSnapshot() {
+        // If no fetch has completed yet and a snapshot already exists,
+        // don't overwrite it — the existing file has better data.
+        if fiveHourPercent == nil && sevenDayPercent == nil && snapshotWriter.exists() {
+            return
+        }
+
         let snapshot = UsageSnapshot(
             timestamp: Date(),
             fiveHourPercent: fiveHourPercent,
@@ -301,7 +313,7 @@ final class UsageViewModel: ObservableObject {
             predictSevenDayCost: predictSevenDayCost
         )
         snapshotWriter.save(snapshot)
-        WidgetCenter.shared.reloadAllTimelines()
+        widgetReloader.reloadAllTimelines()
     }
 
     private func reloadHistory() {
@@ -337,7 +349,7 @@ final class UsageViewModel: ObservableObject {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 self.debug("cookieChange: fired")
-                let hasSession = await UsageFetcher.hasValidSession(using: self.webView)
+                let hasSession = await self.fetcher.hasValidSession(using: self.webView)
                 self.debug("cookieChange: hasSession=\(hasSession) isLoggedIn=\(self.isLoggedIn)")
                 if hasSession {
                     self.handleSessionDetected()
@@ -371,7 +383,7 @@ final class UsageViewModel: ObservableObject {
         loginPollTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self, !self.isLoggedIn else { return }
-                let hasSession = await UsageFetcher.hasValidSession(using: self.webView)
+                let hasSession = await self.fetcher.hasValidSession(using: self.webView)
                 if hasSession {
                     self.debug("loginPoll: session detected!")
                     self.handleSessionDetected()
@@ -454,6 +466,17 @@ final class UsageViewModel: ObservableObject {
 
     // MARK: - Popup
 
+    /// Called by WebViewCoordinator when a popup finishes loading.
+    func checkPopupLogin() {
+        Task {
+            let isLoggedIn = await fetcher.hasValidSession(using: webView)
+            if isLoggedIn {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                closePopup()
+            }
+        }
+    }
+
     func closePopup() {
         popupWebView?.stopLoading()
         popupWebView = nil
@@ -465,7 +488,7 @@ final class UsageViewModel: ObservableObject {
         Task {
             // Wait briefly for cookies to propagate
             try? await Task.sleep(nanoseconds: 1_000_000_000)
-            let hasSession = await UsageFetcher.hasValidSession(using: webView)
+            let hasSession = await fetcher.hasValidSession(using: webView)
             debug("handlePopupClosed: hasSession=\(hasSession)")
             if hasSession {
                 handleSessionDetected()
@@ -525,6 +548,8 @@ final class UsageViewModel: ObservableObject {
         predictFiveHourCost = nil
         predictSevenDayCost = nil
         error = nil
+
+        writeSnapshot()
 
         let dataStore = webView.configuration.websiteDataStore
         // Stage 1: Remove all website data
@@ -601,13 +626,7 @@ private final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDele
         // Popup: check login status, close if logged in
         if webView === viewModel.popupWebView {
             viewModel.debug("didFinish[popup]: url=\(url)")
-            Task {
-                let isLoggedIn = await UsageFetcher.hasValidSession(using: viewModel.webView)
-                if isLoggedIn {
-                    try? await Task.sleep(nanoseconds: 500_000_000)
-                    viewModel.closePopup()
-                }
-            }
+            viewModel.checkPopupLogin()
             return
         }
 
