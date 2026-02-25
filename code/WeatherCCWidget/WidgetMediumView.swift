@@ -1,4 +1,4 @@
-// meta: created=2026-02-21 updated=2026-02-21 checked=never
+// meta: created=2026-02-21 updated=2026-02-25 checked=never
 import SwiftUI
 import WidgetKit
 import WeatherCCShared
@@ -168,31 +168,60 @@ struct WidgetMiniGraph: View {
                 )
             }
 
-            // No-data gray fill: last data point → current time
+            // Current time position
             let now = Date()
             let nowElapsed = now.timeIntervalSince(windowStart)
             let nowXFrac = min(max(nowElapsed / windowSeconds, 0.0), 1.0)
             let nowX = CGFloat(nowXFrac) * w
-            let lastX = points.last!.x
-            if nowX > lastX + 1 {
-                context.fill(
-                    Path(CGRect(x: lastX, y: 0, width: nowX - lastX, height: h)),
-                    with: .color(Self.noDataFill)
-                )
+
+            // Usage persists until reset — extend area to reset time
+            let fillEndX: CGFloat
+            if let resetsAt {
+                let resetElapsed = resetsAt.timeIntervalSince(windowStart)
+                let resetXFrac = min(max(resetElapsed / windowSeconds, 0.0), 1.0)
+                let resetX = CGFloat(resetXFrac) * w
+                fillEndX = max(resetX, points.last!.x)
+            } else {
+                fillEndX = max(nowX, points.last!.x)
             }
 
-            // Area fill (step interpolation — usage is constant between measurements)
-            var areaPath = Path()
-            areaPath.move(to: CGPoint(x: points[0].x, y: h))
+            // Area fill — past region (solid, up to nowX)
+            let effectiveNowX = max(min(nowX, fillEndX), points.last!.x)
+            var pastPath = Path()
+            pastPath.move(to: CGPoint(x: points[0].x, y: h))
             for (i, p) in points.enumerated() {
                 if i > 0 {
-                    areaPath.addLine(to: CGPoint(x: p.x, y: points[i-1].y))
+                    pastPath.addLine(to: CGPoint(x: p.x, y: points[i-1].y))
                 }
-                areaPath.addLine(to: CGPoint(x: p.x, y: p.y))
+                pastPath.addLine(to: CGPoint(x: p.x, y: p.y))
             }
-            areaPath.addLine(to: CGPoint(x: points.last!.x, y: h))
-            areaPath.closeSubpath()
-            context.fill(areaPath, with: .color(areaColor.opacity(areaOpacity)))
+            pastPath.addLine(to: CGPoint(x: effectiveNowX, y: points.last!.y))
+            pastPath.addLine(to: CGPoint(x: effectiveNowX, y: h))
+            pastPath.closeSubpath()
+            context.fill(pastPath, with: .color(areaColor.opacity(areaOpacity)))
+
+            // Area fill — future region (stripes + lower opacity, nowX to fillEndX)
+            if fillEndX > effectiveNowX + 1 {
+                let lastY = points.last!.y
+                // Dimmed base fill
+                var futurePath = Path()
+                futurePath.addRect(CGRect(x: effectiveNowX, y: lastY, width: fillEndX - effectiveNowX, height: h - lastY))
+                context.fill(futurePath, with: .color(areaColor.opacity(areaOpacity * 0.35)))
+                // Diagonal stripes clipped to future area
+                context.drawLayer { layerCtx in
+                    layerCtx.clip(to: futurePath)
+                    let spacing: CGFloat = 4
+                    let totalSpan = (fillEndX - effectiveNowX) + (h - lastY)
+                    var offset: CGFloat = -totalSpan
+                    while offset < totalSpan {
+                        var stripe = Path()
+                        stripe.move(to: CGPoint(x: effectiveNowX + offset, y: lastY + (h - lastY)))
+                        stripe.addLine(to: CGPoint(x: effectiveNowX + offset + (h - lastY), y: lastY))
+                        layerCtx.stroke(stripe, with: .color(areaColor.opacity(areaOpacity * 0.5)), lineWidth: 0.5)
+                        offset += spacing
+                    }
+                }
+            }
 
             // Usage level line
             let usageY = points.last!.y
@@ -205,8 +234,8 @@ struct WidgetMiniGraph: View {
                 style: StrokeStyle(lineWidth: 0.5, dash: [2, 2])
             )
 
-            // Current value marker
-            let markerX = points.last!.x
+            // Current value marker (at current time)
+            let markerX = nowX
             let markerY = points.last!.y
 
             // Filled inner circle (r = 2.5 * 2/3)
