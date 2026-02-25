@@ -37,10 +37,10 @@ scripts/
 externals/
 
 # Documentation
-docs/
+documents/
 
 # Prototype HTML files
-src/prototype/
+code/prototype/
 
 # Coverage / profiling
 *.profraw
