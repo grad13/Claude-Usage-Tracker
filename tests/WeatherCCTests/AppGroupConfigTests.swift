@@ -21,19 +21,29 @@ final class AppGroupConfigTests: XCTestCase {
         _ = url
     }
 
-    func testSnapshotURL_nilWhenContainerIsNil() {
-        // If containerURL is nil, snapshotURL must also be nil
+    func testSnapshotDBPath_nilWhenContainerIsNil() {
         if AppGroupConfig.containerURL == nil {
-            XCTAssertNil(AppGroupConfig.snapshotURL,
-                         "snapshotURL should be nil when containerURL is nil")
+            XCTAssertNil(AppGroupConfig.snapshotDBPath,
+                         "snapshotDBPath should be nil when containerURL is nil")
         } else {
-            // If container exists, snapshotURL should be non-nil and contain expected path components
-            let url = AppGroupConfig.snapshotURL
+            let path = AppGroupConfig.snapshotDBPath
+            XCTAssertNotNil(path)
+            XCTAssertTrue(path!.contains("WeatherCC"),
+                          "snapshotDBPath should contain app name in path")
+            XCTAssertTrue(path!.hasSuffix("snapshot.db"),
+                          "snapshotDBPath should end with snapshot.db")
+        }
+    }
+
+    func testLegacySnapshotURL_nilWhenContainerIsNil() {
+        if AppGroupConfig.containerURL == nil {
+            XCTAssertNil(AppGroupConfig.legacySnapshotURL,
+                         "legacySnapshotURL should be nil when containerURL is nil")
+        } else {
+            let url = AppGroupConfig.legacySnapshotURL
             XCTAssertNotNil(url)
-            XCTAssertTrue(url!.path.contains("WeatherCC"),
-                          "snapshotURL should contain app name in path")
             XCTAssertTrue(url!.path.hasSuffix("snapshot.json"),
-                          "snapshotURL should end with snapshot.json")
+                          "legacySnapshotURL should end with snapshot.json")
         }
     }
 }

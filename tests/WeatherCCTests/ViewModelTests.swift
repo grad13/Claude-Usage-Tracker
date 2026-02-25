@@ -19,13 +19,47 @@ final class InMemoryUsageStore: UsageStoring {
 }
 
 final class InMemorySnapshotWriter: SnapshotWriting {
-    var savedSnapshots: [UsageSnapshot] = []
-    var fileExists = false
-    func save(_ snapshot: UsageSnapshot) {
-        savedSnapshots.append(snapshot)
-        fileExists = true
+    struct FetchRecord {
+        let timestamp: Date
+        let fiveHourPercent: Double?
+        let sevenDayPercent: Double?
+        let fiveHourResetsAt: Date?
+        let sevenDayResetsAt: Date?
+        let isLoggedIn: Bool
     }
-    func exists() -> Bool { fileExists }
+    struct PredictRecord {
+        let fiveHourCost: Double?
+        let sevenDayCost: Double?
+    }
+
+    var savedFetches: [FetchRecord] = []
+    var savedPredicts: [PredictRecord] = []
+    var signOutCount = 0
+
+    func saveAfterFetch(
+        timestamp: Date,
+        fiveHourPercent: Double?, sevenDayPercent: Double?,
+        fiveHourResetsAt: Date?, sevenDayResetsAt: Date?,
+        isLoggedIn: Bool
+    ) {
+        savedFetches.append(FetchRecord(
+            timestamp: timestamp,
+            fiveHourPercent: fiveHourPercent,
+            sevenDayPercent: sevenDayPercent,
+            fiveHourResetsAt: fiveHourResetsAt,
+            sevenDayResetsAt: sevenDayResetsAt,
+            isLoggedIn: isLoggedIn
+        ))
+    }
+
+    func updatePredict(fiveHourCost: Double?, sevenDayCost: Double?) {
+        savedPredicts.append(PredictRecord(
+            fiveHourCost: fiveHourCost,
+            sevenDayCost: sevenDayCost
+        ))
+    }
+
+    func clearOnSignOut() { signOutCount += 1 }
 }
 
 final class InMemoryWidgetReloader: WidgetReloading {
@@ -54,6 +88,20 @@ final class InMemoryTokenSync: TokenSyncing, @unchecked Sendable {
     func loadRecords(since cutoff: Date) -> [TokenRecord] { [] }
 }
 
+final class InMemoryLoginItemManager: LoginItemManaging {
+    var enabledCallCount = 0
+    var disabledCallCount = 0
+    var lastEnabled: Bool?
+    var shouldThrow: Error?
+
+    func setEnabled(_ enabled: Bool) throws {
+        if let error = shouldThrow { throw error }
+        lastEnabled = enabled
+        if enabled { enabledCallCount += 1 }
+        else { disabledCallCount += 1 }
+    }
+}
+
 // MARK: - ViewModelTests
 
 @MainActor
@@ -65,6 +113,7 @@ final class ViewModelTests: XCTestCase {
     private var snapshotWriter: InMemorySnapshotWriter!
     private var widgetReloader: InMemoryWidgetReloader!
     private var tokenSync: InMemoryTokenSync!
+    private var loginItemManager: InMemoryLoginItemManager!
 
     override func setUp() {
         super.setUp()
@@ -74,6 +123,7 @@ final class ViewModelTests: XCTestCase {
         snapshotWriter = InMemorySnapshotWriter()
         widgetReloader = InMemoryWidgetReloader()
         tokenSync = InMemoryTokenSync()
+        loginItemManager = InMemoryLoginItemManager()
     }
 
     private func makeVM() -> UsageViewModel {
@@ -83,7 +133,8 @@ final class ViewModelTests: XCTestCase {
             usageStore: usageStore,
             snapshotWriter: snapshotWriter,
             widgetReloader: widgetReloader,
-            tokenSync: tokenSync
+            tokenSync: tokenSync,
+            loginItemManager: loginItemManager
         )
     }
 
@@ -115,19 +166,76 @@ final class ViewModelTests: XCTestCase {
 
     // MARK: - toggleStartAtLogin
 
-    func testToggleStartAtLogin() {
+    func testToggleStartAtLogin_callsRegister() {
         let vm = makeVM()
-        let before = vm.settings.startAtLogin
+        XCTAssertFalse(vm.settings.startAtLogin) // default is false
         vm.toggleStartAtLogin()
-        XCTAssertNotEqual(vm.settings.startAtLogin, before, "toggleStartAtLogin should flip the value")
+        XCTAssertTrue(vm.settings.startAtLogin)
+        XCTAssertEqual(loginItemManager.enabledCallCount, 1,
+            "toggleStartAtLogin ON must call setEnabled(true)")
+        XCTAssertEqual(loginItemManager.lastEnabled, true)
+    }
+
+    func testToggleStartAtLogin_callsUnregister() {
+        settingsStore.current.startAtLogin = true
+        let vm = makeVM()
+        // init calls syncLoginItem → register
+        let registerBefore = loginItemManager.enabledCallCount
+        vm.toggleStartAtLogin()
+        XCTAssertFalse(vm.settings.startAtLogin)
+        XCTAssertEqual(loginItemManager.disabledCallCount, 1,
+            "toggleStartAtLogin OFF must call setEnabled(false)")
+        // register count should not increase from toggle
+        XCTAssertEqual(loginItemManager.enabledCallCount, registerBefore)
     }
 
     func testToggleStartAtLogin_persists() {
         let vm = makeVM()
-        let original = vm.settings.startAtLogin
         vm.toggleStartAtLogin()
-        XCTAssertEqual(settingsStore.current.startAtLogin, !original,
-                       "Toggled value should be persisted to settings store")
+        XCTAssertTrue(settingsStore.current.startAtLogin,
+            "Toggled value should be persisted to settings store")
+    }
+
+    func testToggleStartAtLogin_registerFails_revertsSettingAndSetsError() {
+        let vm = makeVM()
+        loginItemManager.shouldThrow = NSError(
+            domain: "SMAppServiceErrorDomain", code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "Operation not permitted"])
+        vm.toggleStartAtLogin()
+        // Setting must revert to false (original value) because register failed.
+        XCTAssertFalse(vm.settings.startAtLogin,
+            "Setting must revert when SMAppService.register() fails")
+        XCTAssertFalse(settingsStore.current.startAtLogin,
+            "Reverted setting must be persisted")
+        XCTAssertNotNil(vm.error,
+            "Error must be surfaced to user, not silently swallowed")
+    }
+
+    func testInit_syncLoginItem_registersWhenSettingIsTrue() {
+        settingsStore.current.startAtLogin = true
+        let vm = makeVM()
+        XCTAssertEqual(loginItemManager.enabledCallCount, 1,
+            "init must call setEnabled(true) when startAtLogin is true")
+        _ = vm
+    }
+
+    func testInit_syncLoginItem_failure_revertsSettingAndSetsError() {
+        settingsStore.current.startAtLogin = true
+        loginItemManager.shouldThrow = NSError(
+            domain: "SMAppServiceErrorDomain", code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "Operation not permitted"])
+        let vm = makeVM()
+
+        let done = expectation(description: "init")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { done.fulfill() }
+        wait(for: [done], timeout: 2.0)
+
+        XCTAssertFalse(vm.settings.startAtLogin,
+            "init must revert startAtLogin when register fails")
+        XCTAssertFalse(settingsStore.current.startAtLogin,
+            "Reverted setting must be persisted")
+        XCTAssertNotNil(vm.error,
+            "init login item failure must be surfaced as error")
     }
 
     // MARK: - setRefreshInterval
@@ -418,85 +526,36 @@ final class ViewModelTests: XCTestCase {
         XCTAssertTrue(vm.sevenDayHistory.isEmpty)
     }
 
-    // MARK: - Snapshot writing: compactMap filters NIL data points
+    // MARK: - Snapshot: init behavior (SQLite-based)
 
-    func testSnapshot_filtersNilFiveHourPercent() {
-        let now = Date()
-        usageStore.historyToReturn = [
-            UsageStore.DataPoint(timestamp: now.addingTimeInterval(-120),
-                                fiveHourPercent: nil, sevenDayPercent: 10.0),
-            UsageStore.DataPoint(timestamp: now.addingTimeInterval(-60),
-                                fiveHourPercent: 25.0, sevenDayPercent: nil),
-            UsageStore.DataPoint(timestamp: now,
-                                fiveHourPercent: 30.0, sevenDayPercent: 20.0),
-        ]
-
+    /// init does NOT call saveAfterFetch — state row is only created on first successful fetch.
+    func testInit_doesNotCallSaveAfterFetch() {
+        usageStore.historyToReturn = []
         let vm = makeVM()
-        // Wait for fetchPredict → writeSnapshot async task
-        let expectation = expectation(description: "snapshot written")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 2.0)
 
-        guard let snapshot = snapshotWriter.savedSnapshots.last else {
-            XCTFail("Expected at least one snapshot to be written")
-            return
-        }
+        let done = expectation(description: "init completes")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { done.fulfill() }
+        wait(for: [done], timeout: 2.0)
 
-        // fiveHourHistory: should exclude the first dp (nil fiveHourPercent)
-        XCTAssertEqual(snapshot.fiveHourHistory.count, 2,
-                       "compactMap should filter out DataPoints with nil fiveHourPercent")
-        XCTAssertEqual(snapshot.fiveHourHistory[0].percent, 25.0, accuracy: 0.001)
-        XCTAssertEqual(snapshot.fiveHourHistory[1].percent, 30.0, accuracy: 0.001)
-
-        // sevenDayHistory: should exclude the second dp (nil sevenDayPercent)
-        XCTAssertEqual(snapshot.sevenDayHistory.count, 2,
-                       "compactMap should filter out DataPoints with nil sevenDayPercent")
-        XCTAssertEqual(snapshot.sevenDayHistory[0].percent, 10.0, accuracy: 0.001)
-        XCTAssertEqual(snapshot.sevenDayHistory[1].percent, 20.0, accuracy: 0.001)
+        XCTAssertTrue(snapshotWriter.savedFetches.isEmpty,
+            "init must NOT call saveAfterFetch — data is not yet available")
+        _ = vm
     }
 
-    func testSnapshot_allNilPercents_emptyHistory() {
-        usageStore.historyToReturn = [
-            UsageStore.DataPoint(timestamp: Date(),
-                                fiveHourPercent: nil, sevenDayPercent: nil),
-        ]
-
+    /// init → fetchPredict → updatePredict(nil, nil) is called.
+    func testInit_callsUpdatePredict() {
         let vm = makeVM()
-        let expectation = expectation(description: "snapshot written")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 2.0)
 
-        guard let snapshot = snapshotWriter.savedSnapshots.last else {
-            XCTFail("Expected snapshot")
-            return
-        }
-        XCTAssertTrue(snapshot.fiveHourHistory.isEmpty,
-                      "All nil fiveHourPercent → empty history")
-        XCTAssertTrue(snapshot.sevenDayHistory.isEmpty,
-                      "All nil sevenDayPercent → empty history")
-    }
+        let done = expectation(description: "init completes")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { done.fulfill() }
+        wait(for: [done], timeout: 2.0)
 
-    // MARK: - Snapshot isLoggedIn state
-
-    func testSnapshot_reflectsLoggedInState() {
-        let vm = makeVM()
-        // Initially not logged in
-        let expectation = expectation(description: "snapshot written")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 2.0)
-
-        guard let snapshot = snapshotWriter.savedSnapshots.last else {
-            XCTFail("Expected snapshot")
-            return
-        }
-        XCTAssertFalse(snapshot.isLoggedIn,
-                       "Snapshot should reflect current isLoggedIn state")
+        XCTAssertFalse(snapshotWriter.savedPredicts.isEmpty,
+            "init → fetchPredict should call updatePredict")
+        let predict = snapshotWriter.savedPredicts.last!
+        XCTAssertNil(predict.fiveHourCost, "No JSONL data → predict should be nil")
+        XCTAssertNil(predict.sevenDayCost)
+        _ = vm
     }
 
     // MARK: - sevenDayRemainingText with date
@@ -518,258 +577,27 @@ final class ViewModelTests: XCTestCase {
         XCTAssertNotNil(text, "Past date should still return a string, not nil")
     }
 
-    // MARK: - Widget display: snapshot must contain history for graph to render
+    // MARK: - signOut calls clearOnSignOut
 
-    func testSnapshot_widgetCanRenderGraph_requiresHistoryAndResetsAt() {
-        // Widget's WidgetMiniGraph returns early (blank) when BOTH resetsAt is nil AND history is empty.
-        // This test verifies that writeSnapshot produces a snapshot the widget can actually render.
-        let now = Date()
-        usageStore.historyToReturn = [
-            UsageStore.DataPoint(
-                timestamp: now.addingTimeInterval(-3600),
-                fiveHourPercent: 10.0, sevenDayPercent: 5.0
-            ),
-            UsageStore.DataPoint(
-                timestamp: now,
-                fiveHourPercent: 20.0, sevenDayPercent: 10.0
-            ),
-        ]
-
+    func testSignOut_callsClearOnSignOut() {
         let vm = makeVM()
-        vm.isLoggedIn = true
-        vm.fiveHourPercent = 20.0
-        vm.sevenDayPercent = 10.0
-        vm.fiveHourResetsAt = now.addingTimeInterval(3 * 3600)
-        vm.sevenDayResetsAt = now.addingTimeInterval(5 * 24 * 3600)
-
-        let done = expectation(description: "snapshot written")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { done.fulfill() }
-        wait(for: [done], timeout: 2.0)
-
-        guard let snapshot = snapshotWriter.savedSnapshots.last else {
-            XCTFail("Expected snapshot"); return
-        }
-
-        // Widget needs non-empty history OR non-nil resetsAt to render the graph.
-        // If both are missing, WidgetMiniGraph returns early → blank widget.
-        XCTAssertFalse(snapshot.fiveHourHistory.isEmpty,
-                       "Snapshot must have fiveHourHistory for widget to render graph")
-        XCTAssertFalse(snapshot.sevenDayHistory.isEmpty,
-                       "Snapshot must have sevenDayHistory for widget to render graph")
-        XCTAssertNotNil(snapshot.fiveHourResetsAt,
-                        "Snapshot must have fiveHourResetsAt for widget graph windowStart")
-        XCTAssertNotNil(snapshot.sevenDayResetsAt,
-                        "Snapshot must have sevenDayResetsAt for widget graph windowStart")
-    }
-
-    // MARK: - signOut should write snapshot to notify widget
-
-    func testSignOut_writesSnapshotWithLoggedOutState() {
-        let vm = makeVM()
-        // Simulate logged-in state with data
         vm.isLoggedIn = true
         vm.fiveHourPercent = 42.0
         vm.sevenDayPercent = 18.0
-        vm.fiveHourResetsAt = Date().addingTimeInterval(3600)
-        vm.sevenDayResetsAt = Date().addingTimeInterval(3 * 24 * 3600)
 
-        // Wait for init's fetchPredict → writeSnapshot
-        let initDone = expectation(description: "init snapshot written")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            initDone.fulfill()
-        }
+        let initDone = expectation(description: "init done")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { initDone.fulfill() }
         wait(for: [initDone], timeout: 2.0)
 
-        let countBeforeSignOut = snapshotWriter.savedSnapshots.count
-
-        // Sign out
+        let countBefore = snapshotWriter.signOutCount
         vm.signOut()
 
-        // Wait for signOut's writeSnapshot
-        let signOutDone = expectation(description: "signOut snapshot written")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            signOutDone.fulfill()
-        }
-        wait(for: [signOutDone], timeout: 2.0)
-
-        // Verify: a new snapshot was written AFTER signOut
-        XCTAssertGreaterThan(snapshotWriter.savedSnapshots.count, countBeforeSignOut,
-                             "signOut must call writeSnapshot to notify widget of logged-out state")
-
-        // Verify: the snapshot reflects the signed-out state
-        guard let snapshot = snapshotWriter.savedSnapshots.last else {
-            XCTFail("Expected snapshot after signOut")
-            return
-        }
-        XCTAssertFalse(snapshot.isLoggedIn,
-                       "Snapshot after signOut must have isLoggedIn=false")
-        XCTAssertNil(snapshot.fiveHourPercent,
-                     "Snapshot after signOut must have nil fiveHourPercent")
-        XCTAssertNil(snapshot.sevenDayPercent,
-                     "Snapshot after signOut must have nil sevenDayPercent")
-        XCTAssertNil(snapshot.fiveHourResetsAt,
-                     "Snapshot after signOut must have nil fiveHourResetsAt")
-        XCTAssertNil(snapshot.sevenDayResetsAt,
-                     "Snapshot after signOut must have nil sevenDayResetsAt")
+        XCTAssertEqual(snapshotWriter.signOutCount, countBefore + 1,
+            "signOut must call clearOnSignOut exactly once")
+        _ = vm
     }
 
-    // MARK: - writeSnapshot data flow tests
-
-    /// init 直後の writeSnapshot は isLoggedIn=false, percent=nil, resetsAt=nil を書く。
-    /// フェッチが成功するまで、ウィジェットはこの状態のスナップショットを受け取る。
-    func testWriteSnapshot_initState_beforeAnyFetch() {
-        usageStore.historyToReturn = []
-        let vm = makeVM()
-
-        let done = expectation(description: "snapshot")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { done.fulfill() }
-        wait(for: [done], timeout: 2.0)
-
-        guard let snapshot = snapshotWriter.savedSnapshots.first else {
-            XCTFail("Expected at least one snapshot from init"); return
-        }
-
-        XCTAssertFalse(snapshot.isLoggedIn,
-                       "init snapshot should have isLoggedIn=false")
-        XCTAssertNil(snapshot.fiveHourPercent,
-                     "init snapshot should have nil fiveHourPercent")
-        XCTAssertNil(snapshot.sevenDayPercent,
-                     "init snapshot should have nil sevenDayPercent")
-        XCTAssertNil(snapshot.fiveHourResetsAt,
-                     "init snapshot should have nil fiveHourResetsAt")
-        XCTAssertNil(snapshot.sevenDayResetsAt,
-                     "init snapshot should have nil sevenDayResetsAt")
-        XCTAssertTrue(snapshot.fiveHourHistory.isEmpty)
-        XCTAssertTrue(snapshot.sevenDayHistory.isEmpty)
-        _ = vm // keep alive
-    }
-
-    /// writeSnapshot の history は fiveHourHistory/sevenDayHistory から構築される。
-    /// loadHistory(windowSeconds:) は同じデータを両方に返す（InMemoryUsageStore の仕様）が、
-    /// writeSnapshot は fiveHourHistory を fiveHourPercent で、sevenDayHistory を sevenDayPercent でフィルタする。
-    func testWriteSnapshot_historyUsesCorrectPercentField() {
-        let now = Date()
-        usageStore.historyToReturn = [
-            // fiveHourPercent のみ
-            UsageStore.DataPoint(timestamp: now.addingTimeInterval(-300),
-                                fiveHourPercent: 15.0, sevenDayPercent: nil),
-            // sevenDayPercent のみ
-            UsageStore.DataPoint(timestamp: now.addingTimeInterval(-200),
-                                fiveHourPercent: nil, sevenDayPercent: 8.0),
-            // 両方あり
-            UsageStore.DataPoint(timestamp: now,
-                                fiveHourPercent: 25.0, sevenDayPercent: 12.0),
-        ]
-
-        let vm = makeVM()
-        let done = expectation(description: "snapshot")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { done.fulfill() }
-        wait(for: [done], timeout: 2.0)
-
-        guard let snapshot = snapshotWriter.savedSnapshots.last else {
-            XCTFail("Expected snapshot"); return
-        }
-
-        // fiveHourHistory: dp[0](15.0) と dp[2](25.0) — dp[1] は fiveHourPercent=nil なのでフィルタ
-        XCTAssertEqual(snapshot.fiveHourHistory.count, 2)
-        XCTAssertEqual(snapshot.fiveHourHistory[0].percent, 15.0, accuracy: 0.01)
-        XCTAssertEqual(snapshot.fiveHourHistory[1].percent, 25.0, accuracy: 0.01)
-
-        // sevenDayHistory: dp[1](8.0) と dp[2](12.0) — dp[0] は sevenDayPercent=nil なのでフィルタ
-        XCTAssertEqual(snapshot.sevenDayHistory.count, 2)
-        XCTAssertEqual(snapshot.sevenDayHistory[0].percent, 8.0, accuracy: 0.01)
-        XCTAssertEqual(snapshot.sevenDayHistory[1].percent, 12.0, accuracy: 0.01)
-    }
-
-    /// init 時に DB にデータがある場合、writeSnapshot の history にそのデータが含まれるか
-    func testWriteSnapshot_initIncludesHistoryFromDB() {
-        let now = Date()
-        usageStore.historyToReturn = [
-            UsageStore.DataPoint(timestamp: now.addingTimeInterval(-7200),
-                                fiveHourPercent: 5.0, sevenDayPercent: 2.0),
-            UsageStore.DataPoint(timestamp: now.addingTimeInterval(-3600),
-                                fiveHourPercent: 10.0, sevenDayPercent: 4.0),
-            UsageStore.DataPoint(timestamp: now,
-                                fiveHourPercent: 15.0, sevenDayPercent: 6.0),
-        ]
-
-        let vm = makeVM()
-        let done = expectation(description: "snapshot")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { done.fulfill() }
-        wait(for: [done], timeout: 2.0)
-
-        guard let snapshot = snapshotWriter.savedSnapshots.last else {
-            XCTFail("Expected snapshot"); return
-        }
-
-        XCTAssertEqual(snapshot.fiveHourHistory.count, 3,
-                       "init snapshot should include all history points from DB")
-        XCTAssertEqual(snapshot.sevenDayHistory.count, 3)
-        // percent/resetsAt は init 時点では nil
-        XCTAssertNil(snapshot.fiveHourPercent)
-        XCTAssertNil(snapshot.sevenDayPercent)
-        XCTAssertNil(snapshot.fiveHourResetsAt)
-        XCTAssertNil(snapshot.sevenDayResetsAt)
-        XCTAssertFalse(snapshot.isLoggedIn)
-        _ = vm // keep alive
-    }
-
-    /// ウィジェットが snapshot を SnapshotStore 経由で読むとき、エンコード→デコードで情報が失われないか
-    func testWriteSnapshot_roundTripThroughSnapshotStore() throws {
-        let now = Date(timeIntervalSince1970: 1740000000) // fixed timestamp
-        let snapshot = UsageSnapshot(
-            timestamp: now,
-            fiveHourPercent: 42.5,
-            sevenDayPercent: 18.0,
-            fiveHourResetsAt: now.addingTimeInterval(3 * 3600),
-            sevenDayResetsAt: now.addingTimeInterval(5 * 24 * 3600),
-            fiveHourHistory: [
-                HistoryPoint(timestamp: now.addingTimeInterval(-3600), percent: 30.0),
-                HistoryPoint(timestamp: now, percent: 42.5),
-            ],
-            sevenDayHistory: [
-                HistoryPoint(timestamp: now.addingTimeInterval(-86400), percent: 10.0),
-                HistoryPoint(timestamp: now, percent: 18.0),
-            ],
-            isLoggedIn: true,
-            predictFiveHourCost: 1.5,
-            predictSevenDayCost: 8.0
-        )
-
-        // SnapshotStore の save/load を実ファイルでテスト
-        let tmpURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("WeatherCC-test-\(UUID().uuidString)")
-            .appendingPathComponent("snapshot.json")
-        SnapshotStore.save(snapshot, to: tmpURL)
-        guard let loaded = SnapshotStore.load(from: tmpURL) else {
-            XCTFail("SnapshotStore.load returned nil"); return
-        }
-
-        XCTAssertEqual(loaded.fiveHourPercent, 42.5)
-        XCTAssertEqual(loaded.sevenDayPercent, 18.0)
-        XCTAssertEqual(loaded.fiveHourHistory.count, 2)
-        XCTAssertEqual(loaded.sevenDayHistory.count, 2)
-        XCTAssertTrue(loaded.isLoggedIn)
-        XCTAssertNotNil(loaded.fiveHourResetsAt)
-        XCTAssertNotNil(loaded.sevenDayResetsAt)
-        XCTAssertEqual(loaded.predictFiveHourCost, 1.5)
-        XCTAssertEqual(loaded.predictSevenDayCost, 8.0)
-
-        // history の timestamp が保存されているか
-        XCTAssertEqual(loaded.fiveHourHistory[0].percent, 30.0, accuracy: 0.01)
-        XCTAssertEqual(loaded.fiveHourHistory[1].percent, 42.5, accuracy: 0.01)
-        XCTAssertEqual(loaded.sevenDayHistory[0].percent, 10.0, accuracy: 0.01)
-        XCTAssertEqual(loaded.sevenDayHistory[1].percent, 18.0, accuracy: 0.01)
-
-        // timestamp の精度（iso8601 は秒精度なので1秒以内の誤差を許容）
-        XCTAssertEqual(loaded.fiveHourResetsAt!.timeIntervalSince1970,
-                       snapshot.fiveHourResetsAt!.timeIntervalSince1970, accuracy: 1.0)
-        XCTAssertEqual(loaded.fiveHourHistory[0].timestamp.timeIntervalSince1970,
-                       snapshot.fiveHourHistory[0].timestamp.timeIntervalSince1970, accuracy: 1.0)
-
-        // cleanup
-        try? FileManager.default.removeItem(at: tmpURL.deletingLastPathComponent())
-    }
+    // (writeSnapshot data flow tests removed — SQLite migration moved this logic to SnapshotStore)
 
     /// ウィジェットのグラフが描画可能かを判定するロジックのテスト。
     /// WidgetMiniGraph は resetsAt=nil かつ history が空のとき早期 return する。
@@ -863,93 +691,23 @@ final class ViewModelTests: XCTestCase {
             "signOut must call reloadAllTimelines to notify widget of logged-out state")
     }
 
-    /// writeSnapshot が呼ばれるたびに reloadAllTimelines も呼ばれることを検証。
-    /// snapshotWriter.save と reloadAllTimelines の呼び出し回数は一致するべき。
-    func testWriteSnapshot_reloadCountMatchesSnapshotCount() {
+    /// Every snapshot write (saveAfterFetch, updatePredict, clearOnSignOut) triggers reloadAllTimelines.
+    func testReloadCount_matchesSnapshotWriteCount() {
         let vm = makeVM()
-        let done = expectation(description: "snapshot")
+        let done = expectation(description: "init done")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { done.fulfill() }
         wait(for: [done], timeout: 2.0)
 
-        XCTAssertEqual(widgetReloader.reloadCount, snapshotWriter.savedSnapshots.count,
-            "Each writeSnapshot call must trigger exactly one reloadAllTimelines")
+        // After init: fetchPredict → updatePredict + reload
+        let totalWrites = snapshotWriter.savedFetches.count
+            + snapshotWriter.savedPredicts.count
+            + snapshotWriter.signOutCount
+        XCTAssertEqual(widgetReloader.reloadCount, totalWrites,
+            "Each snapshot write must trigger exactly one reloadAllTimelines")
         _ = vm
     }
 
-    /// 「resetsAt あり、history 空」のケースでは windowStart は決まるが points が空で早期 return する。
-    /// これはウィジェットがグラフを描画しない状態。
-    /// フェッチ直後は resetsAt はあるが history が空になることはあるか？→ reloadHistory 後なのであり得ない（DB にデータがあれば）
-    func testWriteSnapshot_afterFetch_historyNonEmpty() {
-        let now = Date()
-        // DB に最低1件のデータがあるケース
-        usageStore.historyToReturn = [
-            UsageStore.DataPoint(timestamp: now, fiveHourPercent: 30.0, sevenDayPercent: 15.0),
-        ]
-
-        let vm = makeVM()
-        // fetch 成功後の状態をシミュレート
-        vm.fiveHourPercent = 30.0
-        vm.sevenDayPercent = 15.0
-        vm.fiveHourResetsAt = now.addingTimeInterval(2 * 3600)
-        vm.sevenDayResetsAt = now.addingTimeInterval(4 * 24 * 3600)
-        vm.isLoggedIn = true
-
-        let done = expectation(description: "snapshot")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { done.fulfill() }
-        wait(for: [done], timeout: 2.0)
-
-        guard let snapshot = snapshotWriter.savedSnapshots.last else {
-            XCTFail("Expected snapshot"); return
-        }
-
-        // ウィジェットが描画可能な状態であること
-        XCTAssertFalse(snapshot.fiveHourHistory.isEmpty,
-                       "After fetch, fiveHourHistory must not be empty")
-        XCTAssertFalse(snapshot.sevenDayHistory.isEmpty,
-                       "After fetch, sevenDayHistory must not be empty")
-        XCTAssertNotNil(snapshot.fiveHourResetsAt)
-        XCTAssertNotNil(snapshot.sevenDayResetsAt)
-
-        // history のポイントが resetsAt のウィンドウ内にあるか
-        let windowStart5h = snapshot.fiveHourResetsAt!.addingTimeInterval(-5 * 3600)
-        for point in snapshot.fiveHourHistory {
-            XCTAssertGreaterThanOrEqual(point.timestamp, windowStart5h,
-                "History point should be within the 5h window (after windowStart)")
-        }
-    }
-
-    // MARK: - Init must not overwrite existing good snapshot
-
-    /// 既にスナップショットファイルが存在するとき、init が空データで上書きしてはいけない。
-    /// 80KB の蓄積データ（1300+ history ポイント）を毎回起動時に消していたバグを検出する。
-    func testInit_doesNotOverwriteExistingSnapshot() {
-        snapshotWriter.fileExists = true  // 既存ファイルがある状態をシミュレート
-        usageStore.historyToReturn = []
-        let vm = makeVM()
-
-        let done = expectation(description: "init completes")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { done.fulfill() }
-        wait(for: [done], timeout: 2.0)
-
-        XCTAssertTrue(snapshotWriter.savedSnapshots.isEmpty,
-            "Init must not overwrite existing snapshot file — it has accumulated data")
-        _ = vm
-    }
-
-    /// スナップショットファイルが存在しないとき、init は新規作成する（バックアップとして）。
-    func testInit_createsSnapshotWhenFileDoesNotExist() {
-        snapshotWriter.fileExists = false  // ファイルが存在しない
-        usageStore.historyToReturn = []
-        let vm = makeVM()
-
-        let done = expectation(description: "init completes")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { done.fulfill() }
-        wait(for: [done], timeout: 2.0)
-
-        XCTAssertFalse(snapshotWriter.savedSnapshots.isEmpty,
-            "Init should create snapshot file when it doesn't exist yet")
-        _ = vm
-    }
+    // (writeSnapshot_afterFetch / init overwrite tests removed — SQLite handles this internally)
 
     // MARK: - UsageFetching injection tests
 
@@ -992,20 +750,61 @@ final class ViewModelTests: XCTestCase {
         XCTAssertTrue(vm.error!.contains("500"))
     }
 
-    /// fetch() の認証エラーで auto-refresh が無効化されることを検証。
-    func testFetch_authError_disablesAutoRefresh() {
+    /// 認証エラー時: エラーが設定され、isLoggedIn が true にならず、データが更新されないことを検証。
+    /// isAutoRefreshEnabled = false も内部で設定されるが private のため直接検証不可。
+    /// 認証エラーが正しく識別されることで、auto-refresh 無効化パスが通ることを間接的に保証する。
+    func testFetch_authError_setsErrorAndDoesNotUpdateState() {
         stubFetcher.fetchResult = .failure(UsageFetchError.scriptFailed("HTTP 401"))
 
         let vm = makeVM()
+        vm.fiveHourPercent = 99.0 // set existing value
         vm.fetch()
 
         let done = expectation(description: "fetch completes")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { done.fulfill() }
         wait(for: [done], timeout: 2.0)
 
-        // 認証エラー後に再度 fetch しても auto-refresh は起動しない
-        // (isAutoRefreshEnabled = false になっているはず)
+        XCTAssertNotNil(vm.error, "Auth error must surface as vm.error")
+        XCTAssertTrue(vm.error!.contains("401"),
+            "Error message must indicate auth failure")
+        XCTAssertFalse(vm.isLoggedIn,
+            "Auth error must NOT set isLoggedIn to true")
+        XCTAssertEqual(vm.fiveHourPercent, 99.0,
+            "Auth error must NOT update usage data (applyResult not called)")
+    }
+
+    /// 認証エラー後に成功 fetch → 状態が回復しデータが更新されることを検証。
+    /// isAutoRefreshEnabled は false → true にリセットされる（private だが動作で保証）。
+    func testFetch_authErrorThenSuccess_recoversState() {
+        let now = Date()
+        stubFetcher.fetchResult = .failure(UsageFetchError.scriptFailed("HTTP 401"))
+
+        let vm = makeVM()
+        vm.fetch()
+
+        let authDone = expectation(description: "auth error fetch")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { authDone.fulfill() }
+        wait(for: [authDone], timeout: 2.0)
+
         XCTAssertNotNil(vm.error)
+        XCTAssertFalse(vm.isLoggedIn)
+
+        // Now succeed
+        stubFetcher.fetchResult = .success(UsageResult(
+            fiveHourPercent: 30.0,
+            sevenDayPercent: 15.0,
+            fiveHourResetsAt: now.addingTimeInterval(3600),
+            sevenDayResetsAt: now.addingTimeInterval(3 * 24 * 3600)
+        ))
+        vm.fetch()
+
+        let successDone = expectation(description: "success fetch")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { successDone.fulfill() }
+        wait(for: [successDone], timeout: 2.0)
+
+        XCTAssertNil(vm.error, "Successful fetch after auth error must clear error")
+        XCTAssertTrue(vm.isLoggedIn, "Successful fetch must set isLoggedIn to true")
+        XCTAssertEqual(vm.fiveHourPercent, 30.0, "Data must be updated after recovery")
     }
 
     /// fetch() 成功時に usageStore.save が呼ばれることを検証。
@@ -1031,8 +830,8 @@ final class ViewModelTests: XCTestCase {
         _ = vm
     }
 
-    /// fetch() 成功後にウィジェットスナップショットが更新されることを検証。
-    func testFetch_success_writesSnapshot() {
+    /// fetch() 成功後に saveAfterFetch + updatePredict が呼ばれることを検証。
+    func testFetch_success_callsSaveAfterFetchThenUpdatePredict() {
         let now = Date()
         usageStore.historyToReturn = [
             UsageStore.DataPoint(timestamp: now, fiveHourPercent: 25.0, sevenDayPercent: 10.0)
@@ -1049,19 +848,27 @@ final class ViewModelTests: XCTestCase {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { initDone.fulfill() }
         wait(for: [initDone], timeout: 2.0)
 
-        let countBefore = snapshotWriter.savedSnapshots.count
+        let fetchCountBefore = snapshotWriter.savedFetches.count
+        let predictCountBefore = snapshotWriter.savedPredicts.count
         vm.fetch()
 
         let fetchDone = expectation(description: "fetch")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { fetchDone.fulfill() }
         wait(for: [fetchDone], timeout: 2.0)
 
-        XCTAssertGreaterThan(snapshotWriter.savedSnapshots.count, countBefore,
-            "Successful fetch must trigger writeSnapshot for widget update")
+        // applyResult → saveAfterFetch
+        XCTAssertGreaterThan(snapshotWriter.savedFetches.count, fetchCountBefore,
+            "Successful fetch must call saveAfterFetch")
+        let fetch = snapshotWriter.savedFetches.last!
+        XCTAssertEqual(fetch.fiveHourPercent, 25.0)
+        XCTAssertEqual(fetch.sevenDayPercent, 10.0)
+        XCTAssertTrue(fetch.isLoggedIn)
+        XCTAssertNotNil(fetch.fiveHourResetsAt)
+        XCTAssertNotNil(fetch.sevenDayResetsAt)
 
-        let snapshot = snapshotWriter.savedSnapshots.last!
-        XCTAssertEqual(snapshot.fiveHourPercent, 25.0)
-        XCTAssertEqual(snapshot.sevenDayPercent, 10.0)
-        XCTAssertTrue(snapshot.isLoggedIn)
+        // fetchPredict → updatePredict
+        XCTAssertGreaterThan(snapshotWriter.savedPredicts.count, predictCountBefore,
+            "Successful fetch must also call updatePredict (via fetchPredict)")
+        _ = vm
     }
 }

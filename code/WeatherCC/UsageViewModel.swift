@@ -3,7 +3,6 @@ import Foundation
 import WebKit
 import Combine
 import ServiceManagement
-import WidgetKit
 import WeatherCCShared
 
 @MainActor
@@ -31,6 +30,7 @@ final class UsageViewModel: ObservableObject {
     private let snapshotWriter: any SnapshotWriting
     private let widgetReloader: any WidgetReloading
     private let tokenSync: any TokenSyncing
+    private let loginItemManager: any LoginItemManaging
     private var coordinator: WebViewCoordinator?
     private var cookieObserver: CookieChangeObserver?
     private var refreshTimer: Timer?
@@ -106,7 +106,8 @@ final class UsageViewModel: ObservableObject {
         usageStore: any UsageStoring = UsageStore.shared,
         snapshotWriter: any SnapshotWriting = DefaultSnapshotWriter(),
         widgetReloader: any WidgetReloading = DefaultWidgetReloader(),
-        tokenSync: any TokenSyncing = TokenStore.shared
+        tokenSync: any TokenSyncing = TokenStore.shared,
+        loginItemManager: any LoginItemManaging = DefaultLoginItemManager()
     ) {
         self.fetcher = fetcher
         self.settingsStore = settingsStore
@@ -114,6 +115,7 @@ final class UsageViewModel: ObservableObject {
         self.snapshotWriter = snapshotWriter
         self.widgetReloader = widgetReloader
         self.tokenSync = tokenSync
+        self.loginItemManager = loginItemManager
 
         let config = WKWebViewConfiguration()
         // Use app-specific persistent data store to avoid macOS TCC prompt
@@ -132,6 +134,13 @@ final class UsageViewModel: ObservableObject {
         webView.uiDelegate = coord
 
         reloadHistory()
+
+        // Daily backups (3-day retention) for SQLite databases
+        SQLiteBackup.perform(dbPath: (usageStore as? UsageStore)?.dbPath ?? "")
+        if let snapshotPath = AppGroupConfig.snapshotDBPath {
+            SQLiteBackup.perform(dbPath: snapshotPath)
+        }
+
         fetchPredict()
         syncLoginItem()
         startCookieObservation()
@@ -244,6 +253,17 @@ final class UsageViewModel: ObservableObject {
         sevenDayResetsAt = result.sevenDayResetsAt
         usageStore.save(result)
         reloadHistory()
+
+        snapshotWriter.saveAfterFetch(
+            timestamp: Date(),
+            fiveHourPercent: result.fiveHourPercent,
+            sevenDayPercent: result.sevenDayPercent,
+            fiveHourResetsAt: result.fiveHourResetsAt,
+            sevenDayResetsAt: result.sevenDayResetsAt,
+            isLoggedIn: true
+        )
+        widgetReloader.reloadAllTimelines()
+
         fetchPredict()
     }
 
@@ -257,7 +277,8 @@ final class UsageViewModel: ObservableObject {
                 await MainActor.run {
                     self?.predictFiveHourCost = nil
                     self?.predictSevenDayCost = nil
-                    self?.writeSnapshot()
+                    self?.snapshotWriter.updatePredict(fiveHourCost: nil, sevenDayCost: nil)
+                    self?.widgetReloader.reloadAllTimelines()
                 }
                 return
             }
@@ -272,7 +293,11 @@ final class UsageViewModel: ObservableObject {
             await MainActor.run {
                 self?.predictFiveHourCost = fiveH.totalCost > 0 ? fiveH.totalCost : nil
                 self?.predictSevenDayCost = sevenD.totalCost > 0 ? sevenD.totalCost : nil
-                self?.writeSnapshot()
+                self?.snapshotWriter.updatePredict(
+                    fiveHourCost: self?.predictFiveHourCost,
+                    sevenDayCost: self?.predictSevenDayCost
+                )
+                self?.widgetReloader.reloadAllTimelines()
             }
         }
     }
@@ -283,37 +308,6 @@ final class UsageViewModel: ObservableObject {
         // Predict feature requires user-granted file access (NSOpenPanel) to work with sandbox.
         // TODO: Re-enable when Predict feature is properly integrated with file access consent.
         return []
-    }
-
-    // MARK: - Widget Snapshot
-
-    private func writeSnapshot() {
-        // If no fetch has completed yet and a snapshot already exists,
-        // don't overwrite it — the existing file has better data.
-        if fiveHourPercent == nil && sevenDayPercent == nil && snapshotWriter.exists() {
-            return
-        }
-
-        let snapshot = UsageSnapshot(
-            timestamp: Date(),
-            fiveHourPercent: fiveHourPercent,
-            sevenDayPercent: sevenDayPercent,
-            fiveHourResetsAt: fiveHourResetsAt,
-            sevenDayResetsAt: sevenDayResetsAt,
-            fiveHourHistory: fiveHourHistory.compactMap { dp in
-                guard let p = dp.fiveHourPercent else { return nil }
-                return HistoryPoint(timestamp: dp.timestamp, percent: p)
-            },
-            sevenDayHistory: sevenDayHistory.compactMap { dp in
-                guard let p = dp.sevenDayPercent else { return nil }
-                return HistoryPoint(timestamp: dp.timestamp, percent: p)
-            },
-            isLoggedIn: isLoggedIn,
-            predictFiveHourCost: predictFiveHourCost,
-            predictSevenDayCost: predictSevenDayCost
-        )
-        snapshotWriter.save(snapshot)
-        widgetReloader.reloadAllTimelines()
     }
 
     private func reloadHistory() {
@@ -549,7 +543,8 @@ final class UsageViewModel: ObservableObject {
         predictSevenDayCost = nil
         error = nil
 
-        writeSnapshot()
+        snapshotWriter.clearOnSignOut()
+        widgetReloader.reloadAllTimelines()
 
         let dataStore = webView.configuration.websiteDataStore
         // Stage 1: Remove all website data
@@ -574,13 +569,13 @@ final class UsageViewModel: ObservableObject {
 
     private func syncLoginItem() {
         do {
-            if settings.startAtLogin {
-                try SMAppService.mainApp.register()
-            } else {
-                try SMAppService.mainApp.unregister()
-            }
+            try loginItemManager.setEnabled(settings.startAtLogin)
         } catch {
-            print("[WeatherCC] SMAppService error: \(error)")
+            // Revert the setting — UI must reflect actual system state.
+            settings.startAtLogin.toggle()
+            settingsStore.save(settings)
+            self.error = "Login item failed: \(error.localizedDescription)"
+            debug("syncLoginItem failed: \(error)")
         }
     }
 
