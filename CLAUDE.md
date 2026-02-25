@@ -11,7 +11,7 @@ xcodebuild test -project code/WeatherCC.xcodeproj -scheme WeatherCC -destination
 
 ## Rules
 
-1. **作業前に documents/plan/overview.md を読む**
+1. **作業前に documents/plan/README.md を読む**
 2. **コード変更前に plan mode で承認を得る**
 3. **変更後は documents/CHANGELOG.md を更新する**
 4. **日本語でコミュニケーションする**
@@ -25,4 +25,4 @@ xcodebuild test -project code/WeatherCC.xcodeproj -scheme WeatherCC -destination
 
 ## Session Start
 
-`documents/CLAUDE.md` → `documents/plan/overview.md` → 作業開始
+`documents/CLAUDE.md` → `documents/plan/README.md` → 作業開始
