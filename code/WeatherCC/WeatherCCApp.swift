@@ -23,6 +23,7 @@ struct WeatherCCApp: App {
             AnalysisWindowView()
         }
         .defaultSize(width: 1200, height: 800)
+        .handlesExternalEvents(matching: ["analysis"])
     }
 }
 
@@ -31,6 +32,17 @@ struct WeatherCCApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        NSAppleEventManager.shared().setEventHandler(
+            self, andSelector: #selector(handleURL(_:withReply:)),
+            forEventClass: AEEventClass(kInternetEventClass), andEventID: AEEventID(kAEGetURL)
+        )
+    }
+
+    @objc private func handleURL(_ event: NSAppleEventDescriptor, withReply reply: NSAppleEventDescriptor) {
+        guard let urlString = event.paramDescriptor(forKeyword: keyDirectObject)?.stringValue,
+              let url = URL(string: urlString),
+              url.scheme == "weathercc", url.host == "analysis" else { return }
+        NSApp.activate(ignoringOtherApps: true)
     }
 }
 
@@ -88,7 +100,7 @@ private struct MenuContent: View {
         }
 
         Button("Usage Page (Browser)") {
-            if let url = URL(string: "https://claude.ai/settings/billing") {
+            if let url = URL(string: "https://claude.ai/settings/usage") {
                 NSWorkspace.shared.open(url)
             }
         }
@@ -260,7 +272,7 @@ private struct PopupWebViewWrapper: NSViewRepresentable {
     func updateNSView(_ nsView: WKWebView, context: Context) {}
 }
 
-// MARK: - Analysis Window (WKWebView + sql.js)
+// MARK: - Analysis Window (WKWebView + JSON)
 
 private struct AnalysisWindowView: View {
     var body: some View {
@@ -268,8 +280,8 @@ private struct AnalysisWindowView: View {
     }
 }
 
-/// WKWebView configured with AnalysisSchemeHandler to serve local SQLite databases.
-/// sql.js in the HTML fetches wcc://usage.db and wcc://tokens.db directly.
+/// WKWebView configured with AnalysisSchemeHandler.
+/// JS fetches wcc://usage.json and wcc://tokens.json (Swift-side SQLite → JSON).
 private struct AnalysisWebView: NSViewRepresentable {
     func makeNSView(context: Context) -> WKWebView {
         let handler = AnalysisSchemeHandler(

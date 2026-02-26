@@ -56,6 +56,7 @@ struct UsageWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: UsageTimelineProvider()) { entry in
             UsageWidgetEntryView(entry: entry)
+                .widgetURL(URL(string: "weathercc://analysis"))
                 .containerBackground(.clear, for: .widget)
         }
         .configurationDisplayName("Claude Usage")

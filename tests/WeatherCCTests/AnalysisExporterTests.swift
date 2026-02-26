@@ -25,12 +25,6 @@ final class AnalysisExporterTests: XCTestCase {
 
     // MARK: - External libraries
 
-    func testHtmlTemplate_containsSqlJsScript() {
-        let html = AnalysisExporter.htmlTemplate
-        XCTAssertTrue(html.contains("sql-wasm.js"),
-                      "sql.js WASM library required for SQLite queries")
-    }
-
     func testHtmlTemplate_containsChartJsScript() {
         let html = AnalysisExporter.htmlTemplate
         XCTAssertTrue(html.contains("chart.js"),
@@ -43,24 +37,24 @@ final class AnalysisExporterTests: XCTestCase {
                       "date-fns adapter required for time-axis charts")
     }
 
-    // MARK: - DB loading via fetch from wcc:// scheme
+    // MARK: - JSON loading via fetch from wcc:// scheme
 
-    func testHtmlTemplate_fetchesUsageDb() {
+    func testHtmlTemplate_fetchesUsageJson() {
         let html = AnalysisExporter.htmlTemplate
-        XCTAssertTrue(html.contains("wcc://usage.db"),
-                      "JS must fetch usage DB from wcc:// scheme handler")
+        XCTAssertTrue(html.contains("wcc://usage.json"),
+                      "JS must fetch usage JSON from wcc:// scheme handler")
     }
 
-    func testHtmlTemplate_fetchesTokensDb() {
+    func testHtmlTemplate_fetchesTokensJson() {
         let html = AnalysisExporter.htmlTemplate
-        XCTAssertTrue(html.contains("wcc://tokens.db"),
-                      "JS must fetch tokens DB from wcc:// scheme handler")
+        XCTAssertTrue(html.contains("wcc://tokens.json"),
+                      "JS must fetch tokens JSON from wcc:// scheme handler")
     }
 
-    func testHtmlTemplate_containsFetchDbFunction() {
+    func testHtmlTemplate_containsFetchJSONFunction() {
         let html = AnalysisExporter.htmlTemplate
-        XCTAssertTrue(html.contains("fetchDb"),
-                      "JS must have fetchDb helper to load DB via fetch + sql.js")
+        XCTAssertTrue(html.contains("fetchJSON"),
+                      "JS must have fetchJSON helper to load data via wcc:// scheme")
     }
 
     func testHtmlTemplate_doesNotUseBase64Injection() {
@@ -123,19 +117,7 @@ final class AnalysisExporterTests: XCTestCase {
         XCTAssertTrue(html.contains("function main(usageData, tokenData)"))
     }
 
-    // MARK: - SQL queries
-
-    func testHtmlTemplate_queriesUsageLogTable() {
-        let html = AnalysisExporter.htmlTemplate
-        XCTAssertTrue(html.contains("FROM usage_log"),
-                      "JS must query usage_log table from usage.db")
-    }
-
-    func testHtmlTemplate_queriesTokenRecordsTable() {
-        let html = AnalysisExporter.htmlTemplate
-        XCTAssertTrue(html.contains("FROM token_records"),
-                      "JS must query token_records table from tokens.db")
-    }
+    // MARK: - JSON property keys (column names used as JS property accessors)
 
     func testHtmlTemplate_selectsRequiredUsageColumns() {
         let html = AnalysisExporter.htmlTemplate
@@ -169,7 +151,7 @@ final class AnalysisExporterTests: XCTestCase {
 
     func testHtmlTemplate_hasChartCanvases() {
         let html = AnalysisExporter.htmlTemplate
-        for canvasId in ["usageTimeline", "costTimeline", "costScatter",
+        for canvasId in ["usageTimeline", "costTimeline",
                          "effScatter", "kdeChart", "cumulativeCost"] {
             XCTAssertTrue(html.contains("id=\"\(canvasId)\""),
                           "Canvas '\(canvasId)' must exist for Chart.js")
@@ -247,17 +229,49 @@ final class AnalysisSchemeHandlerTests: XCTestCase {
             .appendingPathComponent("AnalysisSchemeHandlerTests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
 
-        // Create test DB files
+        // Create real SQLite databases (not dummy text)
         let usageDbPath = tmpDir.appendingPathComponent("usage.db").path
         let tokensDbPath = tmpDir.appendingPathComponent("tokens.db").path
-        try Data("usage-test-data".utf8).write(to: URL(fileURLWithPath: usageDbPath))
-        try Data("tokens-test-data".utf8).write(to: URL(fileURLWithPath: tokensDbPath))
+        createDb(at: usageDbPath, sql: """
+            CREATE TABLE usage_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                five_hour_percent REAL,
+                seven_day_percent REAL,
+                five_hour_resets_at TEXT,
+                seven_day_resets_at TEXT
+            );
+            INSERT INTO usage_log (timestamp, five_hour_percent, seven_day_percent)
+            VALUES ('2026-02-24T10:00:00.000Z', 42.5, 15.0);
+            """)
+        createDb(at: tokensDbPath, sql: """
+            CREATE TABLE token_records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                request_id TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
+                model TEXT NOT NULL,
+                speed TEXT NOT NULL DEFAULT 'standard',
+                input_tokens INTEGER NOT NULL DEFAULT 0,
+                output_tokens INTEGER NOT NULL DEFAULT 0,
+                cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+                cache_creation_tokens INTEGER NOT NULL DEFAULT 0
+            );
+            INSERT INTO token_records (request_id, timestamp, model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens)
+            VALUES ('req-1', '2026-02-24T10:00:00.000Z', 'claude-sonnet-4-20250514', 1000, 500, 200, 100);
+            """)
 
         handler = AnalysisSchemeHandler(
             usageDbPath: usageDbPath,
             tokensDbPath: tokensDbPath,
             htmlProvider: { "<html>test</html>" }
         )
+    }
+
+    private func createDb(at path: String, sql: String) {
+        var db: OpaquePointer?
+        guard sqlite3_open(path, &db) == SQLITE_OK else { return }
+        defer { sqlite3_close(db) }
+        sqlite3_exec(db, sql, nil, nil, nil)
     }
 
     override func tearDownWithError() throws {
@@ -308,38 +322,40 @@ final class AnalysisSchemeHandlerTests: XCTestCase {
         XCTAssertEqual(String(data: task2.receivedData!, encoding: .utf8), "<html>call-2</html>")
     }
 
-    // MARK: - DB serving
+    // MARK: - JSON serving
 
-    func testStart_usageDb_servesDbFile() {
-        let task = MockSchemeTask(url: URL(string: "wcc://usage.db")!)
+    func testStart_usageJson_servesJSON() {
+        let task = MockSchemeTask(url: URL(string: "wcc://usage.json")!)
         handler.webView(WKWebView(), start: task)
 
         XCTAssertTrue(task.didFinishCalled)
-        let content = String(data: task.receivedData!, encoding: .utf8)
-        XCTAssertEqual(content, "usage-test-data")
+        let json = try! JSONSerialization.jsonObject(with: task.receivedData!) as! [[String: Any]]
+        XCTAssertEqual(json.count, 1)
+        XCTAssertEqual(json[0]["five_hour_percent"] as? Double, 42.5)
 
         let httpResponse = task.receivedResponse as? HTTPURLResponse
         XCTAssertEqual(httpResponse?.statusCode, 200)
-        XCTAssertEqual(httpResponse?.value(forHTTPHeaderField: "Content-Type"), "application/octet-stream")
+        XCTAssertEqual(httpResponse?.value(forHTTPHeaderField: "Content-Type"), "application/json")
     }
 
-    func testStart_tokensDb_servesDbFile() {
-        let task = MockSchemeTask(url: URL(string: "wcc://tokens.db")!)
+    func testStart_tokensJson_servesJSON() {
+        let task = MockSchemeTask(url: URL(string: "wcc://tokens.json")!)
         handler.webView(WKWebView(), start: task)
 
         XCTAssertTrue(task.didFinishCalled)
-        let content = String(data: task.receivedData!, encoding: .utf8)
-        XCTAssertEqual(content, "tokens-test-data")
+        let json = try! JSONSerialization.jsonObject(with: task.receivedData!) as! [[String: Any]]
+        XCTAssertEqual(json.count, 1)
+        XCTAssertEqual(json[0]["model"] as? String, "claude-sonnet-4-20250514")
 
         let httpResponse = task.receivedResponse as? HTTPURLResponse
         XCTAssertEqual(httpResponse?.statusCode, 200)
-        XCTAssertEqual(httpResponse?.value(forHTTPHeaderField: "Content-Type"), "application/octet-stream")
+        XCTAssertEqual(httpResponse?.value(forHTTPHeaderField: "Content-Type"), "application/json")
     }
 
     // MARK: - HTTP status codes (200 for all valid paths)
 
     func testStart_successResponses_areHTTPWith200() {
-        for path in ["analysis.html", "usage.db", "tokens.db"] {
+        for path in ["analysis.html", "usage.json", "tokens.json"] {
             let task = MockSchemeTask(url: URL(string: "wcc://\(path)")!)
             handler.webView(WKWebView(), start: task)
             let httpResponse = task.receivedResponse as? HTTPURLResponse
@@ -352,7 +368,7 @@ final class AnalysisSchemeHandlerTests: XCTestCase {
     // MARK: - CORS headers
 
     func testStart_successResponses_haveCORSHeader() {
-        for path in ["analysis.html", "usage.db", "tokens.db"] {
+        for path in ["analysis.html", "usage.json", "tokens.json"] {
             let task = MockSchemeTask(url: URL(string: "wcc://\(path)")!)
             handler.webView(WKWebView(), start: task)
             let httpResponse = task.receivedResponse as? HTTPURLResponse
@@ -364,7 +380,7 @@ final class AnalysisSchemeHandlerTests: XCTestCase {
     // MARK: - Content-Length header
 
     func testStart_contentLengthMatchesActualData() {
-        for path in ["analysis.html", "usage.db", "tokens.db"] {
+        for path in ["analysis.html", "usage.json", "tokens.json"] {
             let task = MockSchemeTask(url: URL(string: "wcc://\(path)")!)
             handler.webView(WKWebView(), start: task)
             let httpResponse = task.receivedResponse as? HTTPURLResponse
@@ -384,11 +400,11 @@ final class AnalysisSchemeHandlerTests: XCTestCase {
         XCTAssertEqual(httpResponse?.value(forHTTPHeaderField: "Content-Type"), "text/html")
     }
 
-    func testMimeType_db_isOctetStream() {
-        let task = MockSchemeTask(url: URL(string: "wcc://usage.db")!)
+    func testMimeType_json_isApplicationJson() {
+        let task = MockSchemeTask(url: URL(string: "wcc://usage.json")!)
         handler.webView(WKWebView(), start: task)
         let httpResponse = task.receivedResponse as? HTTPURLResponse
-        XCTAssertEqual(httpResponse?.value(forHTTPHeaderField: "Content-Type"), "application/octet-stream")
+        XCTAssertEqual(httpResponse?.value(forHTTPHeaderField: "Content-Type"), "application/json")
     }
 
     // MARK: - didFinish called on every response
@@ -431,34 +447,36 @@ final class AnalysisSchemeHandlerTests: XCTestCase {
                       "404 body should contain 'Not found' message")
     }
 
-    // MARK: - Missing DB files
+    // MARK: - Missing DB files (JSON endpoints return 200 + empty array)
 
-    func testStart_missingUsageDb_returns404() {
+    func testStart_missingUsageDb_returnsEmptyJsonArray() {
         let badHandler = AnalysisSchemeHandler(
             usageDbPath: "/nonexistent/path/usage.db",
             tokensDbPath: "/nonexistent/path/tokens.db",
             htmlProvider: { "<html>test</html>" }
         )
-        let task = MockSchemeTask(url: URL(string: "wcc://usage.db")!)
+        let task = MockSchemeTask(url: URL(string: "wcc://usage.json")!)
         badHandler.webView(WKWebView(), start: task)
 
         XCTAssertTrue(task.didFinishCalled)
         let httpResponse = task.receivedResponse as? HTTPURLResponse
-        XCTAssertEqual(httpResponse?.statusCode, 404)
+        XCTAssertEqual(httpResponse?.statusCode, 200)
+        XCTAssertEqual(String(data: task.receivedData!, encoding: .utf8), "[]")
     }
 
-    func testStart_missingTokensDb_returns404() {
+    func testStart_missingTokensDb_returnsEmptyJsonArray() {
         let badHandler = AnalysisSchemeHandler(
             usageDbPath: "/nonexistent/path/usage.db",
             tokensDbPath: "/nonexistent/path/tokens.db",
             htmlProvider: { "<html>test</html>" }
         )
-        let task = MockSchemeTask(url: URL(string: "wcc://tokens.db")!)
+        let task = MockSchemeTask(url: URL(string: "wcc://tokens.json")!)
         badHandler.webView(WKWebView(), start: task)
 
         XCTAssertTrue(task.didFinishCalled)
         let httpResponse = task.receivedResponse as? HTTPURLResponse
-        XCTAssertEqual(httpResponse?.statusCode, 404)
+        XCTAssertEqual(httpResponse?.statusCode, 200)
+        XCTAssertEqual(String(data: task.receivedData!, encoding: .utf8), "[]")
     }
 
     func testStart_missingDb_htmlStillWorks() {
@@ -476,27 +494,6 @@ final class AnalysisSchemeHandlerTests: XCTestCase {
         XCTAssertEqual(String(data: task.receivedData!, encoding: .utf8), "<html>still works</html>")
     }
 
-    // MARK: - Binary data preservation
-
-    func testStart_binaryDataPreserved() throws {
-        // Write binary data (including null bytes) to verify no corruption
-        var binaryData = Data(repeating: 0x00, count: 256)
-        for i in 0..<256 { binaryData[i] = UInt8(i) }
-        let binaryDbPath = tmpDir.appendingPathComponent("usage.db").path
-        try binaryData.write(to: URL(fileURLWithPath: binaryDbPath))
-
-        let binaryHandler = AnalysisSchemeHandler(
-            usageDbPath: binaryDbPath,
-            tokensDbPath: tmpDir.appendingPathComponent("tokens.db").path,
-            htmlProvider: { "<html>test</html>" }
-        )
-        let task = MockSchemeTask(url: URL(string: "wcc://usage.db")!)
-        binaryHandler.webView(WKWebView(), start: task)
-
-        XCTAssertEqual(task.receivedData, binaryData,
-                       "Binary data must be preserved byte-for-byte (no encoding corruption)")
-    }
-
     // MARK: - Stop handler doesn't crash
 
     func testStop_doesNotCrash() {
@@ -508,7 +505,7 @@ final class AnalysisSchemeHandlerTests: XCTestCase {
     // MARK: - Response URL matches request URL
 
     func testStart_responseURL_matchesRequestURL() {
-        for path in ["analysis.html", "usage.db", "tokens.db"] {
+        for path in ["analysis.html", "usage.json", "tokens.json"] {
             let requestURL = URL(string: "wcc://\(path)")!
             let task = MockSchemeTask(url: requestURL)
             handler.webView(WKWebView(), start: task)
@@ -612,78 +609,9 @@ final class AnalysisSchemeHandlerSQLiteTests: XCTestCase {
         }
     }
 
-    // MARK: - SQLite magic bytes preserved
+    // MARK: - JSON data correctness
 
-    func testServedUsageDb_hasSQLiteMagicBytes() {
-        let usagePath = tmpDir.appendingPathComponent("usage.db").path
-        let tokensPath = tmpDir.appendingPathComponent("tokens.db").path
-        createUsageDb(at: usagePath, rows: [
-            ("2026-02-24T10:00:00.000Z", 25.5, 12.3),
-        ])
-        createTokensDb(at: tokensPath, rows: [])
-
-        let handler = AnalysisSchemeHandler(
-            usageDbPath: usagePath, tokensDbPath: tokensPath,
-            htmlProvider: { "<html></html>" }
-        )
-        let task = MockSchemeTask(url: URL(string: "wcc://usage.db")!)
-        handler.webView(WKWebView(), start: task)
-
-        let data = task.receivedData!
-        // SQLite files start with "SQLite format 3\0" (16 bytes)
-        let magic = String(data: data.prefix(15), encoding: .utf8)
-        XCTAssertEqual(magic, "SQLite format 3",
-                       "Served DB must start with SQLite magic bytes — if this fails, the handler is corrupting the file")
-    }
-
-    func testServedTokensDb_hasSQLiteMagicBytes() {
-        let usagePath = tmpDir.appendingPathComponent("usage.db").path
-        let tokensPath = tmpDir.appendingPathComponent("tokens.db").path
-        createUsageDb(at: usagePath, rows: [])
-        createTokensDb(at: tokensPath, rows: [
-            ("req-1", "2026-02-24T10:00:00.000Z", "claude-sonnet-4-20250514", 100, 200, 50, 30),
-        ])
-
-        let handler = AnalysisSchemeHandler(
-            usageDbPath: usagePath, tokensDbPath: tokensPath,
-            htmlProvider: { "<html></html>" }
-        )
-        let task = MockSchemeTask(url: URL(string: "wcc://tokens.db")!)
-        handler.webView(WKWebView(), start: task)
-
-        let data = task.receivedData!
-        let magic = String(data: data.prefix(15), encoding: .utf8)
-        XCTAssertEqual(magic, "SQLite format 3")
-    }
-
-    // MARK: - Served DB is byte-identical to file on disk
-
-    func testServedDb_isByteIdenticalToFileOnDisk() {
-        let usagePath = tmpDir.appendingPathComponent("usage.db").path
-        let tokensPath = tmpDir.appendingPathComponent("tokens.db").path
-        createUsageDb(at: usagePath, rows: [
-            ("2026-02-24T10:00:00.000Z", 25.5, 12.3),
-            ("2026-02-24T10:05:00.000Z", 30.0, 14.0),
-            ("2026-02-24T10:10:00.000Z", 42.1, 15.5),
-        ])
-        createTokensDb(at: tokensPath, rows: [])
-
-        let fileData = try! Data(contentsOf: URL(fileURLWithPath: usagePath))
-
-        let handler = AnalysisSchemeHandler(
-            usageDbPath: usagePath, tokensDbPath: tokensPath,
-            htmlProvider: { "<html></html>" }
-        )
-        let task = MockSchemeTask(url: URL(string: "wcc://usage.db")!)
-        handler.webView(WKWebView(), start: task)
-
-        XCTAssertEqual(task.receivedData, fileData,
-                       "Handler must serve exact bytes from disk — any difference means data corruption")
-    }
-
-    // MARK: - Served DB can be opened by SQLite and queried
-
-    func testServedUsageDb_canBeQueriedBySQLite() {
+    func testUsageJson_returnsCorrectData() {
         let usagePath = tmpDir.appendingPathComponent("usage.db").path
         let tokensPath = tmpDir.appendingPathComponent("tokens.db").path
         createUsageDb(at: usagePath, rows: [
@@ -696,37 +624,18 @@ final class AnalysisSchemeHandlerSQLiteTests: XCTestCase {
             usageDbPath: usagePath, tokensDbPath: tokensPath,
             htmlProvider: { "<html></html>" }
         )
-        let task = MockSchemeTask(url: URL(string: "wcc://usage.db")!)
+        let task = MockSchemeTask(url: URL(string: "wcc://usage.json")!)
         handler.webView(WKWebView(), start: task)
 
-        // Write served bytes to a new file and open with SQLite to verify it's queryable
-        let servedPath = tmpDir.appendingPathComponent("served_usage.db").path
-        try! task.receivedData!.write(to: URL(fileURLWithPath: servedPath))
-
-        var db: OpaquePointer?
-        XCTAssertEqual(sqlite3_open_v2(servedPath, &db, SQLITE_OPEN_READONLY, nil), SQLITE_OK)
-        defer { sqlite3_close(db) }
-
-        let sql = "SELECT five_hour_percent, seven_day_percent FROM usage_log ORDER BY timestamp ASC;"
-        var stmt: OpaquePointer?
-        XCTAssertEqual(sqlite3_prepare_v2(db, sql, -1, &stmt, nil), SQLITE_OK)
-        defer { sqlite3_finalize(stmt) }
-
-        // Row 1
-        XCTAssertEqual(sqlite3_step(stmt), SQLITE_ROW)
-        XCTAssertEqual(sqlite3_column_double(stmt, 0), 25.5, accuracy: 0.01)
-        XCTAssertEqual(sqlite3_column_double(stmt, 1), 12.3, accuracy: 0.01)
-
-        // Row 2
-        XCTAssertEqual(sqlite3_step(stmt), SQLITE_ROW)
-        XCTAssertEqual(sqlite3_column_double(stmt, 0), 80.0, accuracy: 0.01)
-        XCTAssertEqual(sqlite3_column_double(stmt, 1), 45.0, accuracy: 0.01)
-
-        // No more rows
-        XCTAssertEqual(sqlite3_step(stmt), SQLITE_DONE)
+        let json = try! JSONSerialization.jsonObject(with: task.receivedData!) as! [[String: Any]]
+        XCTAssertEqual(json.count, 2)
+        XCTAssertEqual(json[0]["five_hour_percent"] as! Double, 25.5, accuracy: 0.01)
+        XCTAssertEqual(json[0]["seven_day_percent"] as! Double, 12.3, accuracy: 0.01)
+        XCTAssertEqual(json[1]["five_hour_percent"] as! Double, 80.0, accuracy: 0.01)
+        XCTAssertEqual(json[1]["seven_day_percent"] as! Double, 45.0, accuracy: 0.01)
     }
 
-    func testServedTokensDb_canBeQueriedBySQLite() {
+    func testTokensJson_returnsCorrectData() {
         let usagePath = tmpDir.appendingPathComponent("usage.db").path
         let tokensPath = tmpDir.appendingPathComponent("tokens.db").path
         createUsageDb(at: usagePath, rows: [])
@@ -739,41 +648,24 @@ final class AnalysisSchemeHandlerSQLiteTests: XCTestCase {
             usageDbPath: usagePath, tokensDbPath: tokensPath,
             htmlProvider: { "<html></html>" }
         )
-        let task = MockSchemeTask(url: URL(string: "wcc://tokens.db")!)
+        let task = MockSchemeTask(url: URL(string: "wcc://tokens.json")!)
         handler.webView(WKWebView(), start: task)
 
-        let servedPath = tmpDir.appendingPathComponent("served_tokens.db").path
-        try! task.receivedData!.write(to: URL(fileURLWithPath: servedPath))
-
-        var db: OpaquePointer?
-        XCTAssertEqual(sqlite3_open_v2(servedPath, &db, SQLITE_OPEN_READONLY, nil), SQLITE_OK)
-        defer { sqlite3_close(db) }
-
-        let sql = "SELECT model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens FROM token_records ORDER BY timestamp ASC;"
-        var stmt: OpaquePointer?
-        XCTAssertEqual(sqlite3_prepare_v2(db, sql, -1, &stmt, nil), SQLITE_OK)
-        defer { sqlite3_finalize(stmt) }
-
-        // Row 1: sonnet
-        XCTAssertEqual(sqlite3_step(stmt), SQLITE_ROW)
-        XCTAssertEqual(String(cString: sqlite3_column_text(stmt, 0)), "claude-sonnet-4-20250514")
-        XCTAssertEqual(sqlite3_column_int(stmt, 1), 1000)
-        XCTAssertEqual(sqlite3_column_int(stmt, 2), 500)
-        XCTAssertEqual(sqlite3_column_int(stmt, 3), 200)
-        XCTAssertEqual(sqlite3_column_int(stmt, 4), 100)
-
-        // Row 2: opus
-        XCTAssertEqual(sqlite3_step(stmt), SQLITE_ROW)
-        XCTAssertEqual(String(cString: sqlite3_column_text(stmt, 0)), "claude-opus-4-20250514")
-        XCTAssertEqual(sqlite3_column_int(stmt, 1), 2000)
-        XCTAssertEqual(sqlite3_column_int(stmt, 2), 800)
-
-        XCTAssertEqual(sqlite3_step(stmt), SQLITE_DONE)
+        let json = try! JSONSerialization.jsonObject(with: task.receivedData!) as! [[String: Any]]
+        XCTAssertEqual(json.count, 2)
+        XCTAssertEqual(json[0]["model"] as? String, "claude-sonnet-4-20250514")
+        XCTAssertEqual(json[0]["input_tokens"] as? Int, 1000)
+        XCTAssertEqual(json[0]["output_tokens"] as? Int, 500)
+        XCTAssertEqual(json[0]["cache_read_tokens"] as? Int, 200)
+        XCTAssertEqual(json[0]["cache_creation_tokens"] as? Int, 100)
+        XCTAssertEqual(json[1]["model"] as? String, "claude-opus-4-20250514")
+        XCTAssertEqual(json[1]["input_tokens"] as? Int, 2000)
+        XCTAssertEqual(json[1]["output_tokens"] as? Int, 800)
     }
 
-    // MARK: - Empty DB is still valid SQLite
+    // MARK: - Empty DB returns empty JSON array
 
-    func testServedEmptyDb_isStillValidSQLite() {
+    func testEmptyDb_returnsEmptyJsonArray() {
         let usagePath = tmpDir.appendingPathComponent("usage.db").path
         let tokensPath = tmpDir.appendingPathComponent("tokens.db").path
         createUsageDb(at: usagePath, rows: [])
@@ -783,23 +675,11 @@ final class AnalysisSchemeHandlerSQLiteTests: XCTestCase {
             usageDbPath: usagePath, tokensDbPath: tokensPath,
             htmlProvider: { "<html></html>" }
         )
-        let task = MockSchemeTask(url: URL(string: "wcc://usage.db")!)
+        let task = MockSchemeTask(url: URL(string: "wcc://usage.json")!)
         handler.webView(WKWebView(), start: task)
 
-        let servedPath = tmpDir.appendingPathComponent("served_empty.db").path
-        try! task.receivedData!.write(to: URL(fileURLWithPath: servedPath))
-
-        var db: OpaquePointer?
-        XCTAssertEqual(sqlite3_open_v2(servedPath, &db, SQLITE_OPEN_READONLY, nil), SQLITE_OK)
-        defer { sqlite3_close(db) }
-
-        // Should be able to query (returns 0 rows)
-        let sql = "SELECT COUNT(*) FROM usage_log;"
-        var stmt: OpaquePointer?
-        XCTAssertEqual(sqlite3_prepare_v2(db, sql, -1, &stmt, nil), SQLITE_OK)
-        defer { sqlite3_finalize(stmt) }
-        XCTAssertEqual(sqlite3_step(stmt), SQLITE_ROW)
-        XCTAssertEqual(sqlite3_column_int(stmt, 0), 0)
+        let json = try! JSONSerialization.jsonObject(with: task.receivedData!) as! [Any]
+        XCTAssertEqual(json.count, 0)
     }
 
     // MARK: - Integration: real HTML template served correctly
@@ -821,9 +701,8 @@ final class AnalysisSchemeHandlerSQLiteTests: XCTestCase {
         // The served HTML must be the full template, not truncated or corrupted
         XCTAssertTrue(html.hasPrefix("<!DOCTYPE html>"))
         XCTAssertTrue(html.hasSuffix("</html>\n") || html.hasSuffix("</html>"))
-        XCTAssertTrue(html.contains("sql-wasm.js"))
-        XCTAssertTrue(html.contains("wcc://usage.db"))
-        XCTAssertTrue(html.contains("wcc://tokens.db"))
+        XCTAssertTrue(html.contains("wcc://usage.json"))
+        XCTAssertTrue(html.contains("wcc://tokens.json"))
         XCTAssertTrue(html.contains("function main"))
 
         let httpResponse = task.receivedResponse as? HTTPURLResponse
@@ -834,9 +713,9 @@ final class AnalysisSchemeHandlerSQLiteTests: XCTestCase {
                        "Served HTML size must match template size — truncation means broken page")
     }
 
-    // MARK: - Large DB handling
+    // MARK: - Large dataset JSON handling
 
-    func testServedDb_largeDataset_preservedCorrectly() {
+    func testUsageJson_largeDataset_returnsAllRows() {
         let usagePath = tmpDir.appendingPathComponent("usage.db").path
         let tokensPath = tmpDir.appendingPathComponent("tokens.db").path
 
@@ -850,25 +729,26 @@ final class AnalysisSchemeHandlerSQLiteTests: XCTestCase {
         createUsageDb(at: usagePath, rows: rows)
         createTokensDb(at: tokensPath, rows: [])
 
-        let fileData = try! Data(contentsOf: URL(fileURLWithPath: usagePath))
-
         let handler = AnalysisSchemeHandler(
             usageDbPath: usagePath, tokensDbPath: tokensPath,
             htmlProvider: { "<html></html>" }
         )
-        let task = MockSchemeTask(url: URL(string: "wcc://usage.db")!)
+        let task = MockSchemeTask(url: URL(string: "wcc://usage.json")!)
         handler.webView(WKWebView(), start: task)
 
-        XCTAssertEqual(task.receivedData!.count, fileData.count,
-                       "Large DB (\(fileData.count) bytes) must be served completely")
-        XCTAssertEqual(task.receivedData, fileData)
+        let json = try! JSONSerialization.jsonObject(with: task.receivedData!) as! [[String: Any]]
+        XCTAssertEqual(json.count, 1000,
+                       "All 1000 rows must be present in JSON response")
+        // Spot-check first and last values
+        XCTAssertEqual(json[0]["five_hour_percent"] as! Double, 0.0, accuracy: 0.01)
+        XCTAssertEqual(json[999]["five_hour_percent"] as! Double, 99.0, accuracy: 0.01)
     }
 }
 
 // MARK: - WKWebView Integration Tests
 
 /// Actually loads HTML in a WKWebView with the scheme handler and verifies
-/// JavaScript can fetch DB files and query them via sql.js.
+/// JavaScript can fetch JSON data via wcc:// scheme handler.
 /// This tests the REAL runtime path that broke in production.
 final class AnalysisWebViewIntegrationTests: XCTestCase {
 
@@ -945,9 +825,9 @@ final class AnalysisWebViewIntegrationTests: XCTestCase {
         return (webView, navExpectation)
     }
 
-    /// WKWebView with scheme handler can load HTML and execute JS fetch() against wcc:// URLs.
+    /// WKWebView with scheme handler can load HTML and execute JS fetch() against wcc:// JSON URLs.
     /// This is the actual runtime path. If this test passes, the Analysis window works.
-    func testWKWebView_canFetchDbViaSchemeHandler() {
+    func testWKWebView_canFetchJsonViaSchemeHandler() {
         let usagePath = tmpDir.appendingPathComponent("usage.db").path
         let tokensPath = tmpDir.appendingPathComponent("tokens.db").path
         createUsageDb(at: usagePath, rows: [
@@ -963,9 +843,9 @@ final class AnalysisWebViewIntegrationTests: XCTestCase {
 
         let jsExp = expectation(description: "JS executed")
         let jsCode = """
-            const res = await fetch('wcc://usage.db');
-            const buf = await res.arrayBuffer();
-            return {ok: res.ok, status: res.status, size: buf.byteLength};
+            const res = await fetch('wcc://usage.json');
+            const json = await res.json();
+            return {ok: res.ok, status: res.status, count: json.length, firstFiveH: json[0]?.five_hour_percent};
             """
         webView.callAsyncJavaScript(jsCode, arguments: [:], in: nil, in: .page) { result in
             switch result {
@@ -976,13 +856,10 @@ final class AnalysisWebViewIntegrationTests: XCTestCase {
                     return
                 }
                 XCTAssertEqual(dict["ok"] as? Bool, true,
-                               "fetch('wcc://usage.db') must return ok:true — this is what broke in production")
+                               "fetch('wcc://usage.json') must return ok:true")
                 XCTAssertEqual(dict["status"] as? Int, 200)
-                XCTAssertGreaterThan(dict["size"] as! Int, 0)
-
-                let fileSize = (try? Data(contentsOf: URL(fileURLWithPath: usagePath)))?.count ?? 0
-                XCTAssertEqual(dict["size"] as? Int, fileSize,
-                               "Fetched size must match file on disk")
+                XCTAssertEqual(dict["count"] as? Int, 2)
+                XCTAssertEqual(dict["firstFiveH"] as? Double, 42.5)
             case .failure(let error):
                 XCTFail("JS failed: \(error)")
             }
@@ -992,7 +869,7 @@ final class AnalysisWebViewIntegrationTests: XCTestCase {
     }
 
     /// In WKWebView, custom scheme 404 causes fetch() to throw TypeError (not return status 404).
-    /// This matches the actual runtime behavior — the HTML template's fetchDb() uses try/catch → null.
+    /// This matches the actual runtime behavior — the HTML template's fetchJSON() uses try/catch → null.
     func testWKWebView_unknownPath_fetchThrows() {
         let usagePath = tmpDir.appendingPathComponent("usage.db").path
         let tokensPath = tmpDir.appendingPathComponent("tokens.db").path
@@ -1031,47 +908,6 @@ final class AnalysisWebViewIntegrationTests: XCTestCase {
         wait(for: [jsExp], timeout: 5.0)
     }
 
-    /// Verify fetch returns valid SQLite data that JS can read.
-    func testWKWebView_fetchedDbHasSQLiteMagicBytes() {
-        let usagePath = tmpDir.appendingPathComponent("usage.db").path
-        let tokensPath = tmpDir.appendingPathComponent("tokens.db").path
-        createUsageDb(at: usagePath, rows: [
-            ("2026-02-24T10:00:00.000Z", 42.5, 15.0),
-        ])
-        createTokensDb(at: tokensPath)
-
-        let (webView, navExp) = loadWebView(usagePath: usagePath, tokensPath: tokensPath) {
-            "<!DOCTYPE html><html><body></body></html>"
-        }
-        wait(for: [navExp], timeout: 5.0)
-
-        let jsExp = expectation(description: "JS executed")
-        let jsCode = """
-            const res = await fetch('wcc://usage.db');
-            const buf = await res.arrayBuffer();
-            const bytes = new Uint8Array(buf);
-            let magic = '';
-            for (let i = 0; i < 15; i++) magic += String.fromCharCode(bytes[i]);
-            return {magic: magic, contentType: res.headers.get('Content-Type')};
-            """
-        webView.callAsyncJavaScript(jsCode, arguments: [:], in: nil, in: .page) { result in
-            switch result {
-            case .success(let value):
-                guard let dict = value as? [String: Any] else {
-                    XCTFail("Unexpected result type")
-                    jsExp.fulfill()
-                    return
-                }
-                XCTAssertEqual(dict["magic"] as? String, "SQLite format 3",
-                               "JS-side fetched DB must have SQLite magic bytes")
-                XCTAssertEqual(dict["contentType"] as? String, "application/octet-stream")
-            case .failure(let error):
-                XCTFail("JS failed: \(error)")
-            }
-            jsExp.fulfill()
-        }
-        wait(for: [jsExp], timeout: 5.0)
-    }
 }
 
 /// WKNavigationDelegate for waiting on page load completion in tests.
@@ -1209,7 +1045,7 @@ final class CostEstimatorParityTests: XCTestCase {
 // MARK: - JS Logic Tests (WKWebView execution)
 
 /// Tests JS functions by EXECUTING them in a real WKWebView.
-/// Each test loads the pure JS functions (no Chart.js/sql.js dependencies),
+/// Each test loads the pure JS functions (no Chart.js CDN dependency),
 /// calls them with known inputs via callAsyncJavaScript, and verifies outputs.
 /// This catches logic bugs that string-matching tests cannot detect.
 final class AnalysisJSLogicTests: XCTestCase {
@@ -2010,7 +1846,7 @@ final class AnalysisSQLQueryTests: XCTestCase {
             VALUES ('2026-02-24T10:00:00.000Z', 42.5, 15.0, '2026-02-24T15:00:00.000Z', '2026-03-03T10:00:00.000Z');
             """, nil, nil, nil)
 
-        // This is the EXACT query from the HTML template (loadData function)
+        // This is the EXACT query from AnalysisSchemeHandler.queryUsageJSON()
         let sql = """
             SELECT timestamp, five_hour_percent, seven_day_percent,
                    five_hour_resets_at, seven_day_resets_at
@@ -2659,19 +2495,6 @@ final class AnalysisJSExtendedTests: XCTestCase {
         XCTAssertTrue(html.contains("haiku:  { input: 0.80,  output: 4.0,  cacheWrite: 1.0,   cacheRead: 0.08 }"))
     }
 
-    func testTemplateDrift_tokenQueryColumnOrder() {
-        let html = AnalysisExporter.htmlTemplate
-        // The column order in SELECT must match the JS row[N] mapping
-        XCTAssertTrue(html.contains("SELECT timestamp, model, input_tokens, output_tokens,"))
-        XCTAssertTrue(html.contains("cache_read_tokens, cache_creation_tokens"))
-    }
-
-    func testTemplateDrift_usageQueryColumnOrder() {
-        let html = AnalysisExporter.htmlTemplate
-        XCTAssertTrue(html.contains("SELECT timestamp, five_hour_percent, seven_day_percent,"))
-        XCTAssertTrue(html.contains("five_hour_resets_at, seven_day_resets_at"))
-    }
-
     // =========================================================
     // MARK: - computeDeltas with many intervals
     // =========================================================
@@ -2788,7 +2611,7 @@ final class AnalysisJSExtendedTests: XCTestCase {
 /// the tests automatically exercise the changed code.
 private enum TemplateTestHelper {
     /// HTML page with ALL JS functions extracted from the real AnalysisExporter.htmlTemplate.
-    /// CDN dependencies (Chart.js, sql.js) are replaced with stubs.
+    /// CDN dependencies (Chart.js) are replaced with stubs.
     /// The auto-executing IIFE entry point is removed so functions can be called individually.
     /// All required DOM elements (canvases, stats, heatmap, inputs) are provided.
     static let testHTML: String = {
@@ -2810,7 +2633,7 @@ private enum TemplateTestHelper {
         var jsCode = String(template[jsStartIdx..<scriptEndRange.lowerBound])
 
         // Remove the auto-executing IIFE entry point so loadData() doesn't run on page load
-        let iifeMarker = "// ============================================================\n// Entry point: load data via sql.js, then render\n// ============================================================"
+        let iifeMarker = "// ============================================================\n// Entry point: load JSON data, then render\n// ============================================================"
         if let iifeRange = jsCode.range(of: iifeMarker) {
             jsCode = String(jsCode[..<iifeRange.lowerBound])
         }
@@ -4063,23 +3886,6 @@ final class AnalysisBugHuntingTests: XCTestCase {
                        "Bar chart x-values should preserve timestamps from tokenData")
     }
 
-    func testRenderCostTab_scatterChartUsesAllDeltas() {
-        let result = evalJS("""
-            _tokenData = [{timestamp: '2026-02-24T10:02:00Z', costUSD: 1.0}];
-            _allDeltas = [
-                {x: 1.0, y: 5.0, hour: 10, timestamp: '2026-02-24T10:05:00Z',
-                 date: new Date('2026-02-24T10:05:00Z')},
-                {x: 2.0, y: 8.0, hour: 14, timestamp: '2026-02-24T14:05:00Z',
-                 date: new Date('2026-02-24T14:05:00Z')},
-            ];
-            renderCostTab();
-            const scatterConfig = _chartConfigs['costScatter'];
-            const totalPoints = scatterConfig?.data?.datasets?.reduce((sum, ds) => sum + ds.data.length, 0);
-            return totalPoints;
-        """) as? Int
-        XCTAssertEqual(result, 2, "Scatter chart should have all delta points distributed across timeSlot datasets")
-    }
-
     // =========================================================
     // MARK: - renderEfficiencyTab KDE ratios
     // =========================================================
@@ -4550,16 +4356,6 @@ final class AnalysisBugHuntingTests: XCTestCase {
         XCTAssertEqual(result, "bar", "Cost timeline should be a bar chart")
     }
 
-    func testRenderCostTab_scatterType_isScatter() {
-        let result = evalJS("""
-            _tokenData = [{timestamp: '2026-02-24T10:00:00Z', costUSD: 0.50}];
-            _allDeltas = [];
-            renderCostTab();
-            return _chartConfigs['costScatter']?.type;
-        """) as? String
-        XCTAssertEqual(result, "scatter", "Cost scatter chart should be type scatter")
-    }
-
     func testRenderEfficiencyTab_kdeChartType_isLine() {
         let result = evalJS("""
             const deltas = [
@@ -4582,28 +4378,6 @@ final class AnalysisBugHuntingTests: XCTestCase {
             return _chartConfigs['kdeChart']?.options?.scales?.x?.type;
         """) as? String
         XCTAssertEqual(result, "linear", "KDE x-axis should be linear (ratio values)")
-    }
-
-    func testRenderCostTab_scatterXAxisTitle_isCostUSD() {
-        let result = evalJS("""
-            _tokenData = [];
-            _allDeltas = [{x: 0.5, y: 5, hour: 10}];
-            renderCostTab();
-            return _chartConfigs['costScatter']?.options?.scales?.x?.title?.text;
-        """) as? String
-        XCTAssertTrue(result?.contains("Cost") ?? false,
-                      "Scatter x-axis title should mention 'Cost'")
-    }
-
-    func testRenderCostTab_scatterYAxisTitle_isDelta5h() {
-        let result = evalJS("""
-            _tokenData = [];
-            _allDeltas = [{x: 0.5, y: 5, hour: 10}];
-            renderCostTab();
-            return _chartConfigs['costScatter']?.options?.scales?.y?.title?.text;
-        """) as? String
-        XCTAssertTrue(result?.contains("5h") ?? false,
-                      "Scatter y-axis title should mention '5h%'")
     }
 
     // =========================================================
@@ -4841,40 +4615,6 @@ final class AnalysisBugHuntingTests: XCTestCase {
         let labelsLen = result?["labelsLength"] as? Int ?? 0
         let dataLen = result?["dataLength"] as? Int ?? 0
         XCTAssertEqual(labelsLen, dataLen, "Labels and data should have same length")
-    }
-
-    // =========================================================
-    // MARK: - Bug hunt round 2: cost scatter data values
-    // =========================================================
-
-    func testRenderCostTab_scatterDatasets_matchDeltaValues() {
-        let result = evalJS("""
-            _tokenData = [];
-            _allDeltas = [
-                {x: 0.50, y: 5.0, hour: 3},   // Night
-                {x: 0.30, y: -2.0, hour: 9},  // Morning
-            ];
-            renderCostTab();
-            const config = _chartConfigs['costScatter'];
-            const nightDS = config.data.datasets[0]; // Night
-            const morningDS = config.data.datasets[1]; // Morning
-            return {
-                nightCount: nightDS.data.length,
-                morningCount: morningDS.data.length,
-                nightX: nightDS.data[0]?.x,
-                nightY: nightDS.data[0]?.y,
-                morningX: morningDS.data[0]?.x,
-                morningY: morningDS.data[0]?.y,
-            };
-        """) as? [String: Any]
-        XCTAssertEqual(result?["nightCount"] as? Int, 1)
-        XCTAssertEqual(result?["morningCount"] as? Int, 1)
-        XCTAssertEqual(result?["nightX"] as? Double ?? -1, 0.50, accuracy: 0.001,
-                       "Scatter x should be interval cost")
-        XCTAssertEqual(result?["nightY"] as? Double ?? -1, 5.0, accuracy: 0.1,
-                       "Scatter y should be d5h%")
-        XCTAssertEqual(result?["morningY"] as? Double ?? -99, -2.0, accuracy: 0.1,
-                       "Negative d5h should be preserved")
     }
 
     // =========================================================

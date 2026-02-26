@@ -2,7 +2,7 @@
 import Foundation
 
 /// Provides the HTML template for the Analysis window.
-/// Data loading moved from Swift JSON serialization to JS-side sql.js queries.
+/// Data is loaded via AnalysisSchemeHandler (wcc:// scheme) JSON endpoints.
 /// The HTML is served via AnalysisSchemeHandler (wcc:// scheme) in a WKWebView.
 enum AnalysisExporter {
 
@@ -15,7 +15,6 @@ enum AnalysisExporter {
 <title>WeatherCC — Usage Analysis</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
-<script src="https://cdn.jsdelivr.net/npm/sql.js@1/dist/sql-wasm.js"></script>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
@@ -165,7 +164,7 @@ h2 {
 </head>
 <body>
 <h1>WeatherCC — Usage Analysis</h1>
-<div id="loading">Loading sql.js...</div>
+<div id="loading">Loading data...</div>
 <div id="app" style="display:none;">
 
 <div class="stats" id="stats"></div>
@@ -194,10 +193,6 @@ h2 {
     <div class="card full">
       <h2>Cost Timeline (per request, USD)</h2>
       <div class="chart-container tall"><canvas id="costTimeline"></canvas></div>
-    </div>
-    <div class="card full">
-      <h2>Δ5h% vs Δ Cost</h2>
-      <div class="chart-container"><canvas id="costScatter"></canvas></div>
     </div>
   </div>
 </div>
@@ -235,7 +230,7 @@ h2 {
 
 <script>
 // ============================================================
-// Data loading: sql.js queries SQLite databases via wcc:// scheme
+// Data loading: JSON fetched from Swift-side AnalysisSchemeHandler
 // ============================================================
 
 // Model pricing (USD per 1M tokens, mirrors CostEstimator.swift)
@@ -261,75 +256,25 @@ function costForRecord(r) {
 }
 
 async function loadData() {
-  document.getElementById('loading').textContent = 'Loading sql.js...';
+  document.getElementById('loading').textContent = 'Loading data...';
 
-  const SQL = await initSqlJs({
-    locateFile: f => `https://cdn.jsdelivr.net/npm/sql.js@1/dist/${f}`
-  });
-
-  document.getElementById('loading').textContent = 'Loading databases...';
-
-  // Fetch DB files from wcc:// scheme handler and open with sql.js
-  async function fetchDb(url) {
+  async function fetchJSON(url) {
     try {
       const res = await fetch(url);
-      if (!res.ok) return null;
-      const buf = await res.arrayBuffer();
-      return new SQL.Database(new Uint8Array(buf));
-    } catch { return null; }
+      if (!res.ok) return [];
+      return await res.json();
+    } catch { return []; }
   }
-  const [usageDb, tokenDb] = await Promise.all([
-    fetchDb('wcc://usage.db'),
-    fetchDb('wcc://tokens.db'),
+
+  const [usageData, rawTokenData] = await Promise.all([
+    fetchJSON('wcc://usage.json'),
+    fetchJSON('wcc://tokens.json'),
   ]);
 
-  // Query usage data
-  let usageData = [];
-  if (usageDb) {
-    try {
-      const rows = usageDb.exec(`
-        SELECT timestamp, five_hour_percent, seven_day_percent,
-               five_hour_resets_at, seven_day_resets_at
-        FROM usage_log ORDER BY timestamp ASC
-      `);
-      if (rows.length > 0) {
-        usageData = rows[0].values.map(row => ({
-          timestamp: row[0],
-          five_hour_percent: row[1],
-          seven_day_percent: row[2],
-          five_hour_resets_at: row[3],
-          seven_day_resets_at: row[4],
-        }));
-      }
-    } catch (e) { console.warn('usage query error:', e); }
-    usageDb.close();
-  }
-
-  // Query token data and calculate cost in JS
-  let tokenData = [];
-  if (tokenDb) {
-    try {
-      const rows = tokenDb.exec(`
-        SELECT timestamp, model, input_tokens, output_tokens,
-               cache_read_tokens, cache_creation_tokens
-        FROM token_records ORDER BY timestamp ASC
-      `);
-      if (rows.length > 0) {
-        tokenData = rows[0].values.map(row => {
-          const r = {
-            timestamp: row[0],
-            model: row[1],
-            input_tokens: row[2],
-            output_tokens: row[3],
-            cache_read_tokens: row[4],
-            cache_creation_tokens: row[5],
-          };
-          return { timestamp: r.timestamp, costUSD: costForRecord(r) };
-        });
-      }
-    } catch (e) { console.warn('token query error:', e); }
-    tokenDb.close();
-  }
+  const tokenData = rawTokenData.map(r => ({
+    timestamp: r.timestamp,
+    costUSD: costForRecord(r),
+  }));
 
   return { usageData, tokenData };
 }
@@ -580,7 +525,6 @@ function renderCostTab() {
       },
     },
   });
-  _charts.costScatter = buildScatterChart('costScatter', _allDeltas);
 }
 
 function renderEfficiencyTab(deltas) {
@@ -746,7 +690,7 @@ function main(usageData, tokenData) {
 }
 
 // ============================================================
-// Entry point: load data via sql.js, then render
+// Entry point: load JSON data, then render
 // ============================================================
 (async () => {
   try {

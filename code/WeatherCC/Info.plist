@@ -4,5 +4,16 @@
 <dict>
 	<key>LSUIElement</key>
 	<true/>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>grad13.weathercc.app</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>weathercc</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>
