@@ -303,11 +303,12 @@ final class UsageViewModel: ObservableObject {
     }
 
     private nonisolated static func claudeProjectsDirectories() -> [URL] {
-        // Disabled: accessing ~/.claude/projects triggers macOS TCC prompt
-        // ("would like to access data from other apps") because it belongs to Claude CLI.
-        // Predict feature requires user-granted file access (NSOpenPanel) to work with sandbox.
-        // TODO: Re-enable when Predict feature is properly integrated with file access consent.
-        return []
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let claudeProjects = home.appendingPathComponent(".claude/projects")
+        guard FileManager.default.fileExists(atPath: claudeProjects.path) else {
+            return []
+        }
+        return [claudeProjects]
     }
 
     private func reloadHistory() {
