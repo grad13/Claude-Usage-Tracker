@@ -14,10 +14,16 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro', system-ui, sans-serif;
   padding: 20px;
 }
+.header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
 h1 {
   font-size: 20px;
   font-weight: 600;
-  margin-bottom: 16px;
+  margin-bottom: 0;
   color: #e6edf3;
 }
 h2 {
@@ -37,9 +43,11 @@ h2 {
   border: 1px solid #30363d;
   border-radius: 8px;
   padding: 16px;
+  padding-bottom: 28px;
+  overflow: visible;
 }
 .card.full { grid-column: 1 / -1; }
-.chart-container { position: relative; width: 100%; height: 300px; }
+.chart-container { position: relative; width: 100%; height: 300px; overflow: visible; }
 .chart-container.tall { height: 400px; }
 .stats {
   display: flex;
@@ -120,7 +128,6 @@ h2 {
   display: flex;
   gap: 12px;
   align-items: center;
-  margin-bottom: 16px;
   flex-wrap: wrap;
 }
 .date-range label {
@@ -166,36 +173,34 @@ h2 {
 </style>
 </head>
 <body>
-<h1>WeatherCC — Usage Analysis</h1>
+<div class="header-row">
+  <h1>WeatherCC — Usage Analysis</h1>
+  <div class="date-range" id="globalRange">
+    <label>From <input type="date" id="globalFrom"></label>
+    <label>To <input type="date" id="globalTo"></label>
+    <button class="preset-btn" data-days="7">7d</button>
+    <button class="preset-btn" data-days="30">30d</button>
+    <button class="preset-btn" data-days="0">All</button>
+    <button id="applyGlobal">Apply</button>
+  </div>
+</div>
 <div id="loading">Loading data...</div>
 <div id="app" style="display:none;">
-
-<div class="date-range" id="globalRange">
-  <label>From <input type="date" id="globalFrom"></label>
-  <label>To <input type="date" id="globalTo"></label>
-  <button class="preset-btn" data-days="7">7d</button>
-  <button class="preset-btn" data-days="30">30d</button>
-  <button class="preset-btn" data-days="0">All</button>
-  <button id="applyGlobal">Apply</button>
-</div>
 
 <div class="stats" id="stats"></div>
 
 <div class="tab-bar">
   <button class="tab-btn active" data-tab="usage">Usage</button>
   <button class="tab-btn" data-tab="cost">Cost</button>
-  <button class="tab-btn" data-tab="efficiency">Efficiency</button>
+  <button class="tab-btn" data-tab="scatter">Scatter</button>
+  <button class="tab-btn" data-tab="kde">KDE</button>
+  <button class="tab-btn" data-tab="heatmap">Heatmap</button>
   <button class="tab-btn" data-tab="cumulative">Cumulative</button>
 </div>
 
 <div class="tab-content active" id="tab-usage">
   <div class="card full">
-    <h2>Usage Timeline (5h% / 7d%)</h2>
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
-      <label style="color:#8b949e;font-size:12px;">Gap threshold:</label>
-      <input type="range" id="gapSlider" min="5" max="360" step="5" value="30" style="width:200px;">
-      <span id="gapVal" style="color:#e6edf3;font-size:12px;font-weight:600;min-width:50px;">30 min</span>
-    </div>
+    <h2>Usage Timeline</h2>
     <div class="chart-container tall"><canvas id="usageTimeline"></canvas></div>
   </div>
 </div>
@@ -209,20 +214,24 @@ h2 {
   </div>
 </div>
 
-<div class="tab-content" id="tab-efficiency">
-  <div class="grid">
-    <div class="card">
-      <h2>Efficiency (Δ5h% vs Δ Cost)</h2>
-      <div class="chart-container"><canvas id="effScatter"></canvas></div>
-    </div>
-    <div class="card">
-      <h2>KDE — Efficiency Distribution (Δ% / Δ$)</h2>
-      <div class="chart-container"><canvas id="kdeChart"></canvas></div>
-    </div>
-    <div class="card full">
-      <h2>Hourly Efficiency Heatmap (Δ% / Δ$)</h2>
-      <div id="heatmap"></div>
-    </div>
+<div class="tab-content" id="tab-scatter">
+  <div class="card full">
+    <h2>Efficiency (Δ5h% vs Δ Cost)</h2>
+    <div class="chart-container tall"><canvas id="effScatter"></canvas></div>
+  </div>
+</div>
+
+<div class="tab-content" id="tab-kde">
+  <div class="card full">
+    <h2>KDE — Efficiency Distribution (Δ% / Δ$)</h2>
+    <div class="chart-container tall"><canvas id="kdeChart"></canvas></div>
+  </div>
+</div>
+
+<div class="tab-content" id="tab-heatmap">
+  <div class="card full">
+    <h2>Hourly Efficiency Heatmap (Δ% / Δ$)</h2>
+    <div id="heatmap"></div>
   </div>
 </div>
 
@@ -302,6 +311,69 @@ async function loadData(from, to) {
 let _usageData, _tokenData, _allDeltas;
 const _charts = {};
 const _rendered = {};
+
+Chart.register({
+  id: 'dayBoundary',
+  afterDraw(chart) {
+    const xScale = chart.scales.x;
+    if (!xScale || xScale.type !== 'time') return;
+    const ctx = chart.ctx;
+    const { top, bottom, left, right } = chart.chartArea;
+    const min = xScale.min;
+    const max = xScale.max;
+
+    // Collect midnight boundaries
+    const midnights = [];
+    const d = new Date(min);
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() + 1);
+    while (d.getTime() < max) {
+      midnights.push(d.getTime());
+      d.setDate(d.getDate() + 1);
+    }
+
+    // Draw vertical dashed lines at midnights
+    ctx.save();
+    ctx.strokeStyle = '#484f58';
+    ctx.lineWidth = 1;
+    for (const m of midnights) {
+      const x = xScale.getPixelForValue(m);
+      if (x >= left && x <= right) {
+        ctx.beginPath();
+        ctx.moveTo(x, top);
+        ctx.lineTo(x, bottom);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+
+    // Draw centered date labels below time ticks
+    const edges = [min, ...midnights, max];
+    ctx.save();
+    ctx.fillStyle = '#8b949e';
+    ctx.font = '11px -apple-system, BlinkMacSystemFont, "SF Pro", system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    const labelY = xScale.top + 26;
+    for (let i = 0; i < edges.length - 1; i++) {
+      const lx = Math.max(xScale.getPixelForValue(edges[i]), left);
+      const rx = Math.min(xScale.getPixelForValue(edges[i + 1]), right);
+      if (rx - lx < 30) continue;
+      const mid = new Date((edges[i] + edges[i + 1]) / 2);
+      const label = (mid.getMonth() + 1) + '/' + String(mid.getDate()).padStart(2, '0');
+      ctx.fillText(label, (lx + rx) / 2, labelY);
+    }
+    ctx.restore();
+  },
+});
+
+function timeXScale() {
+  return {
+    type: 'time',
+    ticks: { display: false },
+    grid: { display: false },
+    afterFit(scale) { scale.height = 40; },
+  };
+}
 
 const timeSlots = [
   { label: 'Night (0\u20136h)',     color: 'rgba(100,150,255,0.7)', filter: d => d.hour < 6 },
@@ -436,89 +508,112 @@ function buildScatterChart(canvasId, deltas) {
   });
 }
 
-function insertResetPoints(data, percentKey, resetsAtKey) {
+// Weekly: single continuous dataset
+function buildWeeklyData(data) {
   const result = [];
-  let lastValidIdx = -1;
-  for (let i = 0; i < data.length; i++) {
-    const curr = data[i];
-    if (curr[percentKey] == null) continue;
-    if (lastValidIdx >= 0) {
-      const prev = data[lastValidIdx];
-      const prevResets = prev[resetsAtKey];
-      if (prevResets) {
-        const resetTime = new Date(prevResets).getTime();
-        const currTime = new Date(curr.timestamp).getTime();
-        const prevTime = new Date(prev.timestamp).getTime();
-        if (resetTime > prevTime && resetTime < currTime) {
-          result.push({ x: prevResets, y: 0 });
-        }
-      }
+  for (const d of data) {
+    if (d.seven_day_percent != null) {
+      result.push({ x: d.timestamp, y: d.seven_day_percent });
     }
-    result.push({ x: curr.timestamp, y: curr[percentKey] });
-    lastValidIdx = i;
   }
   return result;
 }
 
-let gapThresholdMs = 30 * 60 * 1000;
-function isGapSegment(ctx) {
-  return ctx.p1.parsed.x - ctx.p0.parsed.x > gapThresholdMs;
+// Hourly: split into sessions when five_hour_resets_at changes
+// API returns jittering milliseconds (e.g. 22:59:59.948 vs 23:00:00.502),
+// so compare parsed epoch with 5-minute tolerance.
+function buildHourlySessions(data) {
+  const sessions = [];
+  let current = [];
+  let currentResetsAt = null;
+  let currentResetsMs = null;
+
+  function pushSession() {
+    if (current.length === 0) return;
+    const resetsAtMs = currentResetsMs;
+    sessions.push({
+      data: current,
+      start: resetsAtMs ? resetsAtMs - 5 * 3600000 : new Date(current[0].x).getTime(),
+      end: resetsAtMs || new Date(current[current.length - 1].x).getTime(),
+    });
+    current = [];
+    currentResetsAt = null;
+    currentResetsMs = null;
+  }
+
+  for (let i = 0; i < data.length; i++) {
+    const curr = data[i];
+    if (curr.five_hour_percent == null) continue;
+
+    if (curr.five_hour_resets_at) {
+      const ms = new Date(curr.five_hour_resets_at).getTime();
+      // Session boundary: resets_at shifted by more than 5 minutes
+      if (currentResetsMs && Math.abs(ms - currentResetsMs) > 5 * 60000) {
+        pushSession();
+      }
+      current.push({ x: curr.timestamp, y: curr.five_hour_percent });
+      currentResetsAt = curr.five_hour_resets_at;
+      currentResetsMs = ms;
+    } else {
+      current.push({ x: curr.timestamp, y: curr.five_hour_percent });
+    }
+  }
+  pushSession();
+  return sessions;
 }
 
 function renderUsageTab() {
-  const fiveHData = insertResetPoints(_usageData, 'five_hour_percent', 'five_hour_resets_at');
-  const sevenDData = insertResetPoints(_usageData, 'seven_day_percent', 'seven_day_resets_at');
+  const weeklyData = buildWeeklyData(_usageData);
+  const sessions = buildHourlySessions(_usageData);
+
+  const hourlyDatasets = sessions.map((sess, i) => ({
+    label: i === 0 ? 'Hourly Usage' : '',
+    data: sess.data,
+    borderColor: '#64b4ff',
+    fill: false, borderWidth: 1.5, pointRadius: 2, tension: 0, stepped: 'before',
+  }));
+
+  const sessionBandPlugin = {
+    id: 'sessionBands',
+    beforeDraw(chart) {
+      const xScale = chart.scales.x;
+      const ctx = chart.ctx;
+      const { top, bottom, left, right } = chart.chartArea;
+      for (let i = 0; i < sessions.length; i++) {
+        if (i % 2 === 0) continue;
+        const x0 = Math.max(xScale.getPixelForValue(sessions[i].start), left);
+        const x1 = Math.min(xScale.getPixelForValue(sessions[i].end), right);
+        if (x1 <= x0) continue;
+        ctx.fillStyle = 'rgba(255,255,255,0.04)';
+        ctx.fillRect(x0, top, x1 - x0, bottom - top);
+      }
+    },
+  };
 
   _charts.usageTimeline = new Chart(document.getElementById('usageTimeline'), {
     type: 'line',
     data: {
       datasets: [
+        ...hourlyDatasets,
         {
-          label: '5-hour %',
-          data: fiveHData,
-          borderColor: '#64b4ff', backgroundColor: 'rgba(100,180,255,0.1)',
-          fill: true, borderWidth: 1.5, pointRadius: 1, tension: 0,
-          segment: {
-            borderColor: ctx => isGapSegment(ctx) ? 'transparent' : undefined,
-            backgroundColor: ctx => isGapSegment(ctx) ? 'transparent' : undefined,
-          },
-        },
-        {
-          label: '7-day %',
-          data: sevenDData,
-          borderColor: '#ff82b4', backgroundColor: 'rgba(255,130,180,0.1)',
-          fill: true, borderWidth: 1.5, pointRadius: 1, tension: 0,
-          segment: {
-            borderColor: ctx => isGapSegment(ctx) ? 'transparent' : undefined,
-            backgroundColor: ctx => isGapSegment(ctx) ? 'transparent' : undefined,
-          },
+          label: 'Weekly Usage',
+          data: weeklyData,
+          borderColor: '#ff82b4',
+          fill: false, borderWidth: 1.5, pointRadius: 1, tension: 0, stepped: 'before',
         },
       ],
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { labels: { color: '#8b949e', font: { size: 11 } } } },
+      plugins: { legend: { labels: { color: '#8b949e', font: { size: 11 }, filter: item => item.text !== '' } } },
       scales: {
-        x: { type: 'time', ticks: { color: '#484f58', font: { size: 10 } }, grid: { color: '#21262d' } },
-        y: { min: 0, max: 100, ticks: { color: '#484f58', font: { size: 10 } }, grid: { color: '#21262d' }, title: { display: true, text: '%', color: '#484f58' } },
+        x: timeXScale(),
+        y: { min: 0, max: 100, ticks: { color: '#484f58', font: { size: 10 }, stepSize: 20 }, grid: { color: '#21262d' }, title: { display: true, text: '%', color: '#484f58' } },
       },
     },
+    plugins: [sessionBandPlugin],
   });
 
-  const slider = document.getElementById('gapSlider');
-  const valLabel = document.getElementById('gapVal');
-  function formatMin(m) {
-    if (m < 60) return m + ' min';
-    const h = Math.floor(m / 60);
-    const r = m % 60;
-    return r === 0 ? h + 'h' : h + 'h ' + r + 'min';
-  }
-  slider.addEventListener('input', () => {
-    const min = parseInt(slider.value);
-    valLabel.textContent = formatMin(min);
-    gapThresholdMs = min * 60 * 1000;
-    _charts.usageTimeline.update();
-  });
 }
 
 function renderCostTab() {
@@ -536,19 +631,20 @@ function renderCostTab() {
       responsive: true, maintainAspectRatio: false,
       plugins: { legend: { labels: { color: '#8b949e', font: { size: 11 } } } },
       scales: {
-        x: { type: 'time', ticks: { color: '#484f58', font: { size: 10 } }, grid: { color: '#21262d' } },
+        x: timeXScale(),
         y: { ticks: { color: '#484f58', font: { size: 10 } }, grid: { color: '#21262d' }, title: { display: true, text: 'USD', color: '#484f58' } },
       },
     },
   });
 }
 
-function renderEfficiencyTab(deltas) {
+function renderScatterTab(deltas) {
   if (_charts.effScatter) _charts.effScatter.destroy();
-  if (_charts.kdeChart) _charts.kdeChart.destroy();
-
   _charts.effScatter = buildScatterChart('effScatter', deltas);
+}
 
+function renderKdeTab(deltas) {
+  if (_charts.kdeChart) _charts.kdeChart.destroy();
   const ratios = deltas.filter(d => d.x > 0.001).map(d => d.y / d.x);
   const { xs, ys } = computeKDE(ratios);
   if (xs.length > 0) {
@@ -583,7 +679,9 @@ function renderEfficiencyTab(deltas) {
       },
     });
   }
+}
 
+function renderHeatmapTab(deltas) {
   buildHeatmap(deltas);
 }
 
@@ -607,7 +705,7 @@ function renderCumulativeTab() {
       responsive: true, maintainAspectRatio: false,
       plugins: { legend: { labels: { color: '#8b949e', font: { size: 11 } } } },
       scales: {
-        x: { type: 'time', ticks: { color: '#484f58', font: { size: 10 } }, grid: { color: '#21262d' } },
+        x: timeXScale(),
         y: { ticks: { color: '#484f58', font: { size: 10 } }, grid: { color: '#21262d' }, title: { display: true, text: 'USD', color: '#484f58' } },
       },
     },
@@ -618,7 +716,9 @@ function renderTab(tabId) {
   switch (tabId) {
     case 'usage': renderUsageTab(); break;
     case 'cost': renderCostTab(); break;
-    case 'efficiency': renderEfficiencyTab(_allDeltas); break;
+    case 'scatter': renderScatterTab(_allDeltas); break;
+    case 'kde': renderKdeTab(_allDeltas); break;
+    case 'heatmap': renderHeatmapTab(_allDeltas); break;
     case 'cumulative': renderCumulativeTab(); break;
   }
 }
