@@ -140,10 +140,6 @@ struct MenuContent: View {
 
         Divider()
 
-        Text("v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?")")
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-
         Button("Quit") {
             NSApp.terminate(nil)
         }
