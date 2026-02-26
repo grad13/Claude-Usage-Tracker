@@ -279,16 +279,18 @@ async function fetchJSON(url) {
   } catch { return []; }
 }
 
-async function loadData(from, to) {
+async function loadData(fromEpoch, toEpoch) {
   document.getElementById('loading').textContent = 'Loading data...';
   document.getElementById('loading').style.display = '';
 
   let usageUrl = 'wcc://usage.json';
   let tokensUrl = 'wcc://tokens.json';
-  if (from && to) {
-    const params = `from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
-    usageUrl += '?' + params;
-    tokensUrl += '?' + params;
+  if (fromEpoch != null && toEpoch != null) {
+    usageUrl += `?from=${fromEpoch}&to=${toEpoch}`;
+    // Token DB uses ISO text timestamps
+    const fromISO = new Date(fromEpoch * 1000).toISOString();
+    const toISO = new Date(toEpoch * 1000).toISOString();
+    tokensUrl += `?from=${encodeURIComponent(fromISO)}&to=${encodeURIComponent(toISO)}`;
   }
 
   const [usageData, rawTokenData] = await Promise.all([
@@ -411,15 +413,15 @@ function computeDeltas(usageData, tokenData) {
   for (let i = 1; i < usageData.length; i++) {
     const prev = usageData[i - 1];
     const curr = usageData[i];
-    if (curr.five_hour_percent == null || prev.five_hour_percent == null) continue;
-    const d5h = curr.five_hour_percent - prev.five_hour_percent;
-    const t0 = new Date(prev.timestamp).getTime();
-    const t1 = new Date(curr.timestamp).getTime();
+    if (curr.hourly_percent == null || prev.hourly_percent == null) continue;
+    const d5h = curr.hourly_percent - prev.hourly_percent;
+    const t0 = prev.timestamp * 1000;
+    const t1 = curr.timestamp * 1000;
     const intervalCost = tokenData
       .filter(r => { const t = new Date(r.timestamp).getTime(); return t >= t0 && t < t1; })
       .reduce((s, r) => s + r.costUSD, 0);
     if (intervalCost > 0.001) {
-      const dt = new Date(curr.timestamp);
+      const dt = new Date(t1);
       deltas.push({ x: intervalCost, y: d5h, hour: dt.getHours(), timestamp: curr.timestamp, date: dt });
     }
   }
@@ -512,50 +514,46 @@ function buildScatterChart(canvasId, deltas) {
 function buildWeeklyData(data) {
   const result = [];
   for (const d of data) {
-    if (d.seven_day_percent != null) {
-      result.push({ x: d.timestamp, y: d.seven_day_percent });
+    if (d.weekly_percent != null) {
+      result.push({ x: d.timestamp * 1000, y: d.weekly_percent });
     }
   }
   return result;
 }
 
-// Hourly: split into sessions when five_hour_resets_at changes
-// API returns jittering milliseconds (e.g. 22:59:59.948 vs 23:00:00.502),
-// so compare parsed epoch with 5-minute tolerance.
+// Hourly: split into sessions when hourly_resets_at changes.
+// resets_at is now a normalized epoch (rounded to nearest hour),
+// so simple value comparison is sufficient — no tolerance needed.
 function buildHourlySessions(data) {
   const sessions = [];
   let current = [];
   let currentResetsAt = null;
-  let currentResetsMs = null;
 
   function pushSession() {
     if (current.length === 0) return;
-    const resetsAtMs = currentResetsMs;
+    const resetsAtMs = currentResetsAt ? currentResetsAt * 1000 : null;
     sessions.push({
       data: current,
-      start: resetsAtMs ? resetsAtMs - 5 * 3600000 : new Date(current[0].x).getTime(),
-      end: resetsAtMs || new Date(current[current.length - 1].x).getTime(),
+      start: resetsAtMs ? resetsAtMs - 5 * 3600000 : current[0].x,
+      end: resetsAtMs || current[current.length - 1].x,
     });
     current = [];
     currentResetsAt = null;
-    currentResetsMs = null;
   }
 
   for (let i = 0; i < data.length; i++) {
     const curr = data[i];
-    if (curr.five_hour_percent == null) continue;
+    if (curr.hourly_percent == null) continue;
 
-    if (curr.five_hour_resets_at) {
-      const ms = new Date(curr.five_hour_resets_at).getTime();
-      // Session boundary: resets_at shifted by more than 5 minutes
-      if (currentResetsMs && Math.abs(ms - currentResetsMs) > 5 * 60000) {
+    if (curr.hourly_resets_at) {
+      // Session boundary: normalized resets_at changed
+      if (currentResetsAt && curr.hourly_resets_at !== currentResetsAt) {
         pushSession();
       }
-      current.push({ x: curr.timestamp, y: curr.five_hour_percent });
-      currentResetsAt = curr.five_hour_resets_at;
-      currentResetsMs = ms;
+      current.push({ x: curr.timestamp * 1000, y: curr.hourly_percent });
+      currentResetsAt = curr.hourly_resets_at;
     } else {
-      current.push({ x: curr.timestamp, y: curr.five_hour_percent });
+      current.push({ x: curr.timestamp * 1000, y: curr.hourly_percent });
     }
   }
   pushSession();
@@ -736,8 +734,9 @@ function localDateStr(d) {
     + String(d.getDate()).padStart(2, '0');
 }
 
-function toISORange(dateStr, end) {
-  return dateStr + (end ? 'T23:59:59Z' : 'T00:00:00Z');
+function dateInputToEpoch(dateStr, end) {
+  const d = new Date(dateStr + (end ? 'T23:59:59Z' : 'T00:00:00Z'));
+  return Math.floor(d.getTime() / 1000);
 }
 
 function initTabs() {
@@ -768,10 +767,10 @@ function initGlobalRange() {
   const presetBtns = document.querySelectorAll('.preset-btn');
 
   async function applyRange() {
-    const from = toISORange(fromInput.value, false);
-    const to = toISORange(toInput.value, true);
+    const fromEpoch = dateInputToEpoch(fromInput.value, false);
+    const toEpoch = dateInputToEpoch(toInput.value, true);
     destroyAllCharts();
-    const { usageData, tokenData } = await loadData(from, to);
+    const { usageData, tokenData } = await loadData(fromEpoch, toEpoch);
     renderMain(usageData, tokenData);
   }
 
@@ -785,7 +784,7 @@ function initGlobalRange() {
       if (days === 0) {
         // All: clear range, fetch everything
         if (_meta.oldestTimestamp) {
-          fromInput.value = localDateStr(new Date(_meta.oldestTimestamp));
+          fromInput.value = localDateStr(new Date(_meta.oldestTimestamp * 1000));
         }
         toInput.value = localDateStr(new Date());
         destroyAllCharts();
@@ -812,20 +811,20 @@ function renderMain(usageData, tokenData) {
 
   const totalCost = tokenData.reduce((s, r) => s + r.costUSD, 0);
   const usageSpan = usageData.length > 1
-    ? ((new Date(usageData[usageData.length-1].timestamp) - new Date(usageData[0].timestamp)) / 3600000).toFixed(1)
+    ? ((usageData[usageData.length-1].timestamp - usageData[0].timestamp) / 3600).toFixed(1)
     : '0';
-  const latestFiveH = usageData[usageData.length - 1]?.five_hour_percent;
-  const latestSevenD = usageData[usageData.length - 1]?.seven_day_percent;
-  const fiveHDisplay = latestFiveH != null ? latestFiveH + '%' : '-';
-  const sevenDDisplay = latestSevenD != null ? latestSevenD + '%' : '-';
+  const latestHourly = usageData[usageData.length - 1]?.hourly_percent;
+  const latestWeekly = usageData[usageData.length - 1]?.weekly_percent;
+  const hourlyDisplay = latestHourly != null ? latestHourly + '%' : '-';
+  const weeklyDisplay = latestWeekly != null ? latestWeekly + '%' : '-';
 
   document.getElementById('stats').innerHTML = `
     <div class="stat"><div class="stat-value">${usageData.length}</div><div class="stat-label">Usage Records</div></div>
     <div class="stat"><div class="stat-value">${tokenData.length.toLocaleString()}</div><div class="stat-label">Token Records</div></div>
     <div class="stat"><div class="stat-value">$${totalCost.toFixed(2)}</div><div class="stat-label">Total Est. Cost</div></div>
     <div class="stat"><div class="stat-value">${usageSpan}h</div><div class="stat-label">Usage Span</div></div>
-    <div class="stat"><div class="stat-value">${fiveHDisplay}</div><div class="stat-label">Latest 5h</div></div>
-    <div class="stat"><div class="stat-value">${sevenDDisplay}</div><div class="stat-label">Latest 7d</div></div>
+    <div class="stat"><div class="stat-value">${hourlyDisplay}</div><div class="stat-label">Latest 5h</div></div>
+    <div class="stat"><div class="stat-value">${weeklyDisplay}</div><div class="stat-label">Latest 7d</div></div>
   `;
 
   // Render the currently active tab
@@ -843,28 +842,28 @@ const main = renderMain;
 // ============================================================
 (async () => {
   try {
-    // Fetch metadata for initial range calculation
+    // Fetch metadata for initial range calculation (values are epoch seconds)
     const metaRes = await fetch('wcc://meta.json');
     _meta = metaRes.ok ? await metaRes.json() : {};
 
     // Compute weekly session range from latestSevenDayResetsAt
-    let from, to;
+    let fromEpoch, toEpoch;
     const now = new Date();
+    const nowEpoch = Math.floor(now.getTime() / 1000);
     if (_meta.latestSevenDayResetsAt) {
-      const resetsAt = new Date(_meta.latestSevenDayResetsAt);
-      const weekStart = new Date(resetsAt.getTime() - 7 * 86400000);
-      from = weekStart.toISOString();
-      to = now.toISOString();
+      const resetsAtEpoch = _meta.latestSevenDayResetsAt;
+      fromEpoch = resetsAtEpoch - 7 * 86400;
+      toEpoch = nowEpoch;
     } else if (_meta.oldestTimestamp) {
       // Fallback: last 7 days
-      from = new Date(Date.now() - 7 * 86400000).toISOString();
-      to = now.toISOString();
+      fromEpoch = nowEpoch - 7 * 86400;
+      toEpoch = nowEpoch;
     }
 
     // Set date inputs
     const fromInput = document.getElementById('globalFrom');
     const toInput = document.getElementById('globalTo');
-    if (from) fromInput.value = localDateStr(new Date(from));
+    if (fromEpoch) fromInput.value = localDateStr(new Date(fromEpoch * 1000));
     toInput.value = localDateStr(now);
 
     // Highlight 7d preset as default
@@ -873,7 +872,7 @@ const main = renderMain;
     initTabs();
     initGlobalRange();
 
-    const { usageData, tokenData } = await loadData(from, to);
+    const { usageData, tokenData } = await loadData(fromEpoch, toEpoch);
     renderMain(usageData, tokenData);
   } catch (err) {
     document.getElementById('loading').textContent = 'Error: ' + err.message;

@@ -15,20 +15,31 @@ final class AnalysisSchemeHandlerTests: XCTestCase {
             .appendingPathComponent("AnalysisSchemeHandlerTests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
 
-        // Create real SQLite databases (not dummy text)
+        // Create real SQLite databases with normalized 3-table schema
         let usageDbPath = tmpDir.appendingPathComponent("usage.db").path
         let tokensDbPath = tmpDir.appendingPathComponent("tokens.db").path
         createDb(at: usageDbPath, sql: """
+            CREATE TABLE hourly_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                resets_at INTEGER NOT NULL UNIQUE
+            );
+            CREATE TABLE weekly_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                resets_at INTEGER NOT NULL UNIQUE
+            );
             CREATE TABLE usage_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp TEXT NOT NULL,
-                five_hour_percent REAL,
-                seven_day_percent REAL,
-                five_hour_resets_at TEXT,
-                seven_day_resets_at TEXT
+                timestamp INTEGER NOT NULL,
+                hourly_percent REAL,
+                weekly_percent REAL,
+                hourly_session_id INTEGER REFERENCES hourly_sessions(id),
+                weekly_session_id INTEGER REFERENCES weekly_sessions(id),
+                CHECK (hourly_percent IS NOT NULL OR weekly_percent IS NOT NULL)
             );
-            INSERT INTO usage_log (timestamp, five_hour_percent, seven_day_percent)
-            VALUES ('2026-02-24T10:00:00.000Z', 42.5, 15.0);
+            INSERT INTO hourly_sessions (resets_at) VALUES (1771945200);
+            INSERT INTO weekly_sessions (resets_at) VALUES (1772532000);
+            INSERT INTO usage_log (timestamp, hourly_percent, weekly_percent, hourly_session_id, weekly_session_id)
+            VALUES (1771927200, 42.5, 15.0, 1, 1);
             """)
         createDb(at: tokensDbPath, sql: """
             CREATE TABLE token_records (
@@ -117,7 +128,7 @@ final class AnalysisSchemeHandlerTests: XCTestCase {
         XCTAssertTrue(task.didFinishCalled)
         let json = try! JSONSerialization.jsonObject(with: task.receivedData!) as! [[String: Any]]
         XCTAssertEqual(json.count, 1)
-        XCTAssertEqual(json[0]["five_hour_percent"] as? Double, 42.5)
+        XCTAssertEqual(json[0]["hourly_percent"] as? Double, 42.5)
 
         let httpResponse = task.receivedResponse as? HTTPURLResponse
         XCTAssertEqual(httpResponse?.statusCode, 200)
@@ -326,8 +337,8 @@ final class AnalysisSchemeHandlerSQLiteTests: XCTestCase {
         let usagePath = tmpDir.appendingPathComponent("usage.db").path
         let tokensPath = tmpDir.appendingPathComponent("tokens.db").path
         AnalysisTestDB.createUsageDb(at: usagePath, rows: [
-            ("2026-02-24T10:00:00.000Z", 25.5, 12.3),
-            ("2026-02-24T10:05:00.000Z", 80.0, 45.0),
+            (1771927200, 25.5, 12.3),
+            (1771927500, 80.0, 45.0),
         ])
         AnalysisTestDB.createTokensDb(at: tokensPath, rows: [])
 
@@ -340,10 +351,11 @@ final class AnalysisSchemeHandlerSQLiteTests: XCTestCase {
 
         let json = try! JSONSerialization.jsonObject(with: task.receivedData!) as! [[String: Any]]
         XCTAssertEqual(json.count, 2)
-        XCTAssertEqual(json[0]["five_hour_percent"] as! Double, 25.5, accuracy: 0.01)
-        XCTAssertEqual(json[0]["seven_day_percent"] as! Double, 12.3, accuracy: 0.01)
-        XCTAssertEqual(json[1]["five_hour_percent"] as! Double, 80.0, accuracy: 0.01)
-        XCTAssertEqual(json[1]["seven_day_percent"] as! Double, 45.0, accuracy: 0.01)
+        XCTAssertEqual(json[0]["timestamp"] as? Int, 1771927200)
+        XCTAssertEqual(json[0]["hourly_percent"] as! Double, 25.5, accuracy: 0.01)
+        XCTAssertEqual(json[0]["weekly_percent"] as! Double, 12.3, accuracy: 0.01)
+        XCTAssertEqual(json[1]["hourly_percent"] as! Double, 80.0, accuracy: 0.01)
+        XCTAssertEqual(json[1]["weekly_percent"] as! Double, 45.0, accuracy: 0.01)
     }
 
     func testTokensJson_returnsCorrectData() {
@@ -430,12 +442,11 @@ final class AnalysisSchemeHandlerSQLiteTests: XCTestCase {
         let usagePath = tmpDir.appendingPathComponent("usage.db").path
         let tokensPath = tmpDir.appendingPathComponent("tokens.db").path
 
-        // Create 1000 rows — similar to real production data
-        var rows: [(String, Double, Double)] = []
+        // Create 1000 rows — similar to real production data (5-min intervals)
+        let baseEpoch = 1771927200
+        var rows: [(Int, Double, Double)] = []
         for i in 0..<1000 {
-            rows.append(("2026-02-\(String(format: "%02d", (i / 288) + 1))T\(String(format: "%02d", (i % 288) / 12)):\(String(format: "%02d", (i % 12) * 5)):00.000Z",
-                         Double(i % 100),
-                         Double(i % 50)))
+            rows.append((baseEpoch + i * 300, Double(i % 100), Double(i % 50)))
         }
         AnalysisTestDB.createUsageDb(at: usagePath, rows: rows)
         AnalysisTestDB.createTokensDb(at: tokensPath, rows: [])
@@ -451,7 +462,7 @@ final class AnalysisSchemeHandlerSQLiteTests: XCTestCase {
         XCTAssertEqual(json.count, 1000,
                        "All 1000 rows must be present in JSON response")
         // Spot-check first and last values
-        XCTAssertEqual(json[0]["five_hour_percent"] as! Double, 0.0, accuracy: 0.01)
-        XCTAssertEqual(json[999]["five_hour_percent"] as! Double, 99.0, accuracy: 0.01)
+        XCTAssertEqual(json[0]["hourly_percent"] as! Double, 0.0, accuracy: 0.01)
+        XCTAssertEqual(json[999]["hourly_percent"] as! Double, 99.0, accuracy: 0.01)
     }
 }

@@ -1,5 +1,5 @@
-// meta: created=2026-02-24 updated=2026-02-26 checked=never
-// changed: 2026-02-26 added from/to query params, meta.json endpoint
+// meta: created=2026-02-24 updated=2026-02-27 checked=never
+// changed: 2026-02-27 JOIN query for normalized sessions, epoch timestamps, new JSON key names
 import Foundation
 import SQLite3
 import WebKit
@@ -56,38 +56,37 @@ final class AnalysisSchemeHandler: NSObject, WKURLSchemeHandler {
         defer { sqlite3_close(db) }
 
         var sql = """
-            SELECT timestamp, five_hour_percent, seven_day_percent,
-                   five_hour_resets_at, seven_day_resets_at
-            FROM usage_log
+            SELECT u.timestamp, u.hourly_percent, u.weekly_percent,
+                   hs.resets_at AS hourly_resets_at,
+                   ws.resets_at AS weekly_resets_at
+            FROM usage_log u
+            LEFT JOIN hourly_sessions hs ON u.hourly_session_id = hs.id
+            LEFT JOIN weekly_sessions ws ON u.weekly_session_id = ws.id
             """
-        var bindings: [String] = []
-        if let from = from, let to = to {
-            sql += " WHERE timestamp >= ? AND timestamp <= ?"
-            bindings = [from, to]
+        var bindings: [Int64] = []
+        if let from = from, let to = to,
+           let fromEpoch = Int64(from), let toEpoch = Int64(to) {
+            sql += " WHERE u.timestamp >= ? AND u.timestamp <= ?"
+            bindings = [fromEpoch, toEpoch]
         }
-        sql += " ORDER BY timestamp ASC"
+        sql += " ORDER BY u.timestamp ASC"
 
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return "[]".data(using: .utf8) }
         defer { sqlite3_finalize(stmt) }
 
         for (i, value) in bindings.enumerated() {
-            sqlite3_bind_text(stmt, Int32(i + 1), (value as NSString).utf8String, -1, nil)
+            sqlite3_bind_int64(stmt, Int32(i + 1), value)
         }
 
         var rows: [[String: Any?]] = []
         while sqlite3_step(stmt) == SQLITE_ROW {
-            let timestamp = columnText(stmt, 0)
-            let fiveH = columnDouble(stmt, 1)
-            let sevenD = columnDouble(stmt, 2)
-            let fiveHResets = columnText(stmt, 3)
-            let sevenDResets = columnText(stmt, 4)
             rows.append([
-                "timestamp": timestamp,
-                "five_hour_percent": fiveH,
-                "seven_day_percent": sevenD,
-                "five_hour_resets_at": fiveHResets,
-                "seven_day_resets_at": sevenDResets,
+                "timestamp": columnInt(stmt, 0),
+                "hourly_percent": columnDouble(stmt, 1),
+                "weekly_percent": columnDouble(stmt, 2),
+                "hourly_resets_at": columnInt(stmt, 3),
+                "weekly_resets_at": columnInt(stmt, 4),
             ])
         }
         return serializeJSON(rows)
@@ -138,8 +137,9 @@ final class AnalysisSchemeHandler: NSObject, WKURLSchemeHandler {
         defer { sqlite3_close(db) }
 
         let sql = """
-            SELECT MAX(seven_day_resets_at), MAX(timestamp), MIN(timestamp)
-            FROM usage_log
+            SELECT MAX(ws.resets_at), MAX(u.timestamp), MIN(u.timestamp)
+            FROM usage_log u
+            LEFT JOIN weekly_sessions ws ON u.weekly_session_id = ws.id
             """
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return "{}".data(using: .utf8) }
@@ -148,9 +148,9 @@ final class AnalysisSchemeHandler: NSObject, WKURLSchemeHandler {
         guard sqlite3_step(stmt) == SQLITE_ROW else { return "{}".data(using: .utf8) }
 
         let result: [String: Any?] = [
-            "latestSevenDayResetsAt": columnText(stmt, 0),
-            "latestTimestamp": columnText(stmt, 1),
-            "oldestTimestamp": columnText(stmt, 2),
+            "latestSevenDayResetsAt": columnInt(stmt, 0),
+            "latestTimestamp": columnInt(stmt, 1),
+            "oldestTimestamp": columnInt(stmt, 2),
         ]
         let cleaned = result.mapValues { $0 ?? NSNull() }
         return try? JSONSerialization.data(withJSONObject: cleaned)
@@ -178,6 +178,11 @@ final class AnalysisSchemeHandler: NSObject, WKURLSchemeHandler {
     private func columnDouble(_ stmt: OpaquePointer?, _ idx: Int32) -> Double? {
         guard sqlite3_column_type(stmt, idx) != SQLITE_NULL else { return nil }
         return sqlite3_column_double(stmt, idx)
+    }
+
+    private func columnInt(_ stmt: OpaquePointer?, _ idx: Int32) -> Int? {
+        guard sqlite3_column_type(stmt, idx) != SQLITE_NULL else { return nil }
+        return Int(sqlite3_column_int64(stmt, idx))
     }
 
     private func serializeJSON(_ rows: [[String: Any?]]) -> Data? {
