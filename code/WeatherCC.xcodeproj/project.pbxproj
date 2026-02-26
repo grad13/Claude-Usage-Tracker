@@ -26,6 +26,16 @@
 		AA10000C /* TokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000C /* TokenStore.swift */; };
 		AA10000D /* Protocols.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000D /* Protocols.swift */; };
 		AA10000E /* AnalysisSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000E /* AnalysisSchemeHandler.swift */; };
+		AA100011 /* MenuContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000011 /* MenuContent.swift */; };
+		AA100012 /* LoginWindowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000012 /* LoginWindowView.swift */; };
+		AA100013 /* AnalysisWindowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000013 /* AnalysisWindowView.swift */; };
+		AA100014 /* MenuBarLabel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000014 /* MenuBarLabel.swift */; };
+		AA100015 /* MiniUsageGraph.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000015 /* MiniUsageGraph.swift */; };
+		AA100016 /* analysis.html in Resources */ = {isa = PBXBuildFile; fileRef = AA000016 /* analysis.html */; };
+		AA100017 /* UsageViewModel+Session.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000017 /* UsageViewModel+Session.swift */; };
+		AA100018 /* UsageViewModel+Settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000018 /* UsageViewModel+Settings.swift */; };
+		AA100019 /* UsageViewModel+Predict.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000019 /* UsageViewModel+Predict.swift */; };
+		AA10001A /* WebViewCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00001A /* WebViewCoordinator.swift */; };
 		BB100001 /* SettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000001 /* SettingsTests.swift */; };
 		BB100002 /* FetcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000002 /* FetcherTests.swift */; };
 		BB100003 /* ViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000003 /* ViewModelTests.swift */; };
@@ -139,6 +149,16 @@
 		AA00000C /* TokenStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenStore.swift; sourceTree = "<group>"; };
 		AA00000D /* Protocols.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Protocols.swift; sourceTree = "<group>"; };
 		AA00000E /* AnalysisSchemeHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisSchemeHandler.swift; sourceTree = "<group>"; };
+		AA000011 /* MenuContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuContent.swift; sourceTree = "<group>"; };
+		AA000012 /* LoginWindowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginWindowView.swift; sourceTree = "<group>"; };
+		AA000013 /* AnalysisWindowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisWindowView.swift; sourceTree = "<group>"; };
+		AA000014 /* MenuBarLabel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarLabel.swift; sourceTree = "<group>"; };
+		AA000015 /* MiniUsageGraph.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniUsageGraph.swift; sourceTree = "<group>"; };
+		AA000016 /* analysis.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = analysis.html; sourceTree = "<group>"; };
+		AA000017 /* UsageViewModel+Session.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UsageViewModel+Session.swift"; sourceTree = "<group>"; };
+		AA000018 /* UsageViewModel+Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UsageViewModel+Settings.swift"; sourceTree = "<group>"; };
+		AA000019 /* UsageViewModel+Predict.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UsageViewModel+Predict.swift"; sourceTree = "<group>"; };
+		AA00001A /* WebViewCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebViewCoordinator.swift; sourceTree = "<group>"; };
 		AA000010 /* WeatherCC.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WeatherCC.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BB000001 /* SettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsTests.swift; sourceTree = "<group>"; };
 		BB000002 /* FetcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FetcherTests.swift; sourceTree = "<group>"; };
@@ -233,6 +253,7 @@
 		AA200002 /* WeatherCC */ = {
 			isa = PBXGroup;
 			children = (
+				AA200016 /* Resources */,
 				AA000001 /* WeatherCCApp.swift */,
 				AA000002 /* UsageViewModel.swift */,
 				AA000003 /* UsageFetcher.swift */,
@@ -245,10 +266,27 @@
 				AA00000C /* TokenStore.swift */,
 				AA00000D /* Protocols.swift */,
 				AA00000E /* AnalysisSchemeHandler.swift */,
+				AA000011 /* MenuContent.swift */,
+				AA000012 /* LoginWindowView.swift */,
+				AA000013 /* AnalysisWindowView.swift */,
+				AA000014 /* MenuBarLabel.swift */,
+				AA000015 /* MiniUsageGraph.swift */,
+				AA000017 /* UsageViewModel+Session.swift */,
+				AA000018 /* UsageViewModel+Settings.swift */,
+				AA000019 /* UsageViewModel+Predict.swift */,
+				AA00001A /* WebViewCoordinator.swift */,
 				AA000005 /* Info.plist */,
 				AA000006 /* WeatherCC.entitlements */,
 			);
 			path = WeatherCC;
+			sourceTree = "<group>";
+		};
+		AA200016 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				AA000016 /* analysis.html */,
+			);
+			path = Resources;
 			sourceTree = "<group>";
 		};
 		AA200099 /* Products */ = {
@@ -459,6 +497,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AA100016 /* analysis.html in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -502,6 +541,15 @@
 				AA10000C /* TokenStore.swift in Sources */,
 				AA10000D /* Protocols.swift in Sources */,
 				AA10000E /* AnalysisSchemeHandler.swift in Sources */,
+				AA100011 /* MenuContent.swift in Sources */,
+				AA100012 /* LoginWindowView.swift in Sources */,
+				AA100013 /* AnalysisWindowView.swift in Sources */,
+				AA100014 /* MenuBarLabel.swift in Sources */,
+				AA100015 /* MiniUsageGraph.swift in Sources */,
+				AA100017 /* UsageViewModel+Session.swift in Sources */,
+				AA100018 /* UsageViewModel+Settings.swift in Sources */,
+				AA100019 /* UsageViewModel+Predict.swift in Sources */,
+				AA10001A /* WebViewCoordinator.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

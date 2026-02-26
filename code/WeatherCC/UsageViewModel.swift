@@ -1,4 +1,4 @@
-// meta: created=2026-02-21 updated=2026-02-21 checked=never
+// meta: created=2026-02-21 updated=2026-02-26 checked=2026-02-26
 import Foundation
 import WebKit
 import Combine
@@ -21,24 +21,24 @@ final class UsageViewModel: ObservableObject {
     @Published var predictFiveHourCost: Double?
     @Published var predictSevenDayCost: Double?
 
-    private static let usageURL = URL(string: "https://claude.ai")!
-    private static let targetHost = "claude.ai"
+    static let usageURL = URL(string: "https://claude.ai")!
+    static let targetHost = "claude.ai"
     let webView: WKWebView
-    private let fetcher: any UsageFetching
-    private let settingsStore: any SettingsStoring
-    private let usageStore: any UsageStoring
-    private let snapshotWriter: any SnapshotWriting
-    private let widgetReloader: any WidgetReloading
-    private let tokenSync: any TokenSyncing
-    private let loginItemManager: any LoginItemManaging
-    private var coordinator: WebViewCoordinator?
-    private var cookieObserver: CookieChangeObserver?
-    private var refreshTimer: Timer?
-    private var loginPollTimer: Timer?
+    let fetcher: any UsageFetching
+    let settingsStore: any SettingsStoring
+    let usageStore: any UsageStoring
+    let snapshotWriter: any SnapshotWriting
+    let widgetReloader: any WidgetReloading
+    let tokenSync: any TokenSyncing
+    let loginItemManager: any LoginItemManaging
+    var coordinator: WebViewCoordinator?
+    var cookieObserver: CookieChangeObserver?
+    var refreshTimer: Timer?
+    var loginPollTimer: Timer?
     /// Controls auto-refresh eligibility. nil=undetermined, true=enabled, false=disabled (auth error).
-    private var isAutoRefreshEnabled: Bool?
+    var isAutoRefreshEnabled: Bool?
     /// Throttle usage-page redirects to prevent infinite loops.
-    private var lastRedirectAt: Date?
+    var lastRedirectAt: Date?
 
     var statusText: String {
         let fiveH = fiveHourPercent.map { String(format: "%.0f%%", $0) } ?? "--"
@@ -96,7 +96,7 @@ final class UsageViewModel: ObservableObject {
         }
     }
 
-    private var refreshInterval: TimeInterval {
+    var refreshInterval: TimeInterval {
         TimeInterval(settings.refreshIntervalMinutes) * 60
     }
 
@@ -215,7 +215,7 @@ final class UsageViewModel: ObservableObject {
     }
 
     /// Automatic fetch (launch, after login, auto-refresh)
-    private func fetchSilently() {
+    func fetchSilently() {
         guard !isFetching else {
             debug("fetchSilently: already fetching, skipping")
             return
@@ -246,7 +246,7 @@ final class UsageViewModel: ObservableObject {
         }
     }
 
-    private func applyResult(_ result: UsageResult) {
+    func applyResult(_ result: UsageResult) {
         fiveHourPercent = result.fiveHourPercent
         sevenDayPercent = result.sevenDayPercent
         fiveHourResetsAt = result.fiveHourResetsAt
@@ -267,58 +267,9 @@ final class UsageViewModel: ObservableObject {
         fetchPredict()
     }
 
-    // MARK: - Predict (JSONL cost estimation)
-
-    private func fetchPredict() {
-        let ts = self.tokenSync
-        Task.detached { [weak self] in
-            let dirs = Self.claudeProjectsDirectories()
-            guard !dirs.isEmpty else {
-                await MainActor.run {
-                    self?.predictFiveHourCost = nil
-                    self?.predictSevenDayCost = nil
-                    self?.snapshotWriter.updatePredict(fiveHourCost: nil, sevenDayCost: nil)
-                    self?.widgetReloader.reloadAllTimelines()
-                }
-                return
-            }
-            ts.sync(directories: dirs)
-            let cutoff = Date().addingTimeInterval(-8 * 24 * 3600)
-            let allRecords = ts.loadRecords(since: cutoff)
-
-            let now = Date()
-            let fiveH = CostEstimator.estimate(records: allRecords, windowHours: 5, now: now)
-            let sevenD = CostEstimator.estimate(records: allRecords, windowHours: 168, now: now)
-
-            await MainActor.run {
-                self?.predictFiveHourCost = fiveH.totalCost > 0 ? fiveH.totalCost : nil
-                self?.predictSevenDayCost = sevenD.totalCost > 0 ? sevenD.totalCost : nil
-                self?.snapshotWriter.updatePredict(
-                    fiveHourCost: self?.predictFiveHourCost,
-                    sevenDayCost: self?.predictSevenDayCost
-                )
-                self?.widgetReloader.reloadAllTimelines()
-            }
-        }
-    }
-
-    private nonisolated static func claudeProjectsDirectories() -> [URL] {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        let claudeProjects = home.appendingPathComponent(".claude/projects")
-        guard FileManager.default.fileExists(atPath: claudeProjects.path) else {
-            return []
-        }
-        return [claudeProjects]
-    }
-
-    private func reloadHistory() {
-        fiveHourHistory = usageStore.loadHistory(windowSeconds: 5 * 3600)
-        sevenDayHistory = usageStore.loadHistory(windowSeconds: 7 * 24 * 3600)
-    }
-
     // MARK: - Navigation
 
-    private func loadUsagePage() {
+    func loadUsagePage() {
         let request = URLRequest(
             url: Self.usageURL,
             cachePolicy: .reloadIgnoringLocalCacheData,
@@ -327,260 +278,24 @@ final class UsageViewModel: ObservableObject {
         webView.load(request)
     }
 
-    private func isOnUsagePage() -> Bool {
+    func isOnUsagePage() -> Bool {
         guard let url = webView.url else { return false }
         return url.host == Self.targetHost
     }
 
-    private func canRedirect() -> Bool {
+    func canRedirect() -> Bool {
         guard let lastRedirectAt else { return true }
         return Date().timeIntervalSince(lastRedirectAt) > 5
     }
 
-    // MARK: - Cookie Observation
-
-    private func startCookieObservation() {
-        let observer = CookieChangeObserver { [weak self] in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                self.debug("cookieChange: fired")
-                let hasSession = await self.fetcher.hasValidSession(using: self.webView)
-                self.debug("cookieChange: hasSession=\(hasSession) isLoggedIn=\(self.isLoggedIn)")
-                if hasSession {
-                    self.handleSessionDetected()
-                }
-            }
-        }
-        self.cookieObserver = observer
-        webView.configuration.websiteDataStore.httpCookieStore.add(observer)
+    func reloadHistory() {
+        fiveHourHistory = usageStore.loadHistory(windowSeconds: 5 * 3600)
+        sevenDayHistory = usageStore.loadHistory(windowSeconds: 7 * 24 * 3600)
     }
 
-    /// Called when a valid session is detected (from cookie observer, login poll, or popup close).
-    private func handleSessionDetected() {
-        guard !isLoggedIn else { return }
-        debug("handleSessionDetected: transitioning to logged-in state")
-        isLoggedIn = true
-        isAutoRefreshEnabled = nil
-        loginPollTimer?.invalidate()
-        loginPollTimer = nil
-        backupSessionCookies()
-        startAutoRefresh()
-        guard canRedirect() else { return }
-        lastRedirectAt = Date()
-        loadUsagePage()
-    }
+    // MARK: - Auto Refresh
 
-    // MARK: - Login Polling (fallback for SPA navigation that doesn't trigger didFinish)
-
-    private func startLoginPolling() {
-        guard loginPollTimer == nil else { return }
-        debug("startLoginPolling: starting 3s interval poll")
-        loginPollTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                guard let self, !self.isLoggedIn else { return }
-                let hasSession = await self.fetcher.hasValidSession(using: self.webView)
-                if hasSession {
-                    self.debug("loginPoll: session detected!")
-                    self.handleSessionDetected()
-                }
-            }
-        }
-    }
-
-    // MARK: - Cookie Backup/Restore (survives app reinstall via App Group)
-
-    private static let cookieBackupName = "session-cookies.json"
-
-    private struct CookieData: Codable {
-        let name: String
-        let value: String
-        let domain: String
-        let path: String
-        let expiresDate: Double?
-        let isSecure: Bool
-    }
-
-    /// Save claude.ai cookies to App Group so they survive app reinstall.
-    private func backupSessionCookies() {
-        Task {
-            let cookies = await webView.configuration.websiteDataStore.httpCookieStore.allCookies()
-            let claudeCookies = cookies.filter { $0.domain.hasSuffix("claude.ai") }
-            guard !claudeCookies.isEmpty else { return }
-
-            let backups = claudeCookies.map { CookieData(
-                name: $0.name, value: $0.value, domain: $0.domain, path: $0.path,
-                expiresDate: $0.expiresDate?.timeIntervalSince1970, isSecure: $0.isSecure
-            )}
-
-            guard let container = AppGroupConfig.containerURL else { return }
-            let dir = container
-                .appendingPathComponent("Library/Application Support", isDirectory: true)
-                .appendingPathComponent(AppGroupConfig.appName, isDirectory: true)
-            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            if let data = try? JSONEncoder().encode(backups) {
-                try? data.write(to: dir.appendingPathComponent(Self.cookieBackupName))
-                debug("backupCookies: saved \(claudeCookies.count) cookies")
-            }
-        }
-    }
-
-    /// Restore claude.ai cookies from App Group backup into WebView data store.
-    private func restoreSessionCookies() async -> Bool {
-        guard let container = AppGroupConfig.containerURL else { return false }
-        let url = container
-            .appendingPathComponent("Library/Application Support", isDirectory: true)
-            .appendingPathComponent(AppGroupConfig.appName, isDirectory: true)
-            .appendingPathComponent(Self.cookieBackupName)
-        guard let data = try? Data(contentsOf: url),
-              let backups = try? JSONDecoder().decode([CookieData].self, from: data) else { return false }
-
-        let now = Date()
-        let cookieStore = webView.configuration.websiteDataStore.httpCookieStore
-        var count = 0
-        for backup in backups {
-            // Skip expired cookies
-            if let exp = backup.expiresDate, Date(timeIntervalSince1970: exp) <= now { continue }
-            var props: [HTTPCookiePropertyKey: Any] = [
-                .name: backup.name,
-                .value: backup.value,
-                .domain: backup.domain,
-                .path: backup.path,
-            ]
-            if let exp = backup.expiresDate {
-                props[.expires] = Date(timeIntervalSince1970: exp)
-            }
-            if backup.isSecure { props[.secure] = "TRUE" }
-            if let cookie = HTTPCookie(properties: props) {
-                await cookieStore.setCookie(cookie)
-                count += 1
-            }
-        }
-        debug("restoreCookies: restored \(count)/\(backups.count) cookies")
-        return count > 0
-    }
-
-    // MARK: - Popup
-
-    /// Called by WebViewCoordinator when a popup finishes loading.
-    func checkPopupLogin() {
-        Task {
-            let isLoggedIn = await fetcher.hasValidSession(using: webView)
-            if isLoggedIn {
-                try? await Task.sleep(nanoseconds: 500_000_000)
-                closePopup()
-            }
-        }
-    }
-
-    func closePopup() {
-        popupWebView?.stopLoading()
-        popupWebView = nil
-    }
-
-    /// Called when OAuth popup closes. Check session since SPA navigation may not trigger didFinish.
-    func handlePopupClosed() {
-        debug("handlePopupClosed: checking session")
-        Task {
-            // Wait briefly for cookies to propagate
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
-            let hasSession = await fetcher.hasValidSession(using: webView)
-            debug("handlePopupClosed: hasSession=\(hasSession)")
-            if hasSession {
-                handleSessionDetected()
-            }
-        }
-    }
-
-    // MARK: - Settings
-
-    func setRefreshInterval(minutes: Int) {
-        settings.refreshIntervalMinutes = minutes
-        settingsStore.save(settings)
-        restartAutoRefresh()
-    }
-
-    func toggleStartAtLogin() {
-        settings.startAtLogin.toggle()
-        settingsStore.save(settings)
-        syncLoginItem()
-    }
-
-    func setShowHourlyGraph(_ show: Bool) {
-        settings.showHourlyGraph = show
-        settingsStore.save(settings)
-    }
-
-    func setShowWeeklyGraph(_ show: Bool) {
-        settings.showWeeklyGraph = show
-        settingsStore.save(settings)
-    }
-
-    func setChartWidth(_ width: Int) {
-        settings.chartWidth = width
-        settingsStore.save(settings)
-    }
-
-    func setHourlyColorPreset(_ preset: ChartColorPreset) {
-        settings.hourlyColorPreset = preset
-        settingsStore.save(settings)
-    }
-
-    func setWeeklyColorPreset(_ preset: ChartColorPreset) {
-        settings.weeklyColorPreset = preset
-        settingsStore.save(settings)
-    }
-
-    func signOut() {
-        refreshTimer?.invalidate()
-        refreshTimer = nil
-        isLoggedIn = false
-        isAutoRefreshEnabled = nil
-        lastRedirectAt = nil
-        fiveHourPercent = nil
-        sevenDayPercent = nil
-        fiveHourResetsAt = nil
-        sevenDayResetsAt = nil
-        predictFiveHourCost = nil
-        predictSevenDayCost = nil
-        error = nil
-
-        snapshotWriter.clearOnSignOut()
-        widgetReloader.reloadAllTimelines()
-
-        let dataStore = webView.configuration.websiteDataStore
-        // Stage 1: Remove all website data
-        dataStore.removeData(
-            ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(),
-            modifiedSince: Date.distantPast
-        ) { [weak self] in
-            // Stage 2: Explicitly delete each cookie
-            dataStore.httpCookieStore.getAllCookies { cookies in
-                for cookie in cookies {
-                    dataStore.httpCookieStore.delete(cookie)
-                }
-                // Stage 3: Reload usage page
-                Task { @MainActor in
-                    self?.loadUsagePage()
-                }
-            }
-        }
-    }
-
-    // MARK: - Private
-
-    private func syncLoginItem() {
-        do {
-            try loginItemManager.setEnabled(settings.startAtLogin)
-        } catch {
-            // Revert the setting — UI must reflect actual system state.
-            settings.startAtLogin.toggle()
-            settingsStore.save(settings)
-            self.error = "Login item failed: \(error.localizedDescription)"
-            debug("syncLoginItem failed: \(error)")
-        }
-    }
-
-    private func startAutoRefresh() {
+    func startAutoRefresh() {
         guard refreshTimer == nil else { return }
         guard settings.refreshIntervalMinutes > 0 else { return }
         refreshTimer = Timer.scheduledTimer(
@@ -595,83 +310,11 @@ final class UsageViewModel: ObservableObject {
         }
     }
 
-    private func restartAutoRefresh() {
+    func restartAutoRefresh() {
         refreshTimer?.invalidate()
         refreshTimer = nil
         if isLoggedIn {
             startAutoRefresh()
         }
-    }
-}
-
-// MARK: - WebView Coordinator (navigation + OAuth popup handling)
-
-private final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
-    private weak var viewModel: UsageViewModel?
-
-    init(viewModel: UsageViewModel) {
-        self.viewModel = viewModel
-    }
-
-    // MARK: Navigation
-
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        guard let viewModel else { return }
-        let url = webView.url?.absoluteString ?? "nil"
-
-        // Popup: check login status, close if logged in
-        if webView === viewModel.popupWebView {
-            viewModel.debug("didFinish[popup]: url=\(url)")
-            viewModel.checkPopupLogin()
-            return
-        }
-
-        viewModel.debug("didFinish[main]: url=\(url)")
-
-        // Main WebView: notify ViewModel if on target host
-        if let host = webView.url?.host, host == "claude.ai" {
-            viewModel.handlePageReady()
-        } else {
-            viewModel.debug("didFinish[main]: host is not claude.ai, skipping")
-        }
-    }
-
-    // MARK: OAuth Popup (sheet modal)
-
-    func webView(
-        _ webView: WKWebView,
-        createWebViewWith configuration: WKWebViewConfiguration,
-        for navigationAction: WKNavigationAction,
-        windowFeatures: WKWindowFeatures
-    ) -> WKWebView? {
-        guard let viewModel else { return nil }
-        guard navigationAction.targetFrame == nil else { return nil }
-        configuration.preferences.javaScriptCanOpenWindowsAutomatically = true
-        let popup = WKWebView(frame: .zero, configuration: configuration)
-        popup.navigationDelegate = self
-        viewModel.popupWebView = popup
-        return popup
-    }
-
-    func webViewDidClose(_ webView: WKWebView) {
-        guard let viewModel else { return }
-        if webView === viewModel.popupWebView {
-            viewModel.closePopup()
-            viewModel.handlePopupClosed()
-        }
-    }
-}
-
-// MARK: - Cookie Observer
-
-private final class CookieChangeObserver: NSObject, WKHTTPCookieStoreObserver {
-    private let onChange: () -> Void
-
-    init(onChange: @escaping () -> Void) {
-        self.onChange = onChange
-    }
-
-    func cookiesDidChange(in cookieStore: WKHTTPCookieStore) {
-        onChange()
     }
 }
