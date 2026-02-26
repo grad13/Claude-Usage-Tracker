@@ -206,7 +206,7 @@ enum TemplateTestHelper {
         var jsCode = String(template[jsStartIdx..<scriptEndRange.lowerBound])
 
         // Remove the auto-executing IIFE entry point so loadData() doesn't run on page load
-        let iifeMarker = "// ============================================================\n// Entry point: load JSON data, then render\n// ============================================================"
+        let iifeMarker = "// ============================================================\n// Entry point:"
         if let iifeRange = jsCode.range(of: iifeMarker) {
             jsCode = String(jsCode[..<iifeRange.lowerBound])
         }
@@ -215,6 +215,14 @@ enum TemplateTestHelper {
         <!DOCTYPE html><html><head></head><body>
         <div id="loading">Loading...</div>
         <div id="app" style="display:none;">
+            <div class="date-range" id="globalRange">
+                <input type="date" id="globalFrom">
+                <input type="date" id="globalTo">
+                <button class="preset-btn" data-days="7">7d</button>
+                <button class="preset-btn" data-days="30">30d</button>
+                <button class="preset-btn" data-days="0">All</button>
+                <button id="applyGlobal">Apply</button>
+            </div>
             <div class="stats" id="stats"></div>
             <div class="tab-bar">
                 <button class="tab-btn active" data-tab="usage">Usage</button>
@@ -232,9 +240,6 @@ enum TemplateTestHelper {
                 <canvas id="costScatter"></canvas>
             </div>
             <div class="tab-content" id="tab-efficiency">
-                <input type="date" id="dateFrom">
-                <input type="date" id="dateTo">
-                <button id="applyRange">Apply</button>
                 <canvas id="effScatter"></canvas>
                 <canvas id="kdeChart"></canvas>
                 <div id="heatmap"></div>

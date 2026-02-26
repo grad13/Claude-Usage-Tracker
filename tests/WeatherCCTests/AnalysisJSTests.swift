@@ -662,39 +662,6 @@ final class AnalysisJSLogicTests: AnalysisJSTestCase {
     }
 
     // =========================================================
-    // MARK: - getFilteredDeltas edge cases
-    // =========================================================
-
-    func testGetFilteredDeltas_emptyDateInputs_returnsAll() {
-        let result = evalJS("""
-            _allDeltas = [
-                {x: 1.0, y: 5.0, hour: 10, timestamp: '2026-02-24T10:05:00Z', date: new Date('2026-02-24T10:05:00Z')},
-                {x: 0.5, y: 3.0, hour: 11, timestamp: '2026-02-24T11:05:00Z', date: new Date('2026-02-24T11:05:00Z')},
-            ];
-            document.getElementById('dateFrom').value = '';
-            document.getElementById('dateTo').value = '';
-            return getFilteredDeltas().length;
-        """) as? Int
-        XCTAssertEqual(result, 2, "Empty date inputs should return all deltas")
-    }
-
-    func testGetFilteredDeltas_sameDayRange_includesMatchingDeltas() {
-        let result = evalJS("""
-            _allDeltas = [
-                {x: 1.0, y: 5.0, timestamp: '2026-02-24T10:00:00Z', date: new Date('2026-02-24T10:00:00Z')},
-                {x: 0.5, y: 3.0, timestamp: '2026-02-25T10:00:00Z', date: new Date('2026-02-25T10:00:00Z')},
-            ];
-            document.getElementById('dateFrom').value = '2026-02-24';
-            document.getElementById('dateTo').value = '2026-02-24';
-            return getFilteredDeltas().length;
-        """) as? Int
-        // Feb 24 00:00:00 to Feb 24 23:59:59 (local)
-        // Date('2026-02-24T10:00:00Z') in JST = Feb 24 19:00 → within range
-        // Date('2026-02-25T10:00:00Z') in JST = Feb 25 19:00 → outside range
-        XCTAssertEqual(result, 1, "Only deltas within the date range should be returned")
-    }
-
-    // =========================================================
     // MARK: - isGapSegment (real template)
     // =========================================================
 
@@ -1303,7 +1270,11 @@ final class AnalysisTemplateJSTests: AnalysisJSTestCase {
                 buildHeatmap: typeof buildHeatmap === 'function',
                 buildScatterChart: typeof buildScatterChart === 'function',
                 main: typeof main === 'function',
-                getFilteredDeltas: typeof getFilteredDeltas === 'function',
+                renderMain: typeof renderMain === 'function',
+                destroyAllCharts: typeof destroyAllCharts === 'function',
+                localDateStr: typeof localDateStr === 'function',
+                toISORange: typeof toISORange === 'function',
+                initGlobalRange: typeof initGlobalRange === 'function',
                 renderUsageTab: typeof renderUsageTab === 'function',
                 renderCostTab: typeof renderCostTab === 'function',
                 renderCumulativeTab: typeof renderCumulativeTab === 'function',
