@@ -40,6 +40,17 @@
 		BB10000C /* SnapshotStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00000C /* SnapshotStoreTests.swift */; };
 		BB10000D /* AppGroupConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00000D /* AppGroupConfigTests.swift */; };
 		BB10000E /* SQLiteBackupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00000E /* SQLiteBackupTests.swift */; };
+		BB100020 /* AnalysisTestHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000020 /* AnalysisTestHelpers.swift */; };
+		BB100021 /* AnalysisSchemeHandlerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000021 /* AnalysisSchemeHandlerTests.swift */; };
+		BB100022 /* AnalysisWebViewIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000022 /* AnalysisWebViewIntegrationTests.swift */; };
+		BB100023 /* CostEstimatorParityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000023 /* CostEstimatorParityTests.swift */; };
+		BB100024 /* AnalysisJSTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000024 /* AnalysisJSTests.swift */; };
+		BB100025 /* AnalysisSQLQueryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000025 /* AnalysisSQLQueryTests.swift */; };
+		BB100026 /* AnalysisRenderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000026 /* AnalysisRenderTests.swift */; };
+		BB100027 /* ViewModelTestDoubles.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000027 /* ViewModelTestDoubles.swift */; };
+		BB100028 /* ViewModelTests+Settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000028 /* ViewModelTests+Settings.swift */; };
+		BB100029 /* ViewModelTests+Fetch.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000029 /* ViewModelTests+Fetch.swift */; };
+		BB10002A /* ProductionSettingsIntegrityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00002A /* ProductionSettingsIntegrityTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -143,6 +154,17 @@
 		BB00000C /* SnapshotStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapshotStoreTests.swift; sourceTree = "<group>"; };
 		BB00000D /* AppGroupConfigTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGroupConfigTests.swift; sourceTree = "<group>"; };
 		BB00000E /* SQLiteBackupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLiteBackupTests.swift; sourceTree = "<group>"; };
+		BB000020 /* AnalysisTestHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisTestHelpers.swift; sourceTree = "<group>"; };
+		BB000021 /* AnalysisSchemeHandlerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisSchemeHandlerTests.swift; sourceTree = "<group>"; };
+		BB000022 /* AnalysisWebViewIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisWebViewIntegrationTests.swift; sourceTree = "<group>"; };
+		BB000023 /* CostEstimatorParityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CostEstimatorParityTests.swift; sourceTree = "<group>"; };
+		BB000024 /* AnalysisJSTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisJSTests.swift; sourceTree = "<group>"; };
+		BB000025 /* AnalysisSQLQueryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisSQLQueryTests.swift; sourceTree = "<group>"; };
+		BB000026 /* AnalysisRenderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisRenderTests.swift; sourceTree = "<group>"; };
+		BB000027 /* ViewModelTestDoubles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewModelTestDoubles.swift; sourceTree = "<group>"; };
+		BB000028 /* ViewModelTests+Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ViewModelTests+Settings.swift"; sourceTree = "<group>"; };
+		BB000029 /* ViewModelTests+Fetch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ViewModelTests+Fetch.swift"; sourceTree = "<group>"; };
+		BB00002A /* ProductionSettingsIntegrityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProductionSettingsIntegrityTests.swift; sourceTree = "<group>"; };
 		BB000010 /* WeatherCCTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = WeatherCCTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -254,6 +276,9 @@
 				BB000001 /* SettingsTests.swift */,
 				BB000002 /* FetcherTests.swift */,
 				BB000003 /* ViewModelTests.swift */,
+				BB000027 /* ViewModelTestDoubles.swift */,
+				BB000028 /* ViewModelTests+Settings.swift */,
+				BB000029 /* ViewModelTests+Fetch.swift */,
 				BB000004 /* JSONLParserTests.swift */,
 				BB000005 /* CostEstimatorTests.swift */,
 				BB000006 /* DisplayHelpersTests.swift */,
@@ -262,9 +287,17 @@
 				BB000009 /* TokenStoreTests.swift */,
 				BB00000A /* UsageStoreTests.swift */,
 				BB00000B /* SettingsStoreTests.swift */,
+				BB00002A /* ProductionSettingsIntegrityTests.swift */,
 				BB00000C /* SnapshotStoreTests.swift */,
 				BB00000D /* AppGroupConfigTests.swift */,
 				BB00000E /* SQLiteBackupTests.swift */,
+				BB000020 /* AnalysisTestHelpers.swift */,
+				BB000021 /* AnalysisSchemeHandlerTests.swift */,
+				BB000022 /* AnalysisWebViewIntegrationTests.swift */,
+				BB000023 /* CostEstimatorParityTests.swift */,
+				BB000024 /* AnalysisJSTests.swift */,
+				BB000025 /* AnalysisSQLQueryTests.swift */,
+				BB000026 /* AnalysisRenderTests.swift */,
 			);
 			path = WeatherCCTests;
 			sourceTree = "<group>";
@@ -479,6 +512,9 @@
 				BB100001 /* SettingsTests.swift in Sources */,
 				BB100002 /* FetcherTests.swift in Sources */,
 				BB100003 /* ViewModelTests.swift in Sources */,
+				BB100027 /* ViewModelTestDoubles.swift in Sources */,
+				BB100028 /* ViewModelTests+Settings.swift in Sources */,
+				BB100029 /* ViewModelTests+Fetch.swift in Sources */,
 				BB100004 /* JSONLParserTests.swift in Sources */,
 				BB100005 /* CostEstimatorTests.swift in Sources */,
 				BB100006 /* DisplayHelpersTests.swift in Sources */,
@@ -487,9 +523,17 @@
 				BB100009 /* TokenStoreTests.swift in Sources */,
 				BB10000A /* UsageStoreTests.swift in Sources */,
 				BB10000B /* SettingsStoreTests.swift in Sources */,
+				BB10002A /* ProductionSettingsIntegrityTests.swift in Sources */,
 				BB10000C /* SnapshotStoreTests.swift in Sources */,
 				BB10000D /* AppGroupConfigTests.swift in Sources */,
 				BB10000E /* SQLiteBackupTests.swift in Sources */,
+				BB100020 /* AnalysisTestHelpers.swift in Sources */,
+				BB100021 /* AnalysisSchemeHandlerTests.swift in Sources */,
+				BB100022 /* AnalysisWebViewIntegrationTests.swift in Sources */,
+				BB100023 /* CostEstimatorParityTests.swift in Sources */,
+				BB100024 /* AnalysisJSTests.swift in Sources */,
+				BB100025 /* AnalysisSQLQueryTests.swift in Sources */,
+				BB100026 /* AnalysisRenderTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

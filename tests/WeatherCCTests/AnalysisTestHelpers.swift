@@ -1,0 +1,264 @@
+import XCTest
+import WebKit
+import SQLite3
+@testable import WeatherCC
+
+// MARK: - TestNavDelegate
+
+/// WKNavigationDelegate for waiting on page load completion in tests.
+final class TestNavDelegate: NSObject, WKNavigationDelegate {
+    private let onFinish: () -> Void
+    init(onFinish: @escaping () -> Void) { self.onFinish = onFinish }
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { onFinish() }
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { onFinish() }
+}
+
+// MARK: - MockSchemeTask
+
+/// Minimal mock for WKURLSchemeTask to test AnalysisSchemeHandler without a real WKWebView.
+final class MockSchemeTask: NSObject, WKURLSchemeTask {
+    let request: URLRequest
+    var receivedResponse: URLResponse?
+    var receivedData: Data?
+    var didFinishCalled = false
+
+    init(url: URL) {
+        self.request = URLRequest(url: url)
+    }
+
+    func didReceive(_ response: URLResponse) {
+        self.receivedResponse = response
+    }
+
+    func didReceive(_ data: Data) {
+        if self.receivedData == nil {
+            self.receivedData = data
+        } else {
+            self.receivedData!.append(data)
+        }
+    }
+
+    func didFinish() {
+        didFinishCalled = true
+    }
+
+    func didFailWithError(_ error: Error) {
+        // Not used in these tests
+    }
+}
+
+// MARK: - AnalysisTestDB
+
+/// Shared SQLite database creation helpers used across multiple test files.
+enum AnalysisTestDB {
+
+    /// Create a real SQLite usage.db with the same schema as UsageStore.
+    static func createUsageDb(at path: String, rows: [(String, Double, Double)]) {
+        var db: OpaquePointer?
+        guard sqlite3_open(path, &db) == SQLITE_OK else {
+            XCTFail("Failed to create test usage.db")
+            return
+        }
+        defer { sqlite3_close(db) }
+
+        let createSQL = """
+            CREATE TABLE IF NOT EXISTS usage_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                five_hour_percent REAL,
+                seven_day_percent REAL,
+                five_hour_resets_at TEXT,
+                seven_day_resets_at TEXT
+            );
+            """
+        sqlite3_exec(db, createSQL, nil, nil, nil)
+
+        for (ts, fiveH, sevenD) in rows {
+            let insertSQL = "INSERT INTO usage_log (timestamp, five_hour_percent, seven_day_percent) VALUES (?, ?, ?);"
+            var stmt: OpaquePointer?
+            sqlite3_prepare_v2(db, insertSQL, -1, &stmt, nil)
+            sqlite3_bind_text(stmt, 1, (ts as NSString).utf8String, -1, nil)
+            sqlite3_bind_double(stmt, 2, fiveH)
+            sqlite3_bind_double(stmt, 3, sevenD)
+            sqlite3_step(stmt)
+            sqlite3_finalize(stmt)
+        }
+    }
+
+    /// Create a real SQLite tokens.db with the same schema as TokenStore.
+    static func createTokensDb(at path: String, rows: [(String, String, String, Int, Int, Int, Int)]) {
+        var db: OpaquePointer?
+        guard sqlite3_open(path, &db) == SQLITE_OK else {
+            XCTFail("Failed to create test tokens.db")
+            return
+        }
+        defer { sqlite3_close(db) }
+
+        let createSQL = """
+            CREATE TABLE IF NOT EXISTS token_records (
+                request_id TEXT PRIMARY KEY,
+                timestamp TEXT NOT NULL,
+                model TEXT NOT NULL,
+                input_tokens INTEGER NOT NULL,
+                output_tokens INTEGER NOT NULL,
+                cache_read_tokens INTEGER NOT NULL,
+                cache_creation_tokens INTEGER NOT NULL
+            );
+            """
+        sqlite3_exec(db, createSQL, nil, nil, nil)
+
+        for (reqId, ts, model, inp, out, cacheR, cacheW) in rows {
+            let insertSQL = """
+                INSERT INTO token_records (request_id, timestamp, model, input_tokens, output_tokens,
+                    cache_read_tokens, cache_creation_tokens)
+                VALUES (?, ?, ?, ?, ?, ?, ?);
+                """
+            var stmt: OpaquePointer?
+            sqlite3_prepare_v2(db, insertSQL, -1, &stmt, nil)
+            sqlite3_bind_text(stmt, 1, (reqId as NSString).utf8String, -1, nil)
+            sqlite3_bind_text(stmt, 2, (ts as NSString).utf8String, -1, nil)
+            sqlite3_bind_text(stmt, 3, (model as NSString).utf8String, -1, nil)
+            sqlite3_bind_int(stmt, 4, Int32(inp))
+            sqlite3_bind_int(stmt, 5, Int32(out))
+            sqlite3_bind_int(stmt, 6, Int32(cacheR))
+            sqlite3_bind_int(stmt, 7, Int32(cacheW))
+            sqlite3_step(stmt)
+            sqlite3_finalize(stmt)
+        }
+    }
+
+    /// Create a real SQLite tokens.db with schema only (no rows).
+    static func createTokensDb(at path: String) {
+        createTokensDb(at: path, rows: [])
+    }
+}
+
+// MARK: - AnalysisJSTestCase
+
+/// Base XCTestCase subclass with WKWebView + evalJS setup for JS logic tests.
+/// Loads the TemplateTestHelper.testHTML and provides evalJS for executing JS.
+class AnalysisJSTestCase: XCTestCase {
+
+    var webView: WKWebView!
+    var navExpectation: XCTestExpectation!
+
+    override func setUp() {
+        super.setUp()
+        let exp = expectation(description: "Page loaded")
+        navExpectation = exp
+        webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 800, height: 600))
+        let navDelegate = TestNavDelegate(onFinish: { exp.fulfill() })
+        webView.navigationDelegate = navDelegate
+        objc_setAssociatedObject(webView!, "navDelegate", navDelegate, .OBJC_ASSOCIATION_RETAIN)
+        webView.loadHTMLString(TemplateTestHelper.testHTML, baseURL: nil)
+        wait(for: [exp], timeout: 10.0)
+    }
+
+    override func tearDown() {
+        webView = nil
+        super.tearDown()
+    }
+
+    func evalJS(_ code: String, file: StaticString = #file, line: UInt = #line) -> Any? {
+        let exp = expectation(description: "JS eval")
+        var jsResult: Any?
+        var jsError: Error?
+        webView.callAsyncJavaScript(code, arguments: [:], in: nil, in: .page) { result in
+            switch result {
+            case .success(let value): jsResult = value
+            case .failure(let error): jsError = error
+            }
+            exp.fulfill()
+        }
+        wait(for: [exp], timeout: 5.0)
+        if let err = jsError { XCTFail("JS error: \(err)", file: file, line: line) }
+        return jsResult
+    }
+}
+
+// MARK: - Template JS Extraction Helper
+
+/// Extracts JS functions from the ACTUAL AnalysisExporter.htmlTemplate for testing.
+/// Unlike the copied-JS tests above (AnalysisJSLogicTests/AnalysisJSExtendedTests),
+/// these tests run against the REAL template code. If someone changes the template,
+/// the tests automatically exercise the changed code.
+enum TemplateTestHelper {
+    /// HTML page with ALL JS functions extracted from the real AnalysisExporter.htmlTemplate.
+    /// CDN dependencies (Chart.js) are replaced with stubs.
+    /// The auto-executing IIFE entry point is removed so functions can be called individually.
+    /// All required DOM elements (canvases, stats, heatmap, inputs) are provided.
+    static let testHTML: String = {
+        let template = AnalysisExporter.htmlTemplate
+
+        // Find the inline <script> block (the one without src=, after CDN tags)
+        guard let scriptTagRange = template.range(of: "<script>\n// =") else {
+            fatalError("Cannot find inline <script> in AnalysisExporter.htmlTemplate")
+        }
+        guard let scriptEndRange = template.range(
+            of: "\n</script>",
+            range: scriptTagRange.upperBound..<template.endIndex
+        ) else {
+            fatalError("Cannot find closing </script> in template")
+        }
+
+        // Extract just the JS code (after "<script>\n")
+        let jsStartIdx = template.index(scriptTagRange.lowerBound, offsetBy: "<script>\n".count)
+        var jsCode = String(template[jsStartIdx..<scriptEndRange.lowerBound])
+
+        // Remove the auto-executing IIFE entry point so loadData() doesn't run on page load
+        let iifeMarker = "// ============================================================\n// Entry point: load JSON data, then render\n// ============================================================"
+        if let iifeRange = jsCode.range(of: iifeMarker) {
+            jsCode = String(jsCode[..<iifeRange.lowerBound])
+        }
+
+        return """
+        <!DOCTYPE html><html><head></head><body>
+        <div id="loading">Loading...</div>
+        <div id="app" style="display:none;">
+            <div class="stats" id="stats"></div>
+            <div class="tab-bar">
+                <button class="tab-btn active" data-tab="usage">Usage</button>
+                <button class="tab-btn" data-tab="cost">Cost</button>
+                <button class="tab-btn" data-tab="efficiency">Efficiency</button>
+                <button class="tab-btn" data-tab="cumulative">Cumulative</button>
+            </div>
+            <div class="tab-content active" id="tab-usage">
+                <canvas id="usageTimeline"></canvas>
+                <input type="range" id="gapSlider" min="5" max="360" step="5" value="30">
+                <span id="gapVal">30 min</span>
+            </div>
+            <div class="tab-content" id="tab-cost">
+                <canvas id="costTimeline"></canvas>
+                <canvas id="costScatter"></canvas>
+            </div>
+            <div class="tab-content" id="tab-efficiency">
+                <input type="date" id="dateFrom">
+                <input type="date" id="dateTo">
+                <button id="applyRange">Apply</button>
+                <canvas id="effScatter"></canvas>
+                <canvas id="kdeChart"></canvas>
+                <div id="heatmap"></div>
+            </div>
+            <div class="tab-content" id="tab-cumulative">
+                <canvas id="cumulativeCost"></canvas>
+            </div>
+        </div>
+        <script>
+        // Stub Chart.js — captures chart configurations for test assertions
+        const _chartConfigs = {};
+        class Chart {
+            constructor(canvas, config) {
+                const id = canvas?.id || 'unknown';
+                _chartConfigs[id] = config;
+                this.config = config;
+                this.data = config?.data;
+                this.options = config?.options;
+            }
+            destroy() {}
+            update() {}
+        }
+        \(jsCode)
+        </script></body></html>
+        """
+    }()
+}
