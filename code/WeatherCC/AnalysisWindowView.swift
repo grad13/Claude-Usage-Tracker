@@ -1,4 +1,4 @@
-// meta: created=2026-02-26 updated=2026-02-26 checked=2026-02-26
+// meta: created=2026-02-26 updated=2026-02-26 checked=2026-02-26 ref=AnalysisSchemeHandler
 import SwiftUI
 import WebKit
 
