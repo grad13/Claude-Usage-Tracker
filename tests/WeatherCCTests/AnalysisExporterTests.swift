@@ -99,12 +99,6 @@ final class AnalysisExporterTests: XCTestCase {
                       "JS must compute KDE for efficiency distribution chart")
     }
 
-    func testHtmlTemplate_containsInsertResetPoints() {
-        let html = AnalysisExporter.htmlTemplate
-        XCTAssertTrue(html.contains("function insertResetPoints"),
-                      "JS must insert zero-points at reset boundaries for clean chart lines")
-    }
-
     func testHtmlTemplate_containsLoadDataFunction() {
         let html = AnalysisExporter.htmlTemplate
         XCTAssertTrue(html.contains("async function loadData"))
@@ -120,8 +114,8 @@ final class AnalysisExporterTests: XCTestCase {
 
     func testHtmlTemplate_selectsRequiredUsageColumns() {
         let html = AnalysisExporter.htmlTemplate
-        for col in ["timestamp", "five_hour_percent", "seven_day_percent",
-                     "five_hour_resets_at", "seven_day_resets_at"] {
+        for col in ["timestamp", "hourly_percent", "weekly_percent",
+                     "hourly_resets_at"] {
             XCTAssertTrue(html.contains(col),
                           "Usage query must select \(col)")
         }
@@ -138,9 +132,9 @@ final class AnalysisExporterTests: XCTestCase {
 
     // MARK: - UI tabs
 
-    func testHtmlTemplate_hasFourTabs() {
+    func testHtmlTemplate_hasSixTabs() {
         let html = AnalysisExporter.htmlTemplate
-        for tab in ["usage", "cost", "efficiency", "cumulative"] {
+        for tab in ["usage", "cost", "scatter", "kde", "heatmap", "cumulative"] {
             XCTAssertTrue(html.contains("data-tab=\"\(tab)\""),
                           "Tab '\(tab)' must exist")
             XCTAssertTrue(html.contains("id=\"tab-\(tab)\""),
@@ -167,12 +161,6 @@ final class AnalysisExporterTests: XCTestCase {
         XCTAssertTrue(html.contains("id=\"globalFrom\""))
         XCTAssertTrue(html.contains("id=\"globalTo\""))
         XCTAssertTrue(html.contains("id=\"applyGlobal\""))
-    }
-
-    func testHtmlTemplate_hasGapSlider() {
-        let html = AnalysisExporter.htmlTemplate
-        XCTAssertTrue(html.contains("id=\"gapSlider\""))
-        XCTAssertTrue(html.contains("id=\"gapVal\""))
     }
 
     func testHtmlTemplate_hasStatsContainer() {

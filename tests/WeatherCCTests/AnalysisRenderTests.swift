@@ -69,8 +69,8 @@ final class AnalysisTemplateRenderTests: AnalysisJSTestCase {
     func testRealTemplate_main_setsStatsHTML() {
         let result = evalJS("""
             const usageData = [
-                {timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 10, seven_day_percent: 5},
-                {timestamp: '2026-02-24T13:30:00Z', five_hour_percent: 42.5, seven_day_percent: 15.3},
+                {timestamp: 1771927200, hourly_percent: 10, weekly_percent: 5},
+                {timestamp: 1771939800, hourly_percent: 42.5, weekly_percent: 15.3},
             ];
             const tokenData = [
                 {timestamp: '2026-02-24T10:02:00Z', costUSD: 1.50},
@@ -114,8 +114,8 @@ final class AnalysisTemplateRenderTests: AnalysisJSTestCase {
     func testRealTemplate_main_setsGlobalVariables() {
         let result = evalJS("""
             const usageData = [
-                {timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 10},
-                {timestamp: '2026-02-24T10:05:00Z', five_hour_percent: 15},
+                {timestamp: 1771927200, hourly_percent: 10},
+                {timestamp: 1771927500, hourly_percent: 15},
             ];
             const tokenData = [{timestamp: '2026-02-24T10:02:00Z', costUSD: 0.50}];
             main(usageData, tokenData);
@@ -139,10 +139,10 @@ final class AnalysisTemplateRenderTests: AnalysisJSTestCase {
     func testRealTemplate_renderUsageTab_createsChartWithCorrectData() {
         let result = evalJS("""
             _usageData = [
-                {timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 10, seven_day_percent: 5,
-                 five_hour_resets_at: null, seven_day_resets_at: null},
-                {timestamp: '2026-02-24T10:05:00Z', five_hour_percent: 20, seven_day_percent: 8,
-                 five_hour_resets_at: null, seven_day_resets_at: null},
+                {timestamp: 1771927200, hourly_percent: 10, weekly_percent: 5,
+                 hourly_resets_at: null, weekly_resets_at: null},
+                {timestamp: 1771927500, hourly_percent: 20, weekly_percent: 8,
+                 hourly_resets_at: null, weekly_resets_at: null},
             ];
             renderUsageTab();
             const config = _chartConfigs['usageTimeline'];
@@ -156,9 +156,9 @@ final class AnalysisTemplateRenderTests: AnalysisJSTestCase {
             };
         """) as? [String: Any]
         XCTAssertTrue(result?["hasConfig"] as? Bool ?? false, "Chart config must be captured")
-        XCTAssertEqual(result?["datasetCount"] as? Int, 2, "Usage chart has 2 datasets (5h% and 7d%)")
-        XCTAssertEqual(result?["firstLabel"] as? String, "5-hour %")
-        XCTAssertEqual(result?["secondLabel"] as? String, "7-day %")
+        XCTAssertEqual(result?["datasetCount"] as? Int, 2, "Usage chart has 2 datasets (hourly and weekly)")
+        XCTAssertEqual(result?["firstLabel"] as? String, "Hourly Usage")
+        XCTAssertEqual(result?["secondLabel"] as? String, "Weekly Usage")
         XCTAssertEqual(result?["firstDataCount"] as? Int, 2, "2 data points in 5h dataset")
         XCTAssertEqual(result?["type"] as? String, "line")
     }
@@ -221,10 +221,28 @@ final class AnalysisTemplateRenderTests: AnalysisJSTestCase {
     }
 
     // =========================================================
-    // MARK: - renderEfficiencyTab via Chart stub (real template, NEW)
+    // MARK: - renderScatterTab / renderKdeTab via Chart stub (real template)
     // =========================================================
 
-    func testRealTemplate_renderEfficiencyTab_createsScatterAndKDE() {
+    func testRealTemplate_renderScatterTab_createsScatterChart() {
+        let result = evalJS("""
+            const deltas = [
+                {x: 1.0, y: 5.0, hour: 10, timestamp: '2026-02-24T10:05:00Z',
+                 date: new Date('2026-02-24T10:05:00Z')},
+                {x: 2.0, y: 8.0, hour: 14, timestamp: '2026-02-24T14:05:00Z',
+                 date: new Date('2026-02-24T14:05:00Z')},
+            ];
+            renderScatterTab(deltas);
+            return {
+                hasScatter: _chartConfigs['effScatter'] != null,
+                scatterType: _chartConfigs['effScatter']?.type,
+            };
+        """) as? [String: Any]
+        XCTAssertTrue(result?["hasScatter"] as? Bool ?? false, "Scatter chart created")
+        XCTAssertEqual(result?["scatterType"] as? String, "scatter")
+    }
+
+    func testRealTemplate_renderKdeTab_createsKDEChart() {
         let result = evalJS("""
             const deltas = [
                 {x: 1.0, y: 5.0, hour: 10, timestamp: '2026-02-24T10:05:00Z',
@@ -234,20 +252,14 @@ final class AnalysisTemplateRenderTests: AnalysisJSTestCase {
                 {x: 0.5, y: 3.0, hour: 9, timestamp: '2026-02-24T09:05:00Z',
                  date: new Date('2026-02-24T09:05:00Z')},
             ];
-            renderEfficiencyTab(deltas);
+            renderKdeTab(deltas);
             return {
-                hasScatter: _chartConfigs['effScatter'] != null,
-                scatterType: _chartConfigs['effScatter']?.type,
                 hasKDE: _chartConfigs['kdeChart'] != null,
                 kdeType: _chartConfigs['kdeChart']?.type,
-                heatmapRendered: document.getElementById('heatmap').innerHTML.length > 50,
             };
         """) as? [String: Any]
-        XCTAssertTrue(result?["hasScatter"] as? Bool ?? false, "Efficiency scatter chart created")
-        XCTAssertEqual(result?["scatterType"] as? String, "scatter")
         XCTAssertTrue(result?["hasKDE"] as? Bool ?? false, "KDE chart created")
         XCTAssertEqual(result?["kdeType"] as? String, "line")
-        XCTAssertTrue(result?["heatmapRendered"] as? Bool ?? false, "Heatmap rendered")
     }
 
     // =========================================================
@@ -273,7 +285,7 @@ final class AnalysisTemplateRenderTests: AnalysisJSTestCase {
     func testRealTemplate_main_totalCostIsSum() {
         let result = evalJS("""
             main(
-                [{timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 10, seven_day_percent: 5}],
+                [{timestamp: 1771927200, hourly_percent: 10, weekly_percent: 5}],
                 [{timestamp: 'a', costUSD: 1.50}, {timestamp: 'b', costUSD: 2.00}, {timestamp: 'c', costUSD: 0.75}]
             );
             return document.getElementById('stats').innerHTML.includes('4.25');
@@ -284,8 +296,8 @@ final class AnalysisTemplateRenderTests: AnalysisJSTestCase {
     func testRealTemplate_main_usageSpan_hours() {
         let result = evalJS("""
             main(
-                [{timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 10, seven_day_percent: 5},
-                 {timestamp: '2026-02-24T13:30:00Z', five_hour_percent: 20, seven_day_percent: 8}],
+                [{timestamp: 1771927200, hourly_percent: 10, weekly_percent: 5},
+                 {timestamp: 1771939800, hourly_percent: 20, weekly_percent: 8}],
                 []
             );
             return document.getElementById('stats').innerHTML.includes('3.5');
@@ -293,63 +305,6 @@ final class AnalysisTemplateRenderTests: AnalysisJSTestCase {
         XCTAssertTrue(result!, "Usage span should be 3.5h (10:00 to 13:30)")
     }
 
-    // =========================================================
-    // MARK: - formatMin tests via gap slider (real template)
-    // =========================================================
-
-    /// Helper: call main() to set up renderUsageTab event listener,
-    /// then change slider value & dispatch 'input' event, return label text.
-    private func sliderLabel(forMinutes minutes: Int) -> String? {
-        return evalJS("""
-            main(
-                [{timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 10, seven_day_percent: 5}],
-                [{timestamp: '2026-02-24T10:01:00Z', costUSD: 0.5}]
-            );
-            const slider = document.getElementById('gapSlider');
-            slider.value = '\(minutes)';
-            slider.dispatchEvent(new Event('input'));
-            return document.getElementById('gapVal').textContent;
-        """) as? String
-    }
-
-    func testRealTemplate_formatMin_under60() {
-        XCTAssertEqual(sliderLabel(forMinutes: 30), "30 min")
-    }
-
-    func testRealTemplate_formatMin_exactly60() {
-        XCTAssertEqual(sliderLabel(forMinutes: 60), "1h")
-    }
-
-    func testRealTemplate_formatMin_exactly120() {
-        XCTAssertEqual(sliderLabel(forMinutes: 120), "2h")
-    }
-
-    func testRealTemplate_formatMin_65_noUglyDecimal() {
-        // Bug: 65 / 60 = 1.0833... → "1.0833333333333333h"
-        let result = sliderLabel(forMinutes: 65)
-        XCTAssertNotNil(result)
-        XCTAssertFalse(result!.contains("1.08333"),
-                       "formatMin(65) should not produce ugly floating-point decimals, got: \(result!)")
-    }
-
-    func testRealTemplate_formatMin_90() {
-        XCTAssertEqual(sliderLabel(forMinutes: 90), "1h 30min",
-                       "90 minutes should display as '1h 30min'")
-    }
-
-    func testRealTemplate_formatMin_150() {
-        XCTAssertEqual(sliderLabel(forMinutes: 150), "2h 30min",
-                       "150 minutes should display as '2h 30min'")
-    }
-
-    func testRealTemplate_formatMin_360() {
-        XCTAssertEqual(sliderLabel(forMinutes: 360), "6h",
-                       "360 minutes is exactly 6 hours")
-    }
-
-    func testRealTemplate_formatMin_5() {
-        XCTAssertEqual(sliderLabel(forMinutes: 5), "5 min")
-    }
 
     // =========================================================
     // MARK: - localDateStr tests (real template)
@@ -397,15 +352,17 @@ final class AnalysisTemplateRenderTests: AnalysisJSTestCase {
                        "localDateStr should return local date '\(expectedLocal)', not UTC '\(utcSlice)'")
     }
 
-    func testRealTemplate_toISORange_generatesCorrectStrings() {
+    func testRealTemplate_dateInputToEpoch_generatesCorrectValues() {
         let result = evalJS("""
             return {
-                startOfDay: toISORange('2026-02-24', false),
-                endOfDay: toISORange('2026-02-24', true),
+                startOfDay: dateInputToEpoch('2026-02-24', false),
+                endOfDay: dateInputToEpoch('2026-02-24', true),
             };
-        """) as? [String: String]
-        XCTAssertEqual(result?["startOfDay"], "2026-02-24T00:00:00Z")
-        XCTAssertEqual(result?["endOfDay"], "2026-02-24T23:59:59Z")
+        """) as? [String: Any]
+        // 2026-02-24T00:00:00Z = epoch 1771891200
+        XCTAssertEqual(result?["startOfDay"] as? Int, 1771891200)
+        // 2026-02-24T23:59:59Z = epoch 1771977599
+        XCTAssertEqual(result?["endOfDay"] as? Int, 1771977599)
     }
 }
 
@@ -422,7 +379,7 @@ final class AnalysisBugHuntingTests: AnalysisJSTestCase {
     func testStats_latestFiveH_numberShowsPercent() {
         let result = evalJS("""
             main(
-                [{timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 42.5, seven_day_percent: 15.3}],
+                [{timestamp: 1771927200, hourly_percent: 42.5, weekly_percent: 15.3}],
                 []
             );
             const html = document.getElementById('stats').innerHTML;
@@ -448,11 +405,11 @@ final class AnalysisBugHuntingTests: AnalysisJSTestCase {
     }
 
     func testStats_latestSevenD_nullPercent_shouldNotShowDashPercent() {
-        // Last record has null seven_day_percent → latestSevenD = '-'
+        // Last record has null weekly_percent → latestSevenD = '-'
         // Template shows ${latestSevenD}% → '-%'
         let result = evalJS("""
             main(
-                [{timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 10, seven_day_percent: null}],
+                [{timestamp: 1771927200, hourly_percent: 10, weekly_percent: null}],
                 []
             );
             const html = document.getElementById('stats').innerHTML;
@@ -467,7 +424,7 @@ final class AnalysisBugHuntingTests: AnalysisJSTestCase {
     func testStats_latestFiveH_zeroPercent_showsZeroPercent() {
         let result = evalJS("""
             main(
-                [{timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 0, seven_day_percent: 0}],
+                [{timestamp: 1771927200, hourly_percent: 0, weekly_percent: 0}],
                 []
             );
             const html = document.getElementById('stats').innerHTML;
@@ -483,7 +440,7 @@ final class AnalysisBugHuntingTests: AnalysisJSTestCase {
     func testStats_usageSpan_singleRecord_shows0h() {
         let result = evalJS("""
             main(
-                [{timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 10, seven_day_percent: 5}],
+                [{timestamp: 1771927200, hourly_percent: 10, weekly_percent: 5}],
                 []
             );
             const html = document.getElementById('stats').innerHTML;
@@ -495,8 +452,8 @@ final class AnalysisBugHuntingTests: AnalysisJSTestCase {
     func testStats_usageSpan_multipleRecords_format() {
         let result = evalJS("""
             main(
-                [{timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 10, seven_day_percent: 5},
-                 {timestamp: '2026-02-24T13:30:00Z', five_hour_percent: 20, seven_day_percent: 8}],
+                [{timestamp: 1771927200, hourly_percent: 10, weekly_percent: 5},
+                 {timestamp: 1771939800, hourly_percent: 20, weekly_percent: 8}],
                 []
             );
             const html = document.getElementById('stats').innerHTML;
@@ -512,8 +469,8 @@ final class AnalysisBugHuntingTests: AnalysisJSTestCase {
     func testRenderUsageTab_yAxis_min0_max100() {
         let result = evalJS("""
             _usageData = [
-                {timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 50, seven_day_percent: 25,
-                 five_hour_resets_at: null, seven_day_resets_at: null},
+                {timestamp: 1771927200, hourly_percent: 50, weekly_percent: 25,
+                 hourly_resets_at: null, weekly_resets_at: null},
             ];
             renderUsageTab();
             const yScale = _chartConfigs['usageTimeline']?.options?.scales?.y;
@@ -526,8 +483,8 @@ final class AnalysisBugHuntingTests: AnalysisJSTestCase {
     func testRenderUsageTab_xAxisType_isTime() {
         let result = evalJS("""
             _usageData = [
-                {timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 50, seven_day_percent: 25,
-                 five_hour_resets_at: null, seven_day_resets_at: null},
+                {timestamp: 1771927200, hourly_percent: 50, weekly_percent: 25,
+                 hourly_resets_at: null, weekly_resets_at: null},
             ];
             renderUsageTab();
             return _chartConfigs['usageTimeline']?.options?.scales?.x?.type;
@@ -538,8 +495,8 @@ final class AnalysisBugHuntingTests: AnalysisJSTestCase {
     func testRenderUsageTab_datasetColors() {
         let result = evalJS("""
             _usageData = [
-                {timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 50, seven_day_percent: 25,
-                 five_hour_resets_at: null, seven_day_resets_at: null},
+                {timestamp: 1771927200, hourly_percent: 50, weekly_percent: 25,
+                 hourly_resets_at: null, weekly_resets_at: null},
             ];
             renderUsageTab();
             const ds = _chartConfigs['usageTimeline']?.data?.datasets;
@@ -585,41 +542,6 @@ final class AnalysisBugHuntingTests: AnalysisJSTestCase {
         """) as? [String]
         XCTAssertEqual(result, ["2026-02-24T10:00:00Z", "2026-02-24T10:01:00Z"],
                        "Bar chart x-values should preserve timestamps from tokenData")
-    }
-
-    // =========================================================
-    // MARK: - renderEfficiencyTab KDE ratios
-    // =========================================================
-
-    func testRenderEfficiencyTab_kdeUsesRatios() {
-        // deltas with known x/y → ratio = y/x
-        // d1: y=5, x=1 → ratio=5; d2: y=10, x=2 → ratio=5; same ratio → KDE should peak at 5
-        let result = evalJS("""
-            const deltas = [
-                {x: 1.0, y: 5.0, hour: 10, timestamp: '2026-02-24T10:05:00Z',
-                 date: new Date('2026-02-24T10:05:00Z')},
-                {x: 2.0, y: 10.0, hour: 14, timestamp: '2026-02-24T14:05:00Z',
-                 date: new Date('2026-02-24T14:05:00Z')},
-                {x: 0.5, y: 2.5, hour: 9, timestamp: '2026-02-24T09:05:00Z',
-                 date: new Date('2026-02-24T09:05:00Z')},
-            ];
-            renderEfficiencyTab(deltas);
-            const kdeConfig = _chartConfigs['kdeChart'];
-            const labels = kdeConfig?.data?.labels;
-            const data = kdeConfig?.data?.datasets?.[0]?.data;
-            if (!labels || !data) return null;
-            // Find peak
-            let maxY = -1, peakX = 0;
-            for (let i = 0; i < data.length; i++) {
-                if (data[i] > maxY) { maxY = data[i]; peakX = labels[i]; }
-            }
-            return { peakX, hasData: data.length > 0 };
-        """) as? [String: Any]
-        XCTAssertTrue(result?["hasData"] as? Bool ?? false, "KDE chart should have data")
-        if let peakX = result?["peakX"] as? Double {
-            XCTAssertEqual(peakX, 5.0, accuracy: 2.0,
-                           "All ratios are 5.0 → KDE peak should be near 5.0")
-        }
     }
 
     // =========================================================
@@ -702,7 +624,7 @@ final class AnalysisBugHuntingTests: AnalysisJSTestCase {
         let result = evalJS("""
             initTabs();
             main(
-                [{timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 10, seven_day_percent: 5}],
+                [{timestamp: 1771927200, hourly_percent: 10, weekly_percent: 5}],
                 [{timestamp: '2026-02-24T10:02:00Z', costUSD: 0.50}]
             );
             // Click the cost tab
@@ -725,7 +647,7 @@ final class AnalysisBugHuntingTests: AnalysisJSTestCase {
         let result = evalJS("""
             initTabs();
             main(
-                [{timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 10, seven_day_percent: 5}],
+                [{timestamp: 1771927200, hourly_percent: 10, weekly_percent: 5}],
                 [{timestamp: '2026-02-24T10:02:00Z', costUSD: 0.50}]
             );
             // Click cost tab first time → renders
@@ -761,32 +683,6 @@ final class AnalysisBugHuntingTests: AnalysisJSTestCase {
     }
 
     // =========================================================
-    // MARK: - renderEfficiencyTab destroys old charts
-    // =========================================================
-
-    func testRenderEfficiencyTab_calledTwice_destroysPrevious() {
-        let result = evalJS("""
-            const deltas1 = [
-                {x: 1.0, y: 5.0, hour: 10, timestamp: '2026-02-24T10:05:00Z',
-                 date: new Date('2026-02-24T10:05:00Z')},
-                {x: 2.0, y: 10.0, hour: 14, timestamp: '2026-02-24T14:05:00Z',
-                 date: new Date('2026-02-24T14:05:00Z')},
-            ];
-            renderEfficiencyTab(deltas1);
-            const first = _charts.effScatter;
-            // Call again with different data
-            const deltas2 = [
-                {x: 3.0, y: 15.0, hour: 10, timestamp: '2026-02-24T10:05:00Z',
-                 date: new Date('2026-02-24T10:05:00Z')},
-            ];
-            renderEfficiencyTab(deltas2);
-            // Charts should be different objects (old ones destroyed and new ones created)
-            return _charts.effScatter !== first;
-        """) as? Bool
-        XCTAssertTrue(result!, "Re-rendering efficiency tab should create new chart objects")
-    }
-
-    // =========================================================
     // MARK: - Main function: tokenData.length.toLocaleString() vs usageData.length
     // =========================================================
 
@@ -797,7 +693,7 @@ final class AnalysisBugHuntingTests: AnalysisJSTestCase {
                 timestamp: '2026-02-24T10:00:00Z', costUSD: 0.01
             }));
             main(
-                [{timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 10, seven_day_percent: 5}],
+                [{timestamp: 1771927200, hourly_percent: 10, weekly_percent: 5}],
                 tokenData
             );
             const html = document.getElementById('stats').innerHTML;
@@ -814,42 +710,6 @@ final class AnalysisBugHuntingTests: AnalysisJSTestCase {
                       "Token count should appear in stats (either formatted or plain)")
     }
 
-    // =========================================================
-    // MARK: - Slider default value matches label
-    // =========================================================
-
-    func testSlider_initialValueMatchesLabel() {
-        let result = evalJS("""
-            // Before main() — check initial DOM state
-            return {
-                sliderValue: document.getElementById('gapSlider').value,
-                labelText: document.getElementById('gapVal').textContent,
-            };
-        """) as? [String: Any]
-        XCTAssertEqual(result?["sliderValue"] as? String, "30",
-                       "Slider default value should be 30")
-        XCTAssertEqual(result?["labelText"] as? String, "30 min",
-                       "Label should show '30 min' matching slider default")
-    }
-
-    // =========================================================
-    // MARK: - gapThresholdMs updates when slider changes
-    // =========================================================
-
-    func testSlider_updatesGapThreshold() {
-        let result = evalJS("""
-            main(
-                [{timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 10, seven_day_percent: 5}],
-                [{timestamp: '2026-02-24T10:01:00Z', costUSD: 0.5}]
-            );
-            const slider = document.getElementById('gapSlider');
-            slider.value = '120';
-            slider.dispatchEvent(new Event('input'));
-            return gapThresholdMs;
-        """) as? Int
-        XCTAssertEqual(result, 120 * 60 * 1000,
-                       "gapThresholdMs should update to 120min * 60s * 1000ms")
-    }
 
     // =========================================================
     // MARK: - computeDeltas hour uses local time
@@ -858,11 +718,11 @@ final class AnalysisBugHuntingTests: AnalysisJSTestCase {
     func testComputeDeltas_hourIsLocalTime() {
         let result = evalJS("""
             const deltas = computeDeltas(
-                [{timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 10},
-                 {timestamp: '2026-02-24T10:05:00Z', five_hour_percent: 15}],
+                [{timestamp: 1771927200, hourly_percent: 10},
+                 {timestamp: 1771927500, hourly_percent: 15}],
                 [{timestamp: '2026-02-24T10:02:00Z', costUSD: 0.50}]
             );
-            const expectedHour = new Date('2026-02-24T10:05:00Z').getHours();
+            const expectedHour = new Date(1771927500 * 1000).getHours();
             return { deltaHour: deltas[0].hour, expectedHour };
         """) as? [String: Any]
         XCTAssertEqual(result?["deltaHour"] as? Int, result?["expectedHour"] as? Int,
@@ -870,29 +730,29 @@ final class AnalysisBugHuntingTests: AnalysisJSTestCase {
     }
 
     // =========================================================
-    // MARK: - renderUsageTab segment callbacks
+    // MARK: - renderUsageTab stepped line style
     // =========================================================
 
-    func testRenderUsageTab_segmentCallbacksExist() {
+    func testRenderUsageTab_datasetsUseStepped() {
         let result = evalJS("""
             _usageData = [
-                {timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 50, seven_day_percent: 25,
-                 five_hour_resets_at: null, seven_day_resets_at: null},
+                {timestamp: 1771927200, hourly_percent: 50, weekly_percent: 25,
+                 hourly_resets_at: null, weekly_resets_at: null},
             ];
             renderUsageTab();
             const ds0 = _chartConfigs['usageTimeline']?.data?.datasets?.[0];
             const ds1 = _chartConfigs['usageTimeline']?.data?.datasets?.[1];
             return {
-                ds0HasSegment: ds0?.segment != null,
-                ds1HasSegment: ds1?.segment != null,
-                ds0HasBorderColor: typeof ds0?.segment?.borderColor === 'function',
-                ds0HasBgColor: typeof ds0?.segment?.backgroundColor === 'function',
+                ds0Stepped: ds0?.stepped,
+                ds1Stepped: ds1?.stepped,
+                ds0BorderWidth: ds0?.borderWidth,
+                ds1BorderWidth: ds1?.borderWidth,
             };
         """) as? [String: Any]
-        XCTAssertTrue(result?["ds0HasSegment"] as? Bool ?? false, "5h dataset should have segment config")
-        XCTAssertTrue(result?["ds1HasSegment"] as? Bool ?? false, "7d dataset should have segment config")
-        XCTAssertTrue(result?["ds0HasBorderColor"] as? Bool ?? false, "Segment should have borderColor callback")
-        XCTAssertTrue(result?["ds0HasBgColor"] as? Bool ?? false, "Segment should have backgroundColor callback")
+        XCTAssertEqual(result?["ds0Stepped"] as? String, "before", "Hourly dataset should use stepped: before")
+        XCTAssertEqual(result?["ds1Stepped"] as? String, "before", "Weekly dataset should use stepped: before")
+        XCTAssertEqual(result?["ds0BorderWidth"] as? Double, 1.5, "Hourly dataset borderWidth should be 1.5")
+        XCTAssertEqual(result?["ds1BorderWidth"] as? Double, 1.5, "Weekly dataset borderWidth should be 1.5")
     }
 
     // =========================================================
@@ -922,8 +782,8 @@ final class AnalysisBugHuntingTests: AnalysisJSTestCase {
     func testDestroyAllCharts_clearsRenderedFlags() {
         let result = evalJS("""
             main(
-                [{timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 10, seven_day_percent: 5},
-                 {timestamp: '2026-02-24T10:05:00Z', five_hour_percent: 15, seven_day_percent: 7}],
+                [{timestamp: 1771927200, hourly_percent: 10, weekly_percent: 5},
+                 {timestamp: 1771927500, hourly_percent: 15, weekly_percent: 7}],
                 [{timestamp: '2026-02-24T10:02:00Z', costUSD: 0.50}]
             );
             const hadUsage = _rendered['usage'] === true;
@@ -949,17 +809,17 @@ final class AnalysisBugHuntingTests: AnalysisJSTestCase {
         // The interval should be excluded from deltas entirely.
         let result = evalJS("""
             const deltas = computeDeltas(
-                [{timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 30, seven_day_percent: 10},
-                 {timestamp: '2026-02-24T10:05:00Z', five_hour_percent: null, seven_day_percent: 12}],
+                [{timestamp: 1771927200, hourly_percent: 30, weekly_percent: 10},
+                 {timestamp: 1771927500, hourly_percent: null, weekly_percent: 12}],
                 [{timestamp: '2026-02-24T10:02:00Z', costUSD: 0.50}]
             );
             return { count: deltas.length, firstY: deltas[0]?.y };
         """) as? [String: Any]
         let count = result?["count"] as? Int ?? -1
         // If null is treated as 0, d5h = 0 - 30 = -30, and the interval IS included (cost > 0.001).
-        // Correct behavior: exclude interval because curr.five_hour_percent is null.
+        // Correct behavior: exclude interval because curr.hourly_percent is null.
         XCTAssertEqual(count, 0,
-                       "Interval where curr five_hour_percent is null should be EXCLUDED — null ≠ 0%")
+                       "Interval where curr hourly_percent is null should be EXCLUDED — null ≠ 0%")
     }
 
     func testComputeDeltas_nullPrevPercent_shouldExcludeInterval() {
@@ -967,43 +827,43 @@ final class AnalysisBugHuntingTests: AnalysisJSTestCase {
         // This bogus +20 delta corrupts scatter/KDE/heatmap.
         let result = evalJS("""
             const deltas = computeDeltas(
-                [{timestamp: '2026-02-24T10:00:00Z', five_hour_percent: null, seven_day_percent: 5},
-                 {timestamp: '2026-02-24T10:05:00Z', five_hour_percent: 20, seven_day_percent: 8}],
+                [{timestamp: 1771927200, hourly_percent: null, weekly_percent: 5},
+                 {timestamp: 1771927500, hourly_percent: 20, weekly_percent: 8}],
                 [{timestamp: '2026-02-24T10:02:00Z', costUSD: 0.50}]
             );
             return { count: deltas.length, firstY: deltas[0]?.y };
         """) as? [String: Any]
         let count = result?["count"] as? Int ?? -1
         XCTAssertEqual(count, 0,
-                       "Interval where prev five_hour_percent is null should be EXCLUDED — null ≠ 0%")
+                       "Interval where prev hourly_percent is null should be EXCLUDED — null ≠ 0%")
     }
 
     func testComputeDeltas_bothNullPercent_shouldExcludeInterval() {
         let result = evalJS("""
             const deltas = computeDeltas(
-                [{timestamp: '2026-02-24T10:00:00Z', five_hour_percent: null, seven_day_percent: 5},
-                 {timestamp: '2026-02-24T10:05:00Z', five_hour_percent: null, seven_day_percent: 8}],
+                [{timestamp: 1771927200, hourly_percent: null, weekly_percent: 5},
+                 {timestamp: 1771927500, hourly_percent: null, weekly_percent: 8}],
                 [{timestamp: '2026-02-24T10:02:00Z', costUSD: 0.50}]
             );
             return deltas.length;
         """) as? Int
         XCTAssertEqual(result, 0,
-                       "Both null five_hour_percent → interval excluded")
+                       "Both null hourly_percent → interval excluded")
     }
 
     func testComputeDeltas_nullDoesNotProduceBogusNegativeDelta() {
         // Specific check: the delta should NOT be -30 (null treated as 0)
         let result = evalJS("""
             const deltas = computeDeltas(
-                [{timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 30, seven_day_percent: 10},
-                 {timestamp: '2026-02-24T10:05:00Z', five_hour_percent: null, seven_day_percent: 12}],
+                [{timestamp: 1771927200, hourly_percent: 30, weekly_percent: 10},
+                 {timestamp: 1771927500, hourly_percent: null, weekly_percent: 12}],
                 [{timestamp: '2026-02-24T10:02:00Z', costUSD: 0.50}]
             );
             const hasBogusNegative = deltas.some(d => d.y === -30);
             return hasBogusNegative;
         """) as? Bool
         XCTAssertFalse(result ?? true,
-                       "CRITICAL: null five_hour_percent should NOT produce d5h = -30 (null ≠ 0)")
+                       "CRITICAL: null hourly_percent should NOT produce d5h = -30 (null ≠ 0)")
     }
 
     // =========================================================
@@ -1020,56 +880,32 @@ final class AnalysisBugHuntingTests: AnalysisJSTestCase {
         XCTAssertEqual(result, "bar", "Cost timeline should be a bar chart")
     }
 
-    func testRenderEfficiencyTab_kdeChartType_isLine() {
-        let result = evalJS("""
-            const deltas = [
-                {x: 0.50, y: 5.0, hour: 10, timestamp: '2026-02-24T10:05:00Z', date: new Date('2026-02-24T10:05:00Z')},
-                {x: 0.30, y: 3.0, hour: 11, timestamp: '2026-02-24T11:05:00Z', date: new Date('2026-02-24T11:05:00Z')},
-            ];
-            renderEfficiencyTab(deltas);
-            return _chartConfigs['kdeChart']?.type;
-        """) as? String
-        XCTAssertEqual(result, "line", "KDE chart should be type line")
-    }
-
-    func testRenderEfficiencyTab_kdeXAxis_isLinear() {
-        let result = evalJS("""
-            const deltas = [
-                {x: 0.50, y: 5.0, hour: 10, timestamp: '2026-02-24T10:05:00Z', date: new Date('2026-02-24T10:05:00Z')},
-                {x: 0.30, y: 3.0, hour: 11, timestamp: '2026-02-24T11:05:00Z', date: new Date('2026-02-24T11:05:00Z')},
-            ];
-            renderEfficiencyTab(deltas);
-            return _chartConfigs['kdeChart']?.options?.scales?.x?.type;
-        """) as? String
-        XCTAssertEqual(result, "linear", "KDE x-axis should be linear (ratio values)")
-    }
-
     // =========================================================
     // MARK: - Bug hunt round 2: dataset label verification
     // =========================================================
 
-    func testRenderUsageTab_dataset0Label_isFiveHour() {
+    func testRenderUsageTab_dataset0Label_isHourlyUsage() {
         let result = evalJS("""
             _usageData = [
-                {timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 50, seven_day_percent: 25,
-                 five_hour_resets_at: null, seven_day_resets_at: null},
+                {timestamp: 1771927200, hourly_percent: 50, weekly_percent: 25,
+                 hourly_resets_at: null, weekly_resets_at: null},
             ];
             renderUsageTab();
             return _chartConfigs['usageTimeline']?.data?.datasets?.[0]?.label;
         """) as? String
-        XCTAssertEqual(result, "5-hour %", "First dataset should be 5-hour %")
+        XCTAssertEqual(result, "Hourly Usage", "First dataset should be Hourly Usage")
     }
 
-    func testRenderUsageTab_dataset1Label_isSevenDay() {
+    func testRenderUsageTab_dataset1Label_isWeeklyUsage() {
         let result = evalJS("""
             _usageData = [
-                {timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 50, seven_day_percent: 25,
-                 five_hour_resets_at: null, seven_day_resets_at: null},
+                {timestamp: 1771927200, hourly_percent: 50, weekly_percent: 25,
+                 hourly_resets_at: null, weekly_resets_at: null},
             ];
             renderUsageTab();
             return _chartConfigs['usageTimeline']?.data?.datasets?.[1]?.label;
         """) as? String
-        XCTAssertEqual(result, "7-day %", "Second dataset should be 7-day %")
+        XCTAssertEqual(result, "Weekly Usage", "Second dataset should be Weekly Usage")
     }
 
     // =========================================================
@@ -1121,28 +957,6 @@ final class AnalysisBugHuntingTests: AnalysisJSTestCase {
         let expected = result?["totalCostRounded"] as? Double ?? -2
         XCTAssertEqual(lastY, expected, accuracy: 0.01,
                        "Cumulative chart's last value should approximate total cost")
-    }
-
-    // =========================================================
-    // MARK: - Bug hunt round 2: insertResetPoints data format
-    // =========================================================
-
-    func testInsertResetPoints_outputHasXandY() {
-        let result = evalJS("""
-            const data = [
-                {timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 30, five_hour_resets_at: null},
-                {timestamp: '2026-02-24T11:00:00Z', five_hour_percent: 50, five_hour_resets_at: null},
-            ];
-            const points = insertResetPoints(data, 'five_hour_percent', 'five_hour_resets_at');
-            const allHaveX = points.every(p => p.x !== undefined);
-            const allHaveY = points.every(p => p.y !== undefined);
-            return { count: points.length, allHaveX, allHaveY,
-                     firstX: points[0]?.x, firstY: points[0]?.y };
-        """) as? [String: Any]
-        XCTAssertEqual(result?["count"] as? Int, 2)
-        XCTAssertTrue(result?["allHaveX"] as? Bool ?? false, "All points should have x (timestamp)")
-        XCTAssertTrue(result?["allHaveY"] as? Bool ?? false, "All points should have y (percent)")
-        XCTAssertEqual(result?["firstY"] as? Double, 30.0)
     }
 
     // =========================================================
@@ -1226,60 +1040,7 @@ final class AnalysisBugHuntingTests: AnalysisJSTestCase {
         XCTAssertEqual(result?["bar1y"] as? Double ?? -1, 0.456, accuracy: 0.0001)
     }
 
-    // =========================================================
-    // MARK: - Bug hunt round 2: renderUsageTab data from insertResetPoints
-    // =========================================================
 
-    func testRenderUsageTab_fiveHDataPoints_matchInsertResetPointsOutput() {
-        let result = evalJS("""
-            _usageData = [
-                {timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 30, seven_day_percent: 10,
-                 five_hour_resets_at: '2026-02-24T11:00:00Z', seven_day_resets_at: null},
-                {timestamp: '2026-02-24T12:00:00Z', five_hour_percent: 5, seven_day_percent: 12,
-                 five_hour_resets_at: null, seven_day_resets_at: null},
-            ];
-            renderUsageTab();
-            const ds0 = _chartConfigs['usageTimeline']?.data?.datasets?.[0]?.data;
-            // insertResetPoints should produce: {x: T1, y: 30}, {x: reset, y: 0}, {x: T2, y: 5}
-            return { count: ds0?.length, y0: ds0?.[0]?.y, y1: ds0?.[1]?.y, y2: ds0?.[2]?.y };
-        """) as? [String: Any]
-        XCTAssertEqual(result?["count"] as? Int, 3, "Should have 3 points: data, reset-zero, data")
-        XCTAssertEqual(result?["y0"] as? Double, 30.0, "First point: 30%")
-        XCTAssertEqual(result?["y1"] as? Double, 0.0, "Reset point: 0%")
-        XCTAssertEqual(result?["y2"] as? Double, 5.0, "After reset: 5%")
-    }
-
-    // =========================================================
-    // MARK: - Bug hunt round 2: KDE data format
-    // =========================================================
-
-    func testRenderEfficiencyTab_kdeData_usesLabelsAndValues() {
-        let result = evalJS("""
-            const deltas = [
-                {x: 0.50, y: 5.0, hour: 10, timestamp: '2026-02-24T10:05:00Z', date: new Date('2026-02-24T10:05:00Z')},
-                {x: 0.30, y: 3.0, hour: 11, timestamp: '2026-02-24T11:05:00Z', date: new Date('2026-02-24T11:05:00Z')},
-            ];
-            renderEfficiencyTab(deltas);
-            const config = _chartConfigs['kdeChart'];
-            const labels = config?.data?.labels;
-            const data = config?.data?.datasets?.[0]?.data;
-            return {
-                hasLabels: labels != null && labels.length > 0,
-                hasData: data != null && data.length > 0,
-                labelsAreNumbers: typeof labels?.[0] === 'number',
-                dataAreNumbers: typeof data?.[0] === 'number',
-                labelsLength: labels?.length,
-                dataLength: data?.length,
-            };
-        """) as? [String: Any]
-        XCTAssertTrue(result?["hasLabels"] as? Bool ?? false, "KDE should have labels (x values)")
-        XCTAssertTrue(result?["hasData"] as? Bool ?? false, "KDE should have data (y values)")
-        XCTAssertTrue(result?["labelsAreNumbers"] as? Bool ?? false, "KDE labels should be numbers")
-        XCTAssertTrue(result?["dataAreNumbers"] as? Bool ?? false, "KDE data should be numbers")
-        let labelsLen = result?["labelsLength"] as? Int ?? 0
-        let dataLen = result?["dataLength"] as? Int ?? 0
-        XCTAssertEqual(labelsLen, dataLen, "Labels and data should have same length")
-    }
 
     // =========================================================
     // MARK: - Bug hunt round 2: costForRecord edge cases
@@ -1345,18 +1106,22 @@ final class AnalysisBugHuntingTests: AnalysisJSTestCase {
     // MARK: - Bug hunt round 2: usage chart fill and tension
     // =========================================================
 
-    func testRenderUsageTab_datasets_haveFillTrue() {
+    func testRenderUsageTab_datasets_haveFillFalseAndStepped() {
         let result = evalJS("""
-            _usageData = [{timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 50, seven_day_percent: 25,
-                           five_hour_resets_at: null, seven_day_resets_at: null}];
+            _usageData = [{timestamp: 1771927200, hourly_percent: 50, weekly_percent: 25,
+                           hourly_resets_at: null, weekly_resets_at: null}];
             renderUsageTab();
             const ds = _chartConfigs['usageTimeline']?.data?.datasets;
-            return { fill0: ds?.[0]?.fill, fill1: ds?.[1]?.fill, tension0: ds?.[0]?.tension, tension1: ds?.[1]?.tension };
+            return { fill0: ds?.[0]?.fill, fill1: ds?.[1]?.fill,
+                     tension0: ds?.[0]?.tension, tension1: ds?.[1]?.tension,
+                     stepped0: ds?.[0]?.stepped, stepped1: ds?.[1]?.stepped };
         """) as? [String: Any]
-        XCTAssertTrue(result?["fill0"] as? Bool ?? false, "5h dataset should have fill: true")
-        XCTAssertTrue(result?["fill1"] as? Bool ?? false, "7d dataset should have fill: true")
-        XCTAssertEqual(result?["tension0"] as? Int, 0, "5h dataset tension should be 0 (no curve)")
-        XCTAssertEqual(result?["tension1"] as? Int, 0, "7d dataset tension should be 0 (no curve)")
+        XCTAssertFalse(result?["fill0"] as? Bool ?? true, "Hourly dataset should have fill: false")
+        XCTAssertFalse(result?["fill1"] as? Bool ?? true, "Weekly dataset should have fill: false")
+        XCTAssertEqual(result?["tension0"] as? Int, 0, "Hourly dataset tension should be 0")
+        XCTAssertEqual(result?["tension1"] as? Int, 0, "Weekly dataset tension should be 0")
+        XCTAssertEqual(result?["stepped0"] as? String, "before", "Hourly dataset should use stepped: before")
+        XCTAssertEqual(result?["stepped1"] as? String, "before", "Weekly dataset should use stepped: before")
     }
 
     // =========================================================

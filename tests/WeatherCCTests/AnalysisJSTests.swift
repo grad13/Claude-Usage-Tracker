@@ -276,7 +276,7 @@ final class AnalysisJSLogicTests: AnalysisJSTestCase {
     func testComputeDeltas_singleUsage_returnsEmpty() {
         let result = evalJS("""
             return computeDeltas(
-                [{timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 10}],
+                [{timestamp: 1771927200, hourly_percent: 10}],
                 [{timestamp: '2026-02-24T10:00:00Z', costUSD: 1.0}]
             ).length;
         """) as? Int
@@ -287,15 +287,15 @@ final class AnalysisJSLogicTests: AnalysisJSTestCase {
         let result = evalJS("""
             const deltas = computeDeltas(
                 [
-                    {timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 10},
-                    {timestamp: '2026-02-24T10:05:00Z', five_hour_percent: 15},
+                    {timestamp: 1771927200, hourly_percent: 10},
+                    {timestamp: 1771927500, hourly_percent: 15},
                 ],
                 [
                     {timestamp: '2026-02-24T10:02:00Z', costUSD: 0.50},
                 ]
             );
             // getHours() returns local time, so compute expected hour in JS too
-            const expectedHour = new Date('2026-02-24T10:05:00Z').getHours();
+            const expectedHour = new Date(1771927500 * 1000).getHours();
             return {
                 length: deltas.length,
                 x: deltas[0].x,
@@ -318,8 +318,8 @@ final class AnalysisJSLogicTests: AnalysisJSTestCase {
         let result = evalJS("""
             const deltas = computeDeltas(
                 [
-                    {timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 10},
-                    {timestamp: '2026-02-24T10:05:00Z', five_hour_percent: 20},
+                    {timestamp: 1771927200, hourly_percent: 10},
+                    {timestamp: 1771927500, hourly_percent: 20},
                 ],
                 [
                     {timestamp: '2026-02-24T10:02:00Z', costUSD: 0.0005},
@@ -336,8 +336,8 @@ final class AnalysisJSLogicTests: AnalysisJSTestCase {
         let result = evalJS("""
             const deltas = computeDeltas(
                 [
-                    {timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 10},
-                    {timestamp: '2026-02-24T10:05:00Z', five_hour_percent: 20},
+                    {timestamp: 1771927200, hourly_percent: 10},
+                    {timestamp: 1771927500, hourly_percent: 20},
                 ],
                 [
                     {timestamp: '2026-02-24T09:00:00Z', costUSD: 5.0},
@@ -353,8 +353,8 @@ final class AnalysisJSLogicTests: AnalysisJSTestCase {
         let result = evalJS("""
             const deltas = computeDeltas(
                 [
-                    {timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 10},
-                    {timestamp: '2026-02-24T10:10:00Z', five_hour_percent: 30},
+                    {timestamp: 1771927200, hourly_percent: 10},
+                    {timestamp: 1771927800, hourly_percent: 30},
                 ],
                 [
                     {timestamp: '2026-02-24T10:02:00Z', costUSD: 0.50},
@@ -370,12 +370,12 @@ final class AnalysisJSLogicTests: AnalysisJSTestCase {
                        "y = 30 - 10 = 20")
     }
 
-    func testComputeDeltas_nullFiveHourPercent_skipped() {
+    func testComputeDeltas_nullHourlyPercent_skipped() {
         let result = evalJS("""
             const deltas = computeDeltas(
                 [
-                    {timestamp: '2026-02-24T10:00:00Z', five_hour_percent: null},
-                    {timestamp: '2026-02-24T10:05:00Z', five_hour_percent: 10},
+                    {timestamp: 1771927200, hourly_percent: null},
+                    {timestamp: 1771927500, hourly_percent: 10},
                 ],
                 [
                     {timestamp: '2026-02-24T10:02:00Z', costUSD: 1.0},
@@ -383,7 +383,7 @@ final class AnalysisJSLogicTests: AnalysisJSTestCase {
             );
             return deltas.length;
         """) as? Int
-        // Intervals with null five_hour_percent should be skipped entirely
+        // Intervals with null hourly_percent should be skipped entirely
         XCTAssertEqual(result, 0, "Null prev percent → interval skipped, no bogus delta")
     }
 
@@ -392,8 +392,8 @@ final class AnalysisJSLogicTests: AnalysisJSTestCase {
         let result = evalJS("""
             const deltas = computeDeltas(
                 [
-                    {timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 50},
-                    {timestamp: '2026-02-24T10:05:00Z', five_hour_percent: 20},
+                    {timestamp: 1771927200, hourly_percent: 50},
+                    {timestamp: 1771927500, hourly_percent: 20},
                 ],
                 [
                     {timestamp: '2026-02-24T10:02:00Z', costUSD: 0.50},
@@ -403,113 +403,6 @@ final class AnalysisJSLogicTests: AnalysisJSTestCase {
         """) as? Double
         XCTAssertEqual(result!, -30.0, accuracy: 0.001,
                        "Negative delta (usage decrease) must be preserved")
-    }
-
-    // =========================================================
-    // MARK: - insertResetPoints
-    // =========================================================
-
-    func testInsertResetPoints_noResets_justDataPoints() {
-        let result = evalJS("""
-            const data = [
-                {timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 10, five_hour_resets_at: null},
-                {timestamp: '2026-02-24T10:05:00Z', five_hour_percent: 20, five_hour_resets_at: null},
-            ];
-            return insertResetPoints(data, 'five_hour_percent', 'five_hour_resets_at');
-        """) as? [[String: Any]]
-        XCTAssertEqual(result?.count, 2)
-        XCTAssertEqual(result?[0]["y"] as? Double, 10.0)
-        XCTAssertEqual(result?[1]["y"] as? Double, 20.0)
-    }
-
-    func testInsertResetPoints_resetBetweenPoints_insertsZero() {
-        let result = evalJS("""
-            const data = [
-                {timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 80, five_hour_resets_at: '2026-02-24T12:00:00Z'},
-                {timestamp: '2026-02-24T14:00:00Z', five_hour_percent: 5, five_hour_resets_at: '2026-02-24T17:00:00Z'},
-            ];
-            return insertResetPoints(data, 'five_hour_percent', 'five_hour_resets_at');
-        """) as? [[String: Any]]
-        // Should insert a zero-point at 12:00 (resets_at of first point)
-        XCTAssertEqual(result?.count, 3, "Should be 3 points: original + zero-point + original")
-        XCTAssertEqual(result?[0]["y"] as? Double, 80.0, "First original point")
-        XCTAssertEqual(result?[1]["y"] as? Double, 0.0, "Zero-point at reset boundary")
-        XCTAssertEqual(result?[1]["x"] as? String, "2026-02-24T12:00:00Z", "Zero-point at resets_at time")
-        XCTAssertEqual(result?[2]["y"] as? Double, 5.0, "Second original point")
-    }
-
-    func testInsertResetPoints_resetNotBetweenPoints_noZeroInserted() {
-        // resets_at is BEFORE prev.timestamp → no zero-point
-        let result = evalJS("""
-            const data = [
-                {timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 80, five_hour_resets_at: '2026-02-24T08:00:00Z'},
-                {timestamp: '2026-02-24T14:00:00Z', five_hour_percent: 5, five_hour_resets_at: null},
-            ];
-            return insertResetPoints(data, 'five_hour_percent', 'five_hour_resets_at').length;
-        """) as? Int
-        XCTAssertEqual(result, 2, "resets_at before prev → no zero-point inserted")
-    }
-
-    func testInsertResetPoints_resetAfterCurr_noZeroInserted() {
-        // resets_at is AFTER curr.timestamp → not between prev and curr → no zero-point
-        let result = evalJS("""
-            const data = [
-                {timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 80, five_hour_resets_at: '2026-02-24T16:00:00Z'},
-                {timestamp: '2026-02-24T14:00:00Z', five_hour_percent: 5, five_hour_resets_at: null},
-            ];
-            return insertResetPoints(data, 'five_hour_percent', 'five_hour_resets_at').length;
-        """) as? Int
-        XCTAssertEqual(result, 2, "resets_at after curr → no zero-point inserted")
-    }
-
-    func testInsertResetPoints_skipsNullPercent() {
-        let result = evalJS("""
-            const data = [
-                {timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 10, five_hour_resets_at: null},
-                {timestamp: '2026-02-24T10:05:00Z', five_hour_percent: null, five_hour_resets_at: null},
-                {timestamp: '2026-02-24T10:10:00Z', five_hour_percent: 20, five_hour_resets_at: null},
-            ];
-            return insertResetPoints(data, 'five_hour_percent', 'five_hour_resets_at');
-        """) as? [[String: Any]]
-        // null percent → skipped
-        XCTAssertEqual(result?.count, 2)
-        XCTAssertEqual(result?[0]["y"] as? Double, 10.0)
-        XCTAssertEqual(result?[1]["y"] as? Double, 20.0)
-    }
-
-    func testInsertResetPoints_emptyInput_returnsEmpty() {
-        let result = evalJS("""
-            return insertResetPoints([], 'five_hour_percent', 'five_hour_resets_at').length;
-        """) as? Int
-        XCTAssertEqual(result, 0)
-    }
-
-    func testInsertResetPoints_sevenDayKey_alsoWorks() {
-        let result = evalJS("""
-            const data = [
-                {timestamp: '2026-02-24T10:00:00Z', seven_day_percent: 50, seven_day_resets_at: '2026-02-25T10:00:00Z'},
-                {timestamp: '2026-02-26T10:00:00Z', seven_day_percent: 5, seven_day_resets_at: null},
-            ];
-            const r = insertResetPoints(data, 'seven_day_percent', 'seven_day_resets_at');
-            return {count: r.length, zeroY: r[1].y, zeroX: r[1].x};
-        """) as? [String: Any]
-        XCTAssertEqual(result?["count"] as? Int, 3)
-        XCTAssertEqual(result?["zeroY"] as? Double, 0.0)
-        XCTAssertEqual(result?["zeroX"] as? String, "2026-02-25T10:00:00Z")
-    }
-
-    func testInsertResetPoints_multipleResets_insertsMultipleZeros() {
-        let result = evalJS("""
-            const data = [
-                {timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 80, five_hour_resets_at: '2026-02-24T12:00:00Z'},
-                {timestamp: '2026-02-24T14:00:00Z', five_hour_percent: 60, five_hour_resets_at: '2026-02-24T16:00:00Z'},
-                {timestamp: '2026-02-24T18:00:00Z', five_hour_percent: 30, five_hour_resets_at: null},
-            ];
-            return insertResetPoints(data, 'five_hour_percent', 'five_hour_resets_at').length;
-        """) as? Int
-        // Point 0 (80), zero at 12:00, Point 1 (60), zero at 16:00, Point 2 (30) = 5
-        XCTAssertEqual(result, 5,
-                       "Two resets → two zero-points inserted → 3 original + 2 zeros = 5")
     }
 
     // =========================================================
@@ -614,9 +507,9 @@ final class AnalysisJSLogicTests: AnalysisJSTestCase {
         let result = evalJS("""
             const deltas = computeDeltas(
                 [
-                    {timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 10},
-                    {timestamp: '2026-02-24T10:05:00Z', five_hour_percent: 20},
-                    {timestamp: '2026-02-24T10:10:00Z', five_hour_percent: 30},
+                    {timestamp: 1771927200, hourly_percent: 10},
+                    {timestamp: 1771927500, hourly_percent: 20},
+                    {timestamp: 1771927800, hourly_percent: 30},
                 ],
                 [
                     {timestamp: '2026-02-24T10:05:00Z', costUSD: 0.50},
@@ -638,71 +531,11 @@ final class AnalysisJSLogicTests: AnalysisJSTestCase {
                        0.50, accuracy: 0.001)
     }
 
-    // =========================================================
-    // MARK: - insertResetPoints — null entries between valid ones
-    // =========================================================
-
-    func testInsertResetPoints_nullsBetweenValids_resetStillDetected() {
-        // Null entries between valid ones should not prevent reset detection
-        let result = evalJS("""
-            const data = [
-                {timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 80, five_hour_resets_at: '2026-02-24T12:00:00Z'},
-                {timestamp: '2026-02-24T11:00:00Z', five_hour_percent: null, five_hour_resets_at: null},
-                {timestamp: '2026-02-24T11:30:00Z', five_hour_percent: null, five_hour_resets_at: null},
-                {timestamp: '2026-02-24T14:00:00Z', five_hour_percent: 5, five_hour_resets_at: null},
-            ];
-            const r = insertResetPoints(data, 'five_hour_percent', 'five_hour_resets_at');
-            return { count: r.length, zeroY: r[1]?.y, zeroX: r[1]?.x };
-        """) as? [String: Any]
-        // Should: point(80), zero at 12:00, point(5) = 3 entries (nulls skipped)
-        XCTAssertEqual(result?["count"] as? Int, 3,
-                       "Null entries skipped, reset still detected between valid entries")
-        XCTAssertEqual(result?["zeroY"] as? Double, 0.0)
-        XCTAssertEqual(result?["zeroX"] as? String, "2026-02-24T12:00:00Z")
-    }
-
-    // =========================================================
-    // MARK: - isGapSegment (real template)
-    // =========================================================
-
-    func testIsGapSegment_defaultThreshold30min() {
-        let result = evalJS("""
-            // Default gapThresholdMs = 30 * 60 * 1000 = 1800000
-            const ctx = {
-                p0: { parsed: { x: 0 } },
-                p1: { parsed: { x: 1800001 } }  // 30min + 1ms
-            };
-            return isGapSegment(ctx);
-        """) as? Bool
-        XCTAssertTrue(result!, "Gap > 30min should be detected")
-    }
-
-    func testIsGapSegment_exactlyThreshold_noGap() {
-        let result = evalJS("""
-            const ctx = {
-                p0: { parsed: { x: 0 } },
-                p1: { parsed: { x: 1800000 } }  // exactly 30min
-            };
-            return isGapSegment(ctx);
-        """) as? Bool
-        XCTAssertFalse(result!, "Gap exactly at threshold should NOT be detected (> not >=)")
-    }
-
-    func testIsGapSegment_belowThreshold_noGap() {
-        let result = evalJS("""
-            const ctx = {
-                p0: { parsed: { x: 0 } },
-                p1: { parsed: { x: 300000 } }  // 5min
-            };
-            return isGapSegment(ctx);
-        """) as? Bool
-        XCTAssertFalse(result!, "5min gap should not be detected with 30min threshold")
-    }
 }
 
-// MARK: - Additional JS Logic Tests (edge cases, timeSlots, stats, cumulative, gap)
+// MARK: - Additional JS Logic Tests (edge cases, timeSlots, stats, cumulative)
 
-/// Extended JS logic tests covering timeSlots filtering, isGapSegment, cumulative cost,
+/// Extended JS logic tests covering timeSlots filtering, cumulative cost,
 /// stats computation from main(), boundary values, and template drift detection.
 final class AnalysisJSExtendedTests: AnalysisJSTestCase {
 
@@ -751,45 +584,6 @@ final class AnalysisJSExtendedTests: AnalysisJSTestCase {
             return counts.every(c => c === 1);
         """) as? Bool
         XCTAssertTrue(result!, "Every hour 0-23 must match exactly one timeSlot (no gaps, no overlaps)")
-    }
-
-    // =========================================================
-    // MARK: - isGapSegment
-    // =========================================================
-
-    func testIsGapSegment_below30min_notAGap() {
-        let result = evalJS("""
-            const ctx = {p0: {parsed: {x: 0}}, p1: {parsed: {x: 29 * 60 * 1000}}};
-            return isGapSegment(ctx);
-        """) as? Bool
-        XCTAssertFalse(result!, "29 minutes should not be a gap (threshold is 30)")
-    }
-
-    func testIsGapSegment_exactly30min_notAGap() {
-        let result = evalJS("""
-            const ctx = {p0: {parsed: {x: 0}}, p1: {parsed: {x: 30 * 60 * 1000}}};
-            return isGapSegment(ctx);
-        """) as? Bool
-        XCTAssertFalse(result!, "Exactly 30 minutes should not be a gap (> not >=)")
-    }
-
-    func testIsGapSegment_31min_isAGap() {
-        let result = evalJS("""
-            const ctx = {p0: {parsed: {x: 0}}, p1: {parsed: {x: 31 * 60 * 1000}}};
-            return isGapSegment(ctx);
-        """) as? Bool
-        XCTAssertTrue(result!, "31 minutes should be a gap")
-    }
-
-    func testIsGapSegment_changingThreshold() {
-        let result = evalJS("""
-            gapThresholdMs = 60 * 60 * 1000; // 1 hour
-            const ctx = {p0: {parsed: {x: 0}}, p1: {parsed: {x: 45 * 60 * 1000}}};
-            const result = isGapSegment(ctx);
-            gapThresholdMs = 30 * 60 * 1000; // restore default
-            return result;
-        """) as? Bool
-        XCTAssertFalse(result!, "45 min should not be a gap when threshold is 60 min")
     }
 
     // =========================================================
@@ -870,11 +664,11 @@ final class AnalysisJSExtendedTests: AnalysisJSTestCase {
     func testStats_usageSpan_multipleRecords() {
         let result = evalJS("""
             const usageData = [
-                {timestamp: '2026-02-24T10:00:00Z'},
-                {timestamp: '2026-02-24T11:00:00Z'},
-                {timestamp: '2026-02-24T13:30:00Z'},
+                {timestamp: 1771927200},
+                {timestamp: 1771930800},
+                {timestamp: 1771939800},
             ];
-            const span = ((new Date(usageData[usageData.length-1].timestamp) - new Date(usageData[0].timestamp)) / 3600000).toFixed(1);
+            const span = ((new Date(usageData[usageData.length-1].timestamp * 1000) - new Date(usageData[0].timestamp * 1000)) / 3600000).toFixed(1);
             return parseFloat(span);
         """) as? Double
         XCTAssertEqual(result!, 3.5, accuracy: 0.01, "10:00 to 13:30 = 3.5 hours")
@@ -882,9 +676,9 @@ final class AnalysisJSExtendedTests: AnalysisJSTestCase {
 
     func testStats_usageSpan_singleRecord() {
         let result = evalJS("""
-            const usageData = [{timestamp: '2026-02-24T10:00:00Z'}];
+            const usageData = [{timestamp: 1771927200}];
             const span = usageData.length > 1
-                ? ((new Date(usageData[usageData.length-1].timestamp) - new Date(usageData[0].timestamp)) / 3600000).toFixed(1)
+                ? ((new Date(usageData[usageData.length-1].timestamp * 1000) - new Date(usageData[0].timestamp * 1000)) / 3600000).toFixed(1)
                 : '0';
             return span;
         """) as? String
@@ -894,12 +688,12 @@ final class AnalysisJSExtendedTests: AnalysisJSTestCase {
     func testStats_latestValues() {
         let result = evalJS("""
             const usageData = [
-                {five_hour_percent: 10, seven_day_percent: 5},
-                {five_hour_percent: 42.5, seven_day_percent: 15.3},
+                {hourly_percent: 10, weekly_percent: 5},
+                {hourly_percent: 42.5, weekly_percent: 15.3},
             ];
             return {
-                fiveH: usageData[usageData.length - 1]?.five_hour_percent ?? '-',
-                sevenD: usageData[usageData.length - 1]?.seven_day_percent ?? '-',
+                fiveH: usageData[usageData.length - 1]?.hourly_percent ?? '-',
+                sevenD: usageData[usageData.length - 1]?.weekly_percent ?? '-',
             };
         """) as? [String: Any]
         XCTAssertEqual(result?["fiveH"] as? Double, 42.5)
@@ -910,8 +704,8 @@ final class AnalysisJSExtendedTests: AnalysisJSTestCase {
         let result = evalJS("""
             const usageData = [];
             return {
-                fiveH: usageData[usageData.length - 1]?.five_hour_percent ?? '-',
-                sevenD: usageData[usageData.length - 1]?.seven_day_percent ?? '-',
+                fiveH: usageData[usageData.length - 1]?.hourly_percent ?? '-',
+                sevenD: usageData[usageData.length - 1]?.weekly_percent ?? '-',
             };
         """) as? [String: Any]
         XCTAssertEqual(result?["fiveH"] as? String, "-", "Empty data → dash fallback")
@@ -947,39 +741,13 @@ final class AnalysisJSExtendedTests: AnalysisJSTestCase {
         XCTAssertEqual(result!, 0.000003, accuracy: 0.0000001)
     }
 
-    func testInsertResetPoints_percentAt100() {
-        let result = evalJS("""
-            const data = [
-                {timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 100, five_hour_resets_at: '2026-02-24T12:00:00Z'},
-                {timestamp: '2026-02-24T14:00:00Z', five_hour_percent: 0, five_hour_resets_at: null},
-            ];
-            const r = insertResetPoints(data, 'five_hour_percent', 'five_hour_resets_at');
-            return {count: r.length, first: r[0].y, zero: r[1].y, last: r[2].y};
-        """) as? [String: Any]
-        XCTAssertEqual(result?["count"] as? Int, 3)
-        XCTAssertEqual(result?["first"] as? Double, 100.0, "100% value preserved")
-        XCTAssertEqual(result?["zero"] as? Double, 0.0, "Reset zero-point")
-        XCTAssertEqual(result?["last"] as? Double, 0.0, "0% value preserved")
-    }
-
-    func testInsertResetPoints_percentAtZero() {
-        let result = evalJS("""
-            const data = [
-                {timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 0, five_hour_resets_at: null},
-                {timestamp: '2026-02-24T14:00:00Z', five_hour_percent: 0, five_hour_resets_at: null},
-            ];
-            return insertResetPoints(data, 'five_hour_percent', 'five_hour_resets_at').length;
-        """) as? Int
-        XCTAssertEqual(result, 2, "Zero percent is valid (not null), should not be skipped")
-    }
-
     func testComputeDeltas_exactBoundaryTimestamp() {
         // Token at t0 (inclusive) should be included, token at t1 (exclusive) should not
         let result = evalJS("""
             const deltas = computeDeltas(
                 [
-                    {timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 10},
-                    {timestamp: '2026-02-24T10:05:00Z', five_hour_percent: 20},
+                    {timestamp: 1771927200, hourly_percent: 10},
+                    {timestamp: 1771927500, hourly_percent: 20},
                 ],
                 [
                     {timestamp: '2026-02-24T10:00:00Z', costUSD: 0.50},
@@ -1030,8 +798,8 @@ final class AnalysisJSExtendedTests: AnalysisJSTestCase {
             const tokenData = rawTokens.map(r => ({timestamp: r.timestamp, costUSD: costForRecord(r)}));
 
             const usageData = [
-                {timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 10},
-                {timestamp: '2026-02-24T10:05:00Z', five_hour_percent: 15},
+                {timestamp: 1771927200, hourly_percent: 10},
+                {timestamp: 1771927500, hourly_percent: 15},
             ];
 
             const deltas = computeDeltas(usageData, tokenData);
@@ -1060,9 +828,9 @@ final class AnalysisJSExtendedTests: AnalysisJSTestCase {
             const tokenData = rawTokens.map(r => ({timestamp: r.timestamp, costUSD: costForRecord(r)}));
 
             const usageData = [
-                {timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 0},
-                {timestamp: '2026-02-24T10:05:00Z', five_hour_percent: 5},
-                {timestamp: '2026-02-24T10:10:00Z', five_hour_percent: 6},
+                {timestamp: 1771927200, hourly_percent: 0},
+                {timestamp: 1771927500, hourly_percent: 5},
+                {timestamp: 1771927800, hourly_percent: 6},
             ];
 
             const deltas = computeDeltas(usageData, tokenData);
@@ -1119,18 +887,6 @@ final class AnalysisJSExtendedTests: AnalysisJSTestCase {
                       "KDE must use Silverman's rule of thumb for bandwidth")
     }
 
-    func testTemplateDrift_insertResetPointsZeroValue() {
-        let html = AnalysisExporter.htmlTemplate
-        XCTAssertTrue(html.contains("result.push({ x: prevResets, y: 0 })"),
-                      "insertResetPoints must push y:0 at reset boundary")
-    }
-
-    func testTemplateDrift_gapThresholdDefault() {
-        let html = AnalysisExporter.htmlTemplate
-        XCTAssertTrue(html.contains("let gapThresholdMs = 30 * 60 * 1000"),
-                      "Default gap threshold must be 30 minutes")
-    }
-
     func testTemplateDrift_modelPricingValues() {
         let html = AnalysisExporter.htmlTemplate
         // Verify exact pricing lines to catch any price update
@@ -1146,8 +902,8 @@ final class AnalysisJSExtendedTests: AnalysisJSTestCase {
     func testComputeDeltas_100Intervals() {
         let result = evalJS("""
             const usageData = Array.from({length: 101}, (_, i) => ({
-                timestamp: new Date(Date.UTC(2026, 1, 24, 10, i * 5)).toISOString(),
-                five_hour_percent: i * 0.5,
+                timestamp: Math.floor(Date.UTC(2026, 1, 24, 10, i * 5) / 1000),
+                hourly_percent: i * 0.5,
             }));
             const tokenData = Array.from({length: 100}, (_, i) => ({
                 timestamp: new Date(Date.UTC(2026, 1, 24, 10, i * 5 + 1)).toISOString(),
@@ -1172,8 +928,8 @@ final class AnalysisJSExtendedTests: AnalysisJSTestCase {
         let result = evalJS("""
             const deltas = computeDeltas(
                 [
-                    {timestamp: '2026-02-24T10:00:00.000Z', five_hour_percent: 0},
-                    {timestamp: '2026-02-24T10:05:00.000Z', five_hour_percent: 10},
+                    {timestamp: 1771927200, hourly_percent: 0},
+                    {timestamp: 1771927500, hourly_percent: 10},
                 ],
                 [{timestamp: '2026-02-24T10:00:00.000Z', costUSD: 1.0}]
             );
@@ -1187,8 +943,8 @@ final class AnalysisJSExtendedTests: AnalysisJSTestCase {
         let result = evalJS("""
             const deltas = computeDeltas(
                 [
-                    {timestamp: '2026-02-24T10:00:00.000Z', five_hour_percent: 0},
-                    {timestamp: '2026-02-24T10:05:00.000Z', five_hour_percent: 10},
+                    {timestamp: 1771927200, hourly_percent: 0},
+                    {timestamp: 1771927500, hourly_percent: 10},
                 ],
                 [{timestamp: '2026-02-24T10:05:00.000Z', costUSD: 1.0}]
             );
@@ -1265,20 +1021,20 @@ final class AnalysisTemplateJSTests: AnalysisJSTestCase {
                 costForRecord: typeof costForRecord === 'function',
                 computeKDE: typeof computeKDE === 'function',
                 computeDeltas: typeof computeDeltas === 'function',
-                insertResetPoints: typeof insertResetPoints === 'function',
-                isGapSegment: typeof isGapSegment === 'function',
                 buildHeatmap: typeof buildHeatmap === 'function',
                 buildScatterChart: typeof buildScatterChart === 'function',
                 main: typeof main === 'function',
                 renderMain: typeof renderMain === 'function',
                 destroyAllCharts: typeof destroyAllCharts === 'function',
                 localDateStr: typeof localDateStr === 'function',
-                toISORange: typeof toISORange === 'function',
+                dateInputToEpoch: typeof dateInputToEpoch === 'function',
                 initGlobalRange: typeof initGlobalRange === 'function',
                 renderUsageTab: typeof renderUsageTab === 'function',
                 renderCostTab: typeof renderCostTab === 'function',
                 renderCumulativeTab: typeof renderCumulativeTab === 'function',
-                renderEfficiencyTab: typeof renderEfficiencyTab === 'function',
+                renderScatterTab: typeof renderScatterTab === 'function',
+                renderKdeTab: typeof renderKdeTab === 'function',
+                renderHeatmapTab: typeof renderHeatmapTab === 'function',
                 renderTab: typeof renderTab === 'function',
                 initTabs: typeof initTabs === 'function',
                 timeSlots: Array.isArray(timeSlots),
@@ -1295,15 +1051,10 @@ final class AnalysisTemplateJSTests: AnalysisJSTestCase {
     func testTemplateExtraction_globalVariablesDefined() {
         let result = evalJS("""
             return {
-                hasGapThresholdMs: typeof gapThresholdMs === 'number',
-                gapThresholdValue: gapThresholdMs,
                 hasCharts: typeof _charts === 'object',
                 hasRendered: typeof _rendered === 'object',
             };
         """) as? [String: Any]
-        XCTAssertEqual(result?["hasGapThresholdMs"] as? Bool, true)
-        XCTAssertEqual(result?["gapThresholdValue"] as? Int, 1_800_000, // 30 * 60 * 1000
-                       "Default gap threshold should be 30 minutes in ms")
         XCTAssertEqual(result?["hasCharts"] as? Bool, true)
         XCTAssertEqual(result?["hasRendered"] as? Bool, true)
     }
@@ -1404,8 +1155,8 @@ final class AnalysisTemplateJSTests: AnalysisJSTestCase {
     func testRealTemplate_computeDeltas_basicDelta() {
         let result = evalJS("""
             const deltas = computeDeltas(
-                [{timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 10},
-                 {timestamp: '2026-02-24T10:05:00Z', five_hour_percent: 15}],
+                [{timestamp: 1771927200, hourly_percent: 10},
+                 {timestamp: 1771927500, hourly_percent: 15}],
                 [{timestamp: '2026-02-24T10:02:00Z', costUSD: 0.50}]
             );
             return {count: deltas.length, x: deltas[0].x, y: deltas[0].y};
@@ -1418,8 +1169,8 @@ final class AnalysisTemplateJSTests: AnalysisJSTestCase {
     func testRealTemplate_computeDeltas_filtersLowCost() {
         let result = evalJS("""
             return computeDeltas(
-                [{timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 10},
-                 {timestamp: '2026-02-24T10:05:00Z', five_hour_percent: 20}],
+                [{timestamp: 1771927200, hourly_percent: 10},
+                 {timestamp: 1771927500, hourly_percent: 20}],
                 [{timestamp: '2026-02-24T10:02:00Z', costUSD: 0.0005}]
             ).length;
         """) as? Int
@@ -1429,8 +1180,8 @@ final class AnalysisTemplateJSTests: AnalysisJSTestCase {
     func testRealTemplate_computeDeltas_sumsMultipleTokens() {
         let result = evalJS("""
             const deltas = computeDeltas(
-                [{timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 10},
-                 {timestamp: '2026-02-24T10:10:00Z', five_hour_percent: 30}],
+                [{timestamp: 1771927200, hourly_percent: 10},
+                 {timestamp: 1771927800, hourly_percent: 30}],
                 [{timestamp: '2026-02-24T10:02:00Z', costUSD: 0.50},
                  {timestamp: '2026-02-24T10:05:00Z', costUSD: 1.00},
                  {timestamp: '2026-02-24T10:08:00Z', costUSD: 0.25}]
@@ -1444,8 +1195,8 @@ final class AnalysisTemplateJSTests: AnalysisJSTestCase {
     func testRealTemplate_computeDeltas_nullPercentSkipped() {
         let result = evalJS("""
             const deltas = computeDeltas(
-                [{timestamp: '2026-02-24T10:00:00Z', five_hour_percent: null},
-                 {timestamp: '2026-02-24T10:05:00Z', five_hour_percent: 10}],
+                [{timestamp: 1771927200, hourly_percent: null},
+                 {timestamp: 1771927500, hourly_percent: 10}],
                 [{timestamp: '2026-02-24T10:02:00Z', costUSD: 1.0}]
             );
             return deltas.length;
@@ -1456,8 +1207,8 @@ final class AnalysisTemplateJSTests: AnalysisJSTestCase {
     func testRealTemplate_computeDeltas_negativeDelta() {
         let result = evalJS("""
             const deltas = computeDeltas(
-                [{timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 50},
-                 {timestamp: '2026-02-24T10:05:00Z', five_hour_percent: 20}],
+                [{timestamp: 1771927200, hourly_percent: 50},
+                 {timestamp: 1771927500, hourly_percent: 20}],
                 [{timestamp: '2026-02-24T10:02:00Z', costUSD: 0.50}]
             );
             return deltas[0].y;
@@ -1468,8 +1219,8 @@ final class AnalysisTemplateJSTests: AnalysisJSTestCase {
     func testRealTemplate_computeDeltas_tokenBoundary_t0Inclusive_t1Exclusive() {
         let result = evalJS("""
             const deltas = computeDeltas(
-                [{timestamp: '2026-02-24T10:00:00.000Z', five_hour_percent: 0},
-                 {timestamp: '2026-02-24T10:05:00.000Z', five_hour_percent: 10}],
+                [{timestamp: 1771927200, hourly_percent: 0},
+                 {timestamp: 1771927500, hourly_percent: 10}],
                 [{timestamp: '2026-02-24T10:00:00.000Z', costUSD: 0.50},
                  {timestamp: '2026-02-24T10:05:00.000Z', costUSD: 0.75}]
             );
@@ -1534,63 +1285,6 @@ final class AnalysisTemplateJSTests: AnalysisJSTestCase {
     }
 
     // =========================================================
-    // MARK: - insertResetPoints (real template)
-    // =========================================================
-
-    func testRealTemplate_insertResetPoints_noResets() {
-        let result = evalJS("""
-            const data = [
-                {timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 10, five_hour_resets_at: null},
-                {timestamp: '2026-02-24T10:05:00Z', five_hour_percent: 20, five_hour_resets_at: null},
-            ];
-            return insertResetPoints(data, 'five_hour_percent', 'five_hour_resets_at');
-        """) as? [[String: Any]]
-        XCTAssertEqual(result?.count, 2)
-        XCTAssertEqual(result?[0]["y"] as? Double, 10.0)
-        XCTAssertEqual(result?[1]["y"] as? Double, 20.0)
-    }
-
-    func testRealTemplate_insertResetPoints_insertsZeroAtResetBoundary() {
-        let result = evalJS("""
-            const data = [
-                {timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 80, five_hour_resets_at: '2026-02-24T12:00:00Z'},
-                {timestamp: '2026-02-24T14:00:00Z', five_hour_percent: 5, five_hour_resets_at: null},
-            ];
-            return insertResetPoints(data, 'five_hour_percent', 'five_hour_resets_at');
-        """) as? [[String: Any]]
-        XCTAssertEqual(result?.count, 3, "original + zero-point + original")
-        XCTAssertEqual(result?[0]["y"] as? Double, 80.0)
-        XCTAssertEqual(result?[1]["y"] as? Double, 0.0, "Zero-point at reset boundary")
-        XCTAssertEqual(result?[1]["x"] as? String, "2026-02-24T12:00:00Z")
-        XCTAssertEqual(result?[2]["y"] as? Double, 5.0)
-    }
-
-    func testRealTemplate_insertResetPoints_skipsNullPercent() {
-        let result = evalJS("""
-            const data = [
-                {timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 10, five_hour_resets_at: null},
-                {timestamp: '2026-02-24T10:05:00Z', five_hour_percent: null, five_hour_resets_at: null},
-                {timestamp: '2026-02-24T10:10:00Z', five_hour_percent: 20, five_hour_resets_at: null},
-            ];
-            return insertResetPoints(data, 'five_hour_percent', 'five_hour_resets_at').length;
-        """) as? Int
-        XCTAssertEqual(result, 2, "null percent rows should be skipped")
-    }
-
-    func testRealTemplate_insertResetPoints_sevenDayKey() {
-        let result = evalJS("""
-            const data = [
-                {timestamp: '2026-02-24T10:00:00Z', seven_day_percent: 50, seven_day_resets_at: '2026-02-25T10:00:00Z'},
-                {timestamp: '2026-02-26T10:00:00Z', seven_day_percent: 5, seven_day_resets_at: null},
-            ];
-            const r = insertResetPoints(data, 'seven_day_percent', 'seven_day_resets_at');
-            return {count: r.length, zeroY: r[1].y};
-        """) as? [String: Any]
-        XCTAssertEqual(result?["count"] as? Int, 3)
-        XCTAssertEqual(result?["zeroY"] as? Double, 0.0)
-    }
-
-    // =========================================================
     // MARK: - timeSlots (real template)
     // =========================================================
 
@@ -1624,31 +1318,6 @@ final class AnalysisTemplateJSTests: AnalysisJSTestCase {
     }
 
     // =========================================================
-    // MARK: - isGapSegment (real template)
-    // =========================================================
-
-    func testRealTemplate_isGapSegment_below30min_notAGap() {
-        let result = evalJS("""
-            return isGapSegment({p0: {parsed: {x: 0}}, p1: {parsed: {x: 29 * 60 * 1000}}});
-        """) as? Bool
-        XCTAssertFalse(result!)
-    }
-
-    func testRealTemplate_isGapSegment_exactly30min_notAGap() {
-        let result = evalJS("""
-            return isGapSegment({p0: {parsed: {x: 0}}, p1: {parsed: {x: 30 * 60 * 1000}}});
-        """) as? Bool
-        XCTAssertFalse(result!, "Exactly 30 min is NOT a gap (> not >=)")
-    }
-
-    func testRealTemplate_isGapSegment_31min_isAGap() {
-        let result = evalJS("""
-            return isGapSegment({p0: {parsed: {x: 0}}, p1: {parsed: {x: 31 * 60 * 1000}}});
-        """) as? Bool
-        XCTAssertTrue(result!)
-    }
-
-    // =========================================================
     // MARK: - End-to-end pipeline (real template)
     // =========================================================
 
@@ -1660,8 +1329,8 @@ final class AnalysisTemplateJSTests: AnalysisJSTestCase {
             ];
             const tokenData = rawTokens.map(r => ({timestamp: r.timestamp, costUSD: costForRecord(r)}));
             const usageData = [
-                {timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 10},
-                {timestamp: '2026-02-24T10:05:00Z', five_hour_percent: 15},
+                {timestamp: 1771927200, hourly_percent: 10},
+                {timestamp: 1771927500, hourly_percent: 15},
             ];
             const deltas = computeDeltas(usageData, tokenData);
             return {
@@ -1688,9 +1357,9 @@ final class AnalysisTemplateJSTests: AnalysisJSTestCase {
             ];
             const tokenData = rawTokens.map(r => ({timestamp: r.timestamp, costUSD: costForRecord(r)}));
             const usageData = [
-                {timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 0},
-                {timestamp: '2026-02-24T10:05:00Z', five_hour_percent: 5},
-                {timestamp: '2026-02-24T10:10:00Z', five_hour_percent: 6},
+                {timestamp: 1771927200, hourly_percent: 0},
+                {timestamp: 1771927500, hourly_percent: 5},
+                {timestamp: 1771927800, hourly_percent: 6},
             ];
             const deltas = computeDeltas(usageData, tokenData);
             return {count: deltas.length, d0cost: deltas[0]?.x, d0pct: deltas[0]?.y,

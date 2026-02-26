@@ -51,21 +51,23 @@ final class AnalysisWebViewIntegrationTests: XCTestCase {
         let usagePath = tmpDir.appendingPathComponent("usage.db").path
         let tokensPath = tmpDir.appendingPathComponent("tokens.db").path
         AnalysisTestDB.createUsageDb(at: usagePath, rows: [
-            ("2026-02-24T10:00:00.000Z", 42.5, 15.0),
-            ("2026-02-24T10:05:00.000Z", 55.0, 20.0),
+            (1771927200, 42.5, 15.0),
+            (1771927500, 55.0, 20.0),
         ])
         AnalysisTestDB.createTokensDb(at: tokensPath)
 
         let (webView, navExp) = loadWebView(usagePath: usagePath, tokensPath: tokensPath) {
             "<!DOCTYPE html><html><body></body></html>"
         }
-        wait(for: [navExp], timeout: 5.0)
+        if XCTWaiter.wait(for: [navExp], timeout: 5.0) == .timedOut {
+            XCTFail("WKWebView page load timed out")
+        }
 
         let jsExp = expectation(description: "JS executed")
         let jsCode = """
             const res = await fetch('wcc://usage.json');
             const json = await res.json();
-            return {ok: res.ok, status: res.status, count: json.length, firstFiveH: json[0]?.five_hour_percent};
+            return {ok: res.ok, status: res.status, count: json.length, firstHourly: json[0]?.hourly_percent};
             """
         webView.callAsyncJavaScript(jsCode, arguments: [:], in: nil, in: .page) { result in
             switch result {
@@ -79,13 +81,15 @@ final class AnalysisWebViewIntegrationTests: XCTestCase {
                                "fetch('wcc://usage.json') must return ok:true")
                 XCTAssertEqual(dict["status"] as? Int, 200)
                 XCTAssertEqual(dict["count"] as? Int, 2)
-                XCTAssertEqual(dict["firstFiveH"] as? Double, 42.5)
+                XCTAssertEqual(dict["firstHourly"] as? Double, 42.5)
             case .failure(let error):
                 XCTFail("JS failed: \(error)")
             }
             jsExp.fulfill()
         }
-        wait(for: [jsExp], timeout: 5.0)
+        if XCTWaiter.wait(for: [jsExp], timeout: 5.0) == .timedOut {
+            XCTFail("JS fetch timed out")
+        }
     }
 
     /// In WKWebView, custom scheme 404 causes fetch() to throw TypeError (not return status 404).
@@ -99,7 +103,9 @@ final class AnalysisWebViewIntegrationTests: XCTestCase {
         let (webView, navExp) = loadWebView(usagePath: usagePath, tokensPath: tokensPath) {
             "<!DOCTYPE html><html><body></body></html>"
         }
-        wait(for: [navExp], timeout: 5.0)
+        if XCTWaiter.wait(for: [navExp], timeout: 5.0) == .timedOut {
+            XCTFail("WKWebView page load timed out")
+        }
 
         let jsExp = expectation(description: "JS executed")
         let jsCode = """
@@ -125,7 +131,9 @@ final class AnalysisWebViewIntegrationTests: XCTestCase {
             }
             jsExp.fulfill()
         }
-        wait(for: [jsExp], timeout: 5.0)
+        if XCTWaiter.wait(for: [jsExp], timeout: 5.0) == .timedOut {
+            XCTFail("JS fetch timed out")
+        }
     }
 
 }

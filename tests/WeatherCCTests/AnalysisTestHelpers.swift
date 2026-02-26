@@ -52,8 +52,10 @@ final class MockSchemeTask: NSObject, WKURLSchemeTask {
 /// Shared SQLite database creation helpers used across multiple test files.
 enum AnalysisTestDB {
 
-    /// Create a real SQLite usage.db with the same schema as UsageStore.
-    static func createUsageDb(at path: String, rows: [(String, Double, Double)]) {
+    /// Create a real SQLite usage.db with the normalized 3-table schema.
+    /// Tuple: (epoch timestamp, hourly_percent, weekly_percent).
+    /// Session tables are created but left empty (LEFT JOIN returns NULL for resets_at).
+    static func createUsageDb(at path: String, rows: [(Int, Double, Double)]) {
         var db: OpaquePointer?
         guard sqlite3_open(path, &db) == SQLITE_OK else {
             XCTFail("Failed to create test usage.db")
@@ -62,24 +64,33 @@ enum AnalysisTestDB {
         defer { sqlite3_close(db) }
 
         let createSQL = """
+            CREATE TABLE IF NOT EXISTS hourly_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                resets_at INTEGER NOT NULL UNIQUE
+            );
+            CREATE TABLE IF NOT EXISTS weekly_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                resets_at INTEGER NOT NULL UNIQUE
+            );
             CREATE TABLE IF NOT EXISTS usage_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp TEXT NOT NULL,
-                five_hour_percent REAL,
-                seven_day_percent REAL,
-                five_hour_resets_at TEXT,
-                seven_day_resets_at TEXT
+                timestamp INTEGER NOT NULL,
+                hourly_percent REAL,
+                weekly_percent REAL,
+                hourly_session_id INTEGER REFERENCES hourly_sessions(id),
+                weekly_session_id INTEGER REFERENCES weekly_sessions(id),
+                CHECK (hourly_percent IS NOT NULL OR weekly_percent IS NOT NULL)
             );
             """
         sqlite3_exec(db, createSQL, nil, nil, nil)
 
-        for (ts, fiveH, sevenD) in rows {
-            let insertSQL = "INSERT INTO usage_log (timestamp, five_hour_percent, seven_day_percent) VALUES (?, ?, ?);"
+        for (ts, hourly, weekly) in rows {
+            let insertSQL = "INSERT INTO usage_log (timestamp, hourly_percent, weekly_percent) VALUES (?, ?, ?);"
             var stmt: OpaquePointer?
             sqlite3_prepare_v2(db, insertSQL, -1, &stmt, nil)
-            sqlite3_bind_text(stmt, 1, (ts as NSString).utf8String, -1, nil)
-            sqlite3_bind_double(stmt, 2, fiveH)
-            sqlite3_bind_double(stmt, 3, sevenD)
+            sqlite3_bind_int64(stmt, 1, Int64(ts))
+            sqlite3_bind_double(stmt, 2, hourly)
+            sqlite3_bind_double(stmt, 3, weekly)
             sqlite3_step(stmt)
             sqlite3_finalize(stmt)
         }
@@ -151,7 +162,9 @@ class AnalysisJSTestCase: XCTestCase {
         webView.navigationDelegate = navDelegate
         objc_setAssociatedObject(webView!, "navDelegate", navDelegate, .OBJC_ASSOCIATION_RETAIN)
         webView.loadHTMLString(TemplateTestHelper.testHTML, baseURL: nil)
-        wait(for: [exp], timeout: 10.0)
+        if XCTWaiter.wait(for: [exp], timeout: 10.0) == .timedOut {
+            XCTFail("WKWebView page load timed out — TemplateTestHelper.testHTML may have a script error")
+        }
     }
 
     override func tearDown() {
@@ -160,17 +173,29 @@ class AnalysisJSTestCase: XCTestCase {
     }
 
     func evalJS(_ code: String, file: StaticString = #file, line: UInt = #line) -> Any? {
+        // Wrap in try/catch so undefined function calls fail immediately instead of hanging
+        let wrapped = """
+            try {
+                \(code)
+            } catch (e) {
+                throw new Error('evalJS caught: ' + e.message);
+            }
+            """
         let exp = expectation(description: "JS eval")
         var jsResult: Any?
         var jsError: Error?
-        webView.callAsyncJavaScript(code, arguments: [:], in: nil, in: .page) { result in
+        webView.callAsyncJavaScript(wrapped, arguments: [:], in: nil, in: .page) { result in
             switch result {
             case .success(let value): jsResult = value
             case .failure(let error): jsError = error
             }
             exp.fulfill()
         }
-        wait(for: [exp], timeout: 5.0)
+        let waiterResult = XCTWaiter.wait(for: [exp], timeout: 5.0)
+        if waiterResult == .timedOut {
+            XCTFail("evalJS timed out — JS likely references an undefined function or variable", file: file, line: line)
+            return nil
+        }
         if let err = jsError { XCTFail("JS error: \(err)", file: file, line: line) }
         return jsResult
     }
@@ -227,21 +252,25 @@ enum TemplateTestHelper {
             <div class="tab-bar">
                 <button class="tab-btn active" data-tab="usage">Usage</button>
                 <button class="tab-btn" data-tab="cost">Cost</button>
-                <button class="tab-btn" data-tab="efficiency">Efficiency</button>
+                <button class="tab-btn" data-tab="scatter">Scatter</button>
+                <button class="tab-btn" data-tab="kde">KDE</button>
+                <button class="tab-btn" data-tab="heatmap">Heatmap</button>
                 <button class="tab-btn" data-tab="cumulative">Cumulative</button>
             </div>
             <div class="tab-content active" id="tab-usage">
                 <canvas id="usageTimeline"></canvas>
-                <input type="range" id="gapSlider" min="5" max="360" step="5" value="30">
-                <span id="gapVal">30 min</span>
             </div>
             <div class="tab-content" id="tab-cost">
                 <canvas id="costTimeline"></canvas>
                 <canvas id="costScatter"></canvas>
             </div>
-            <div class="tab-content" id="tab-efficiency">
+            <div class="tab-content" id="tab-scatter">
                 <canvas id="effScatter"></canvas>
+            </div>
+            <div class="tab-content" id="tab-kde">
                 <canvas id="kdeChart"></canvas>
+            </div>
+            <div class="tab-content" id="tab-heatmap">
                 <div id="heatmap"></div>
             </div>
             <div class="tab-content" id="tab-cumulative">
@@ -252,6 +281,7 @@ enum TemplateTestHelper {
         // Stub Chart.js — captures chart configurations for test assertions
         const _chartConfigs = {};
         class Chart {
+            static register() {}
             constructor(canvas, config) {
                 const id = canvas?.id || 'unknown';
                 _chartConfigs[id] = config;
