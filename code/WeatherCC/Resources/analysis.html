@@ -145,6 +145,18 @@ h2 {
   cursor: pointer;
 }
 .date-range button:hover { background: #2ea043; }
+.date-range .preset-btn {
+  background: #21262d;
+  border: 1px solid #30363d;
+  color: #c9d1d9;
+  padding: 4px 12px;
+}
+.date-range .preset-btn:hover { background: #30363d; }
+.date-range .preset-btn.active {
+  background: #1f6feb;
+  border-color: #1f6feb;
+  color: #fff;
+}
 #loading {
   text-align: center;
   padding: 60px;
@@ -157,6 +169,15 @@ h2 {
 <h1>WeatherCC — Usage Analysis</h1>
 <div id="loading">Loading data...</div>
 <div id="app" style="display:none;">
+
+<div class="date-range" id="globalRange">
+  <label>From <input type="date" id="globalFrom"></label>
+  <label>To <input type="date" id="globalTo"></label>
+  <button class="preset-btn" data-days="7">7d</button>
+  <button class="preset-btn" data-days="30">30d</button>
+  <button class="preset-btn" data-days="0">All</button>
+  <button id="applyGlobal">Apply</button>
+</div>
 
 <div class="stats" id="stats"></div>
 
@@ -189,11 +210,6 @@ h2 {
 </div>
 
 <div class="tab-content" id="tab-efficiency">
-  <div class="date-range">
-    <label>From <input type="date" id="dateFrom"></label>
-    <label>To <input type="date" id="dateTo"></label>
-    <button id="applyRange">Apply</button>
-  </div>
   <div class="grid">
     <div class="card">
       <h2>Efficiency (Δ5h% vs Δ Cost)</h2>
@@ -246,20 +262,29 @@ function costForRecord(r) {
        + r.cache_read_tokens / M * p.cacheRead;
 }
 
-async function loadData() {
-  document.getElementById('loading').textContent = 'Loading data...';
+async function fetchJSON(url) {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return [];
+    return await res.json();
+  } catch { return []; }
+}
 
-  async function fetchJSON(url) {
-    try {
-      const res = await fetch(url);
-      if (!res.ok) return [];
-      return await res.json();
-    } catch { return []; }
+async function loadData(from, to) {
+  document.getElementById('loading').textContent = 'Loading data...';
+  document.getElementById('loading').style.display = '';
+
+  let usageUrl = 'wcc://usage.json';
+  let tokensUrl = 'wcc://tokens.json';
+  if (from && to) {
+    const params = `from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
+    usageUrl += '?' + params;
+    tokensUrl += '?' + params;
   }
 
   const [usageData, rawTokenData] = await Promise.all([
-    fetchJSON('wcc://usage.json'),
-    fetchJSON('wcc://tokens.json'),
+    fetchJSON(usageUrl),
+    fetchJSON(tokensUrl),
   ]);
 
   const tokenData = rawTokenData.map(r => ({
@@ -593,24 +618,26 @@ function renderTab(tabId) {
   switch (tabId) {
     case 'usage': renderUsageTab(); break;
     case 'cost': renderCostTab(); break;
-    case 'efficiency':
-      const filtered = getFilteredDeltas();
-      renderEfficiencyTab(filtered);
-      break;
+    case 'efficiency': renderEfficiencyTab(_allDeltas); break;
     case 'cumulative': renderCumulativeTab(); break;
   }
 }
 
-function getFilteredDeltas() {
-  const fromVal = document.getElementById('dateFrom').value;
-  const toVal = document.getElementById('dateTo').value;
-  if (!fromVal || !toVal) return _allDeltas;
-  const from = new Date(fromVal + 'T00:00:00');
-  const to = new Date(toVal + 'T23:59:59');
-  return _allDeltas.filter(d => {
-    const dt = d.date || new Date(d.timestamp);
-    return dt >= from && dt <= to;
-  });
+function destroyAllCharts() {
+  for (const key of Object.keys(_charts)) {
+    if (_charts[key]) { _charts[key].destroy(); _charts[key] = null; }
+  }
+  for (const key of Object.keys(_rendered)) { delete _rendered[key]; }
+}
+
+function localDateStr(d) {
+  return d.getFullYear() + '-'
+    + String(d.getMonth() + 1).padStart(2, '0') + '-'
+    + String(d.getDate()).padStart(2, '0');
+}
+
+function toISORange(dateStr, end) {
+  return dateStr + (end ? 'T23:59:59Z' : 'T00:00:00Z');
 }
 
 function initTabs() {
@@ -630,25 +657,52 @@ function initTabs() {
       }
     });
   });
-
-  document.getElementById('applyRange').addEventListener('click', () => {
-    const filtered = getFilteredDeltas();
-    renderEfficiencyTab(filtered);
-    _rendered['efficiency'] = true;
-  });
-
-  function localDateStr(d) {
-    return d.getFullYear() + '-'
-      + String(d.getMonth() + 1).padStart(2, '0') + '-'
-      + String(d.getDate()).padStart(2, '0');
-  }
-  const today = new Date();
-  const threeDaysAgo = new Date(Date.now() - 3 * 86400000);
-  document.getElementById('dateTo').value = localDateStr(today);
-  document.getElementById('dateFrom').value = localDateStr(threeDaysAgo);
 }
 
-function main(usageData, tokenData) {
+let _meta = {};
+
+function initGlobalRange() {
+  const fromInput = document.getElementById('globalFrom');
+  const toInput = document.getElementById('globalTo');
+  const applyBtn = document.getElementById('applyGlobal');
+  const presetBtns = document.querySelectorAll('.preset-btn');
+
+  async function applyRange() {
+    const from = toISORange(fromInput.value, false);
+    const to = toISORange(toInput.value, true);
+    destroyAllCharts();
+    const { usageData, tokenData } = await loadData(from, to);
+    renderMain(usageData, tokenData);
+  }
+
+  applyBtn.addEventListener('click', applyRange);
+
+  presetBtns.forEach(btn => {
+    btn.addEventListener('click', async () => {
+      presetBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const days = parseInt(btn.dataset.days);
+      if (days === 0) {
+        // All: clear range, fetch everything
+        if (_meta.oldestTimestamp) {
+          fromInput.value = localDateStr(new Date(_meta.oldestTimestamp));
+        }
+        toInput.value = localDateStr(new Date());
+        destroyAllCharts();
+        const { usageData, tokenData } = await loadData();
+        renderMain(usageData, tokenData);
+      } else {
+        const to = new Date();
+        const from = new Date(Date.now() - days * 86400000);
+        fromInput.value = localDateStr(from);
+        toInput.value = localDateStr(to);
+        await applyRange();
+      }
+    });
+  });
+}
+
+function renderMain(usageData, tokenData) {
   document.getElementById('loading').textContent = 'Drawing charts...';
   document.getElementById('app').style.display = '';
 
@@ -674,19 +728,53 @@ function main(usageData, tokenData) {
     <div class="stat"><div class="stat-value">${sevenDDisplay}</div><div class="stat-label">Latest 7d</div></div>
   `;
 
-  initTabs();
-  renderTab('usage');
-  _rendered['usage'] = true;
+  // Render the currently active tab
+  const activeTab = document.querySelector('.tab-btn.active')?.dataset.tab || 'usage';
+  renderTab(activeTab);
+  _rendered[activeTab] = true;
   document.getElementById('loading').style.display = 'none';
 }
 
+// Backward-compatible alias (used by tests that call main() directly)
+const main = renderMain;
+
 // ============================================================
-// Entry point: load JSON data, then render
+// Entry point: fetch meta → compute initial range → load data
 // ============================================================
 (async () => {
   try {
-    const { usageData, tokenData } = await loadData();
-    main(usageData, tokenData);
+    // Fetch metadata for initial range calculation
+    const metaRes = await fetch('wcc://meta.json');
+    _meta = metaRes.ok ? await metaRes.json() : {};
+
+    // Compute weekly session range from latestSevenDayResetsAt
+    let from, to;
+    const now = new Date();
+    if (_meta.latestSevenDayResetsAt) {
+      const resetsAt = new Date(_meta.latestSevenDayResetsAt);
+      const weekStart = new Date(resetsAt.getTime() - 7 * 86400000);
+      from = weekStart.toISOString();
+      to = now.toISOString();
+    } else if (_meta.oldestTimestamp) {
+      // Fallback: last 7 days
+      from = new Date(Date.now() - 7 * 86400000).toISOString();
+      to = now.toISOString();
+    }
+
+    // Set date inputs
+    const fromInput = document.getElementById('globalFrom');
+    const toInput = document.getElementById('globalTo');
+    if (from) fromInput.value = localDateStr(new Date(from));
+    toInput.value = localDateStr(now);
+
+    // Highlight 7d preset as default
+    document.querySelector('.preset-btn[data-days="7"]')?.classList.add('active');
+
+    initTabs();
+    initGlobalRange();
+
+    const { usageData, tokenData } = await loadData(from, to);
+    renderMain(usageData, tokenData);
   } catch (err) {
     document.getElementById('loading').textContent = 'Error: ' + err.message;
     console.error(err);

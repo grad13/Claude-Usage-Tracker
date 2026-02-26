@@ -6,7 +6,7 @@ import SQLite3
 // MARK: - Template Render Tests (DOM-interacting functions)
 
 /// Tests functions from the real template that interact with the DOM:
-/// buildHeatmap, main, getFilteredDeltas, renderUsageTab, renderCumulativeTab.
+/// buildHeatmap, main/renderMain, destroyAllCharts, renderUsageTab, renderCumulativeTab.
 /// Uses Chart.js stub to capture chart configurations.
 final class AnalysisTemplateRenderTests: AnalysisJSTestCase {
 
@@ -63,53 +63,7 @@ final class AnalysisTemplateRenderTests: AnalysisJSTestCase {
     }
 
     // =========================================================
-    // MARK: - getFilteredDeltas (real template, NEW)
-    // =========================================================
-
-    func testRealTemplate_getFilteredDeltas_noRange_returnsAllDeltas() {
-        let result = evalJS("""
-            _allDeltas = [
-                {x: 1.0, y: 5.0, hour: 10, timestamp: '2026-02-24T10:05:00Z',
-                 date: new Date('2026-02-24T10:05:00Z')},
-                {x: 2.0, y: 8.0, hour: 14, timestamp: '2026-02-24T14:05:00Z',
-                 date: new Date('2026-02-24T14:05:00Z')},
-            ];
-            document.getElementById('dateFrom').value = '';
-            document.getElementById('dateTo').value = '';
-            return getFilteredDeltas().length;
-        """) as? Int
-        XCTAssertEqual(result, 2, "No date range → return all deltas")
-    }
-
-    func testRealTemplate_getFilteredDeltas_withRange_filtersCorrectly() {
-        let result = evalJS("""
-            _allDeltas = [
-                {x: 1.0, y: 5.0, hour: 10, timestamp: '2026-02-23T10:05:00Z',
-                 date: new Date('2026-02-23T10:05:00Z')},
-                {x: 2.0, y: 8.0, hour: 14, timestamp: '2026-02-24T14:05:00Z',
-                 date: new Date('2026-02-24T14:05:00Z')},
-                {x: 3.0, y: 12.0, hour: 16, timestamp: '2026-02-25T16:05:00Z',
-                 date: new Date('2026-02-25T16:05:00Z')},
-            ];
-            document.getElementById('dateFrom').value = '2026-02-24';
-            document.getElementById('dateTo').value = '2026-02-24';
-            return getFilteredDeltas().length;
-        """) as? Int
-        XCTAssertEqual(result, 1, "Only Feb 24 should match the date range")
-    }
-
-    func testRealTemplate_getFilteredDeltas_emptyAllDeltas() {
-        let result = evalJS("""
-            _allDeltas = [];
-            document.getElementById('dateFrom').value = '2026-02-24';
-            document.getElementById('dateTo').value = '2026-02-24';
-            return getFilteredDeltas().length;
-        """) as? Int
-        XCTAssertEqual(result, 0)
-    }
-
-    // =========================================================
-    // MARK: - main() (real template, NEW)
+    // MARK: - main() / renderMain() (real template)
     // =========================================================
 
     func testRealTemplate_main_setsStatsHTML() {
@@ -398,84 +352,60 @@ final class AnalysisTemplateRenderTests: AnalysisJSTestCase {
     }
 
     // =========================================================
-    // MARK: - initTabs default date tests (real template)
+    // MARK: - localDateStr tests (real template)
     // =========================================================
 
-    func testRealTemplate_initTabs_defaultDates_useLocalTime() {
-        // initTabs sets dateFrom and dateTo using Date. It should use local dates, not UTC.
-        // We test by setting a known time and checking the result matches local calendar.
+    func testRealTemplate_localDateStr_usesLocalTime() {
+        // localDateStr should produce local date string, not UTC.
         let result = evalJS("""
-            // Provide minimal data so main() doesn't crash
-            main(
-                [{timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 10, seven_day_percent: 5}],
-                []
-            );
-            const fromVal = document.getElementById('dateFrom').value;
-            const toVal = document.getElementById('dateTo').value;
-            // Verify dates are set (not empty)
-            return { from: fromVal, to: toVal };
-        """) as? [String: String]
+            const now = new Date();
+            const result = localDateStr(now);
+            // Verify format is YYYY-MM-DD
+            return { result: result, matchesFormat: /^\\d{4}-\\d{2}-\\d{2}$/.test(result) };
+        """) as? [String: Any]
         XCTAssertNotNil(result)
-        // The key test: dateTo should match today's LOCAL date
+        XCTAssertTrue(result?["matchesFormat"] as? Bool ?? false,
+                      "localDateStr must produce YYYY-MM-DD format")
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
         formatter.timeZone = TimeZone.current
         let expectedTo = formatter.string(from: Date())
-        XCTAssertEqual(result?["to"], expectedTo,
-                       "dateTo should be today's LOCAL date, not UTC")
+        XCTAssertEqual(result?["result"] as? String, expectedTo,
+                       "localDateStr should return today's LOCAL date, not UTC")
     }
 
-    func testRealTemplate_initTabs_defaultDateFrom_3daysAgo() {
-        let result = evalJS("""
-            main(
-                [{timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 10, seven_day_percent: 5}],
-                []
-            );
-            return document.getElementById('dateFrom').value;
-        """) as? String
-        XCTAssertNotNil(result)
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.timeZone = TimeZone.current
-        let expectedFrom = formatter.string(from: Date().addingTimeInterval(-3 * 86400))
-        XCTAssertEqual(result, expectedFrom,
-                       "dateFrom should be 3 days ago in LOCAL time, not UTC")
-    }
-
-    func testRealTemplate_initTabs_UTC_midnight_localDate_shouldDiffer() {
-        // Expose the UTC vs local date bug:
+    func testRealTemplate_localDateStr_UTC_midnight_localDate_shouldDiffer() {
         // Mock Date to simulate UTC 23:30 on Feb 23.
         // In any timezone ahead of UTC (e.g. JST), local date = Feb 24.
-        // toISOString().slice(0,10) always returns "2026-02-23" regardless of timezone.
         let result = evalJS("""
             const OrigDate = Date;
             const fixedUTC = new OrigDate('2026-02-23T23:30:00Z').getTime();
-            class MockDate extends OrigDate {
-                constructor(...args) {
-                    if (args.length === 0) { super(fixedUTC); }
-                    else { super(...args); }
-                }
-                static now() { return fixedUTC; }
-            }
-            Date = MockDate;
-            initTabs();
-            Date = OrigDate;
-
-            const toVal = document.getElementById('dateTo').value;
             const localDate = new OrigDate(fixedUTC);
+            const result = localDateStr(localDate);
             const expectedLocal = localDate.getFullYear() + '-'
                 + String(localDate.getMonth() + 1).padStart(2, '0') + '-'
                 + String(localDate.getDate()).padStart(2, '0');
 
-            return { toVal: toVal, expectedLocal: expectedLocal,
+            return { result: result, expectedLocal: expectedLocal,
                      utcSlice: new OrigDate(fixedUTC).toISOString().slice(0, 10) };
         """) as? [String: String]
         XCTAssertNotNil(result)
-        let toVal = result?["toVal"] ?? ""
+        let localResult = result?["result"] ?? ""
         let expectedLocal = result?["expectedLocal"] ?? ""
         let utcSlice = result?["utcSlice"] ?? ""
-        XCTAssertEqual(toVal, expectedLocal,
-                       "dateTo should be local date '\(expectedLocal)', not UTC '\(utcSlice)'")
+        XCTAssertEqual(localResult, expectedLocal,
+                       "localDateStr should return local date '\(expectedLocal)', not UTC '\(utcSlice)'")
+    }
+
+    func testRealTemplate_toISORange_generatesCorrectStrings() {
+        let result = evalJS("""
+            return {
+                startOfDay: toISORange('2026-02-24', false),
+                endOfDay: toISORange('2026-02-24', true),
+            };
+        """) as? [String: String]
+        XCTAssertEqual(result?["startOfDay"], "2026-02-24T00:00:00Z")
+        XCTAssertEqual(result?["endOfDay"], "2026-02-24T23:59:59Z")
     }
 }
 
@@ -770,6 +700,7 @@ final class AnalysisBugHuntingTests: AnalysisJSTestCase {
 
     func testTabClick_rendersOnFirstClick() {
         let result = evalJS("""
+            initTabs();
             main(
                 [{timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 10, seven_day_percent: 5}],
                 [{timestamp: '2026-02-24T10:02:00Z', costUSD: 0.50}]
@@ -792,6 +723,7 @@ final class AnalysisBugHuntingTests: AnalysisJSTestCase {
 
     func testTabClick_doesNotReRenderOnSecondClick() {
         let result = evalJS("""
+            initTabs();
             main(
                 [{timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 10, seven_day_percent: 5}],
                 [{timestamp: '2026-02-24T10:02:00Z', costUSD: 0.50}]
@@ -826,42 +758,6 @@ final class AnalysisBugHuntingTests: AnalysisJSTestCase {
         """) as? [String]
         XCTAssertEqual(result, ["2026-02-24T10:00:00Z", "2026-02-24T10:01:00Z"],
                        "Cumulative chart should preserve timestamps from tokenData")
-    }
-
-    // =========================================================
-    // MARK: - getFilteredDeltas precise date boundary
-    // =========================================================
-
-    func testGetFilteredDeltas_dateRangeEndOfDay_inclusive() {
-        let result = evalJS("""
-            _allDeltas = [
-                {x: 1.0, y: 5.0, timestamp: '2026-02-24T23:50:00Z',
-                 date: new Date('2026-02-24T23:50:00Z')},
-            ];
-            // The 'to' date creates 'T23:59:59' local time boundary
-            // This UTC timestamp might be outside local date range depending on timezone
-            document.getElementById('dateFrom').value = '2026-02-24';
-            document.getElementById('dateTo').value = '2026-02-24';
-            const filtered = getFilteredDeltas();
-            // In JST, 2026-02-24T23:50:00Z = 2026-02-25T08:50:00 JST → OUTSIDE Feb 24 local
-            // In UTC, it's Feb 24 → within range
-            const d = new Date('2026-02-24T23:50:00Z');
-            const localDate = d.getFullYear() + '-'
-                + String(d.getMonth() + 1).padStart(2, '0') + '-'
-                + String(d.getDate()).padStart(2, '0');
-            return {
-                filteredCount: filtered.length,
-                localDate: localDate,
-                isLocalFeb24: localDate === '2026-02-24',
-            };
-        """) as? [String: Any]
-        let filteredCount = result?["filteredCount"] as? Int ?? -1
-        let isLocalFeb24 = result?["isLocalFeb24"] as? Bool ?? false
-        if isLocalFeb24 {
-            XCTAssertEqual(filteredCount, 1, "UTC 23:50 is still Feb 24 locally → should be included")
-        } else {
-            XCTAssertEqual(filteredCount, 0, "UTC 23:50 is Feb 25 locally → should be excluded")
-        }
     }
 
     // =========================================================
@@ -1020,30 +916,27 @@ final class AnalysisBugHuntingTests: AnalysisJSTestCase {
     }
 
     // =========================================================
-    // MARK: - Apply Range button behavior
+    // MARK: - destroyAllCharts behavior
     // =========================================================
 
-    func testApplyRange_reRendersEfficiencyTab() {
+    func testDestroyAllCharts_clearsRenderedFlags() {
         let result = evalJS("""
             main(
                 [{timestamp: '2026-02-24T10:00:00Z', five_hour_percent: 10, seven_day_percent: 5},
                  {timestamp: '2026-02-24T10:05:00Z', five_hour_percent: 15, seven_day_percent: 7}],
                 [{timestamp: '2026-02-24T10:02:00Z', costUSD: 0.50}]
             );
-            // First click efficiency tab
-            document.querySelector('[data-tab="efficiency"]').click();
-            const firstScatter = _charts.effScatter;
-            // Click Apply Range
-            document.getElementById('applyRange').click();
-            // Charts should be re-created
+            const hadUsage = _rendered['usage'] === true;
+            destroyAllCharts();
             return {
-                reRendered: _charts.effScatter !== firstScatter,
-                renderedFlag: _rendered['efficiency'] === true,
+                hadUsageBefore: hadUsage,
+                hasUsageAfter: _rendered['usage'] === true,
             };
         """) as? [String: Any]
-        XCTAssertTrue(result?["reRendered"] as? Bool ?? false,
-                      "Apply Range should re-render even if already rendered")
-        XCTAssertTrue(result?["renderedFlag"] as? Bool ?? false)
+        XCTAssertTrue(result?["hadUsageBefore"] as? Bool ?? false,
+                      "Usage tab should have been rendered by main()")
+        XCTAssertFalse(result?["hasUsageAfter"] as? Bool ?? true,
+                       "destroyAllCharts should clear _rendered flags")
     }
 
     // =========================================================

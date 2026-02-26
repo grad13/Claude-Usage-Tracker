@@ -414,7 +414,7 @@ final class AnalysisSchemeHandlerSQLiteTests: XCTestCase {
         XCTAssertTrue(html.hasSuffix("</html>\n") || html.hasSuffix("</html>"))
         XCTAssertTrue(html.contains("wcc://usage.json"))
         XCTAssertTrue(html.contains("wcc://tokens.json"))
-        XCTAssertTrue(html.contains("function main"))
+        XCTAssertTrue(html.contains("function renderMain"))
 
         let httpResponse = task.receivedResponse as? HTTPURLResponse
         XCTAssertEqual(httpResponse?.statusCode, 200)

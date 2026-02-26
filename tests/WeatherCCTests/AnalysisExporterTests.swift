@@ -112,7 +112,8 @@ final class AnalysisExporterTests: XCTestCase {
 
     func testHtmlTemplate_containsMainFunction() {
         let html = AnalysisExporter.htmlTemplate
-        XCTAssertTrue(html.contains("function main(usageData, tokenData)"))
+        XCTAssertTrue(html.contains("function renderMain(usageData, tokenData)"))
+        XCTAssertTrue(html.contains("const main = renderMain"))
     }
 
     // MARK: - JSON property keys (column names used as JS property accessors)
@@ -163,9 +164,9 @@ final class AnalysisExporterTests: XCTestCase {
 
     func testHtmlTemplate_hasDateRangeInputs() {
         let html = AnalysisExporter.htmlTemplate
-        XCTAssertTrue(html.contains("id=\"dateFrom\""))
-        XCTAssertTrue(html.contains("id=\"dateTo\""))
-        XCTAssertTrue(html.contains("id=\"applyRange\""))
+        XCTAssertTrue(html.contains("id=\"globalFrom\""))
+        XCTAssertTrue(html.contains("id=\"globalTo\""))
+        XCTAssertTrue(html.contains("id=\"applyGlobal\""))
     }
 
     func testHtmlTemplate_hasGapSlider() {
