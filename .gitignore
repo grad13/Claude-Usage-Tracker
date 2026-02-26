@@ -30,17 +30,9 @@ Configurations/DevelopmentTeam.local.xcconfig
 .serena/
 .claude/
 
-# Scripts (local utilities)
-scripts/
-
-# Reference code
-externals/
-
-# Documentation
-documents/
-
-# Prototype HTML files
-code/prototype/
+# _ prefix = not published to GitHub
+_*/
+**/_*/
 
 # Coverage / profiling
 *.profraw
