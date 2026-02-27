@@ -991,7 +991,7 @@ const main = renderMain;
     const now = new Date();
     const nowEpoch = Math.floor(now.getTime() / 1000);
     if (_meta.latestSevenDayResetsAt) {
-      const resetsAtEpoch = _meta.latestSevenDayResetsAt;
+      const resetsAtEpoch = Math.min(_meta.latestSevenDayResetsAt, nowEpoch);
       fromEpoch = resetsAtEpoch - 7 * 86400;
       toEpoch = nowEpoch;
     } else if (_meta.oldestTimestamp) {
