@@ -29,6 +29,7 @@ Configurations/DevelopmentTeam.local.xcconfig
 # Local tools
 .serena/
 .claude/
+CLAUDE.md
 
 # _ prefix = not published to GitHub
 _*/
