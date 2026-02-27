@@ -14,8 +14,10 @@ final class InMemorySettingsStore: SettingsStoring {
 final class InMemoryUsageStore: UsageStoring {
     var savedResults: [UsageResult] = []
     var historyToReturn: [UsageStore.DataPoint] = []
+    var dailyUsageToReturn: Double?
     func save(_ result: UsageResult) { savedResults.append(result) }
     func loadHistory(windowSeconds: TimeInterval) -> [UsageStore.DataPoint] { historyToReturn }
+    func loadDailyUsage(since: Date) -> Double? { dailyUsageToReturn }
 }
 
 final class InMemorySnapshotWriter: SnapshotWriting {
@@ -99,5 +101,54 @@ final class InMemoryLoginItemManager: LoginItemManaging {
         lastEnabled = enabled
         if enabled { enabledCallCount += 1 }
         else { disabledCallCount += 1 }
+    }
+}
+
+final class MockNotificationSender: NotificationSending, @unchecked Sendable {
+    struct SendRecord {
+        let title: String
+        let body: String
+        let identifier: String
+    }
+
+    private let lock = NSLock()
+    private var _sendRecords: [SendRecord] = []
+    var sendRecords: [SendRecord] {
+        lock.lock()
+        defer { lock.unlock() }
+        return _sendRecords
+    }
+    var authorizationResult = true
+    private var _requestAuthorizationCallCount = 0
+    var requestAuthorizationCallCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return _requestAuthorizationCallCount
+    }
+
+    func requestAuthorization() async -> Bool {
+        lock.lock()
+        _requestAuthorizationCallCount += 1
+        lock.unlock()
+        return authorizationResult
+    }
+
+    func send(title: String, body: String, identifier: String) async {
+        lock.lock()
+        _sendRecords.append(SendRecord(title: title, body: body, identifier: identifier))
+        lock.unlock()
+    }
+}
+
+final class MockAlertChecker: AlertChecking {
+    struct CheckRecord {
+        let result: UsageResult
+        let settings: AppSettings
+    }
+
+    var checkRecords: [CheckRecord] = []
+
+    func checkAlerts(result: UsageResult, settings: AppSettings) {
+        checkRecords.append(CheckRecord(result: result, settings: settings))
     }
 }

@@ -15,6 +15,7 @@ final class ViewModelTests: XCTestCase {
     var widgetReloader: InMemoryWidgetReloader!
     var tokenSync: InMemoryTokenSync!
     var loginItemManager: InMemoryLoginItemManager!
+    var alertChecker: MockAlertChecker!
 
     override func setUp() {
         super.setUp()
@@ -25,6 +26,7 @@ final class ViewModelTests: XCTestCase {
         widgetReloader = InMemoryWidgetReloader()
         tokenSync = InMemoryTokenSync()
         loginItemManager = InMemoryLoginItemManager()
+        alertChecker = MockAlertChecker()
     }
 
     func makeVM() -> UsageViewModel {
@@ -35,7 +37,8 @@ final class ViewModelTests: XCTestCase {
             snapshotWriter: snapshotWriter,
             widgetReloader: widgetReloader,
             tokenSync: tokenSync,
-            loginItemManager: loginItemManager
+            loginItemManager: loginItemManager,
+            alertChecker: alertChecker
         )
     }
 
@@ -252,6 +255,43 @@ final class ViewModelTests: XCTestCase {
         let predict = snapshotWriter.savedPredicts.last!
         XCTAssertNil(predict.fiveHourCost, "No JSONL data → predict should be nil")
         XCTAssertNil(predict.sevenDayCost)
+        _ = vm
+    }
+
+    // MARK: - Alert Integration
+
+    func testApplyResult_callsAlertChecker() {
+        // Set alert settings before creating VM so init() loads them
+        var settings = AppSettings()
+        settings.weeklyAlertEnabled = true
+        settings.weeklyAlertThreshold = 20
+        settingsStore.save(settings)
+
+        let vm = makeVM()
+
+        var result = UsageResult()
+        result.sevenDayPercent = 85.0
+        result.sevenDayResetsAt = Date()
+        result.fiveHourPercent = 50.0
+        result.fiveHourResetsAt = Date()
+
+        vm.applyResult(result)
+
+        XCTAssertEqual(alertChecker.checkRecords.count, 1)
+        XCTAssertEqual(alertChecker.checkRecords[0].result.sevenDayPercent, 85.0)
+        XCTAssertEqual(alertChecker.checkRecords[0].settings.weeklyAlertEnabled, true)
+    }
+
+    func testApplyResult_multipleCallsCheckAlertEachTime() {
+        let vm = makeVM()
+        var result = UsageResult()
+        result.sevenDayPercent = 50.0
+
+        vm.applyResult(result)
+        vm.applyResult(result)
+        vm.applyResult(result)
+
+        XCTAssertEqual(alertChecker.checkRecords.count, 3)
         _ = vm
     }
 }

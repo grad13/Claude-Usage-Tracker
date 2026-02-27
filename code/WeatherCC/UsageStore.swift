@@ -208,6 +208,70 @@ final class UsageStore {
         return results
     }
 
+    // MARK: - Load Daily Usage
+
+    /// Calculate the total sevenDayPercent increase since a given date.
+    /// Returns nil if insufficient data (no records in the range).
+    /// Handles session boundaries: accumulates usage within each session separately.
+    func loadDailyUsage(since: Date) -> Double? {
+        var db: OpaquePointer?
+        guard sqlite3_open(dbPath, &db) == SQLITE_OK else { return nil }
+        defer { sqlite3_close(db) }
+
+        let cutoff = Int64(since.timeIntervalSince1970)
+        let sql = """
+            SELECT u.weekly_percent, ws.resets_at AS weekly_resets_at
+            FROM usage_log u
+            LEFT JOIN weekly_sessions ws ON u.weekly_session_id = ws.id
+            WHERE u.timestamp >= ? AND u.weekly_percent IS NOT NULL
+            ORDER BY u.timestamp ASC;
+            """
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return nil }
+        defer { sqlite3_finalize(stmt) }
+
+        sqlite3_bind_int64(stmt, 1, cutoff)
+
+        struct Record {
+            let weeklyPercent: Double
+            let sessionResetsAt: Int64?  // normalized resets_at epoch
+        }
+
+        var records: [Record] = []
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            let percent = sqlite3_column_double(stmt, 0)
+            let resetsAt: Int64? = sqlite3_column_type(stmt, 1) != SQLITE_NULL
+                ? sqlite3_column_int64(stmt, 1)
+                : nil
+            records.append(Record(weeklyPercent: percent, sessionResetsAt: resetsAt))
+        }
+
+        guard records.count >= 2 else { return nil }
+
+        // Group by session and calculate usage within each session
+        var totalUsage = 0.0
+        var sessionStart = records[0].weeklyPercent
+        var currentSession = records[0].sessionResetsAt
+
+        for i in 1..<records.count {
+            let record = records[i]
+            if record.sessionResetsAt != currentSession {
+                // Session boundary: finalize previous session
+                let previousLast = records[i - 1].weeklyPercent
+                totalUsage += max(0, previousLast - sessionStart)
+                // Start new session
+                sessionStart = record.weeklyPercent
+                currentSession = record.sessionResetsAt
+            }
+        }
+
+        // Finalize last session
+        let lastPercent = records[records.count - 1].weeklyPercent
+        totalUsage += max(0, lastPercent - sessionStart)
+
+        return totalUsage
+    }
+
     // MARK: - Private Helpers
 
     private func getOrCreateSessionId(db: OpaquePointer?, table: String, date: Date) -> Int64? {

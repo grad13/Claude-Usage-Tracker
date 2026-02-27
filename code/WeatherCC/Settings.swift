@@ -1,4 +1,4 @@
-// meta: created=2026-02-21 updated=2026-02-21 checked=never
+// meta: created=2026-02-21 updated=2026-02-27 checked=never
 import Foundation
 import SwiftUI
 import WeatherCCShared
@@ -39,6 +39,13 @@ enum ChartColorPreset: String, CaseIterable, Codable {
     }
 }
 
+// MARK: - Daily Alert Definition
+
+enum DailyAlertDefinition: String, Codable, CaseIterable {
+    case calendar = "calendar"  // Local timezone midnight boundary
+    case session = "session"    // Weekly session boundary (resets_at based)
+}
+
 // MARK: - App Settings
 
 struct AppSettings: Codable {
@@ -49,6 +56,15 @@ struct AppSettings: Codable {
     var chartWidth: Int = 48
     var hourlyColorPreset: ChartColorPreset = .blue
     var weeklyColorPreset: ChartColorPreset = .pink
+
+    // Alert settings
+    var weeklyAlertEnabled: Bool = false
+    var weeklyAlertThreshold: Int = 20   // Notify when remaining % <= threshold
+    var hourlyAlertEnabled: Bool = false
+    var hourlyAlertThreshold: Int = 20   // Notify when remaining % <= threshold
+    var dailyAlertEnabled: Bool = false
+    var dailyAlertThreshold: Int = 15    // Notify when daily usage % >= threshold
+    var dailyAlertDefinition: DailyAlertDefinition = .calendar
 
     static let presets = [1, 2, 3, 5, 10, 20, 60]
     static let chartWidthPresets = [12, 24, 36, 48, 60, 72]
@@ -64,6 +80,13 @@ struct AppSettings: Codable {
         chartWidth = try container.decodeIfPresent(Int.self, forKey: .chartWidth) ?? defaults.chartWidth
         hourlyColorPreset = try container.decodeIfPresent(ChartColorPreset.self, forKey: .hourlyColorPreset) ?? defaults.hourlyColorPreset
         weeklyColorPreset = try container.decodeIfPresent(ChartColorPreset.self, forKey: .weeklyColorPreset) ?? defaults.weeklyColorPreset
+        weeklyAlertEnabled = try container.decodeIfPresent(Bool.self, forKey: .weeklyAlertEnabled) ?? defaults.weeklyAlertEnabled
+        weeklyAlertThreshold = try container.decodeIfPresent(Int.self, forKey: .weeklyAlertThreshold) ?? defaults.weeklyAlertThreshold
+        hourlyAlertEnabled = try container.decodeIfPresent(Bool.self, forKey: .hourlyAlertEnabled) ?? defaults.hourlyAlertEnabled
+        hourlyAlertThreshold = try container.decodeIfPresent(Int.self, forKey: .hourlyAlertThreshold) ?? defaults.hourlyAlertThreshold
+        dailyAlertEnabled = try container.decodeIfPresent(Bool.self, forKey: .dailyAlertEnabled) ?? defaults.dailyAlertEnabled
+        dailyAlertThreshold = try container.decodeIfPresent(Int.self, forKey: .dailyAlertThreshold) ?? defaults.dailyAlertThreshold
+        dailyAlertDefinition = try container.decodeIfPresent(DailyAlertDefinition.self, forKey: .dailyAlertDefinition) ?? defaults.dailyAlertDefinition
     }
 
     init() {}
@@ -77,6 +100,9 @@ struct AppSettings: Codable {
         if copy.chartWidth < 12 || copy.chartWidth > 120 {
             copy.chartWidth = AppSettings().chartWidth
         }
+        copy.weeklyAlertThreshold = max(1, min(100, copy.weeklyAlertThreshold))
+        copy.hourlyAlertThreshold = max(1, min(100, copy.hourlyAlertThreshold))
+        copy.dailyAlertThreshold = max(1, min(100, copy.dailyAlertThreshold))
         return copy
     }
 }

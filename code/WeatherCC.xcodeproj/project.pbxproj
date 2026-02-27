@@ -36,6 +36,8 @@
 		AA100018 /* UsageViewModel+Settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000018 /* UsageViewModel+Settings.swift */; };
 		AA100019 /* UsageViewModel+Predict.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000019 /* UsageViewModel+Predict.swift */; };
 		AA10001A /* WebViewCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00001A /* WebViewCoordinator.swift */; };
+		AA10001B /* NotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00001B /* NotificationManager.swift */; };
+		AA10001C /* AlertChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00001C /* AlertChecker.swift */; };
 		BB100001 /* SettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000001 /* SettingsTests.swift */; };
 		BB100002 /* FetcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000002 /* FetcherTests.swift */; };
 		BB100003 /* ViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000003 /* ViewModelTests.swift */; };
@@ -61,6 +63,8 @@
 		BB100028 /* ViewModelTests+Settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000028 /* ViewModelTests+Settings.swift */; };
 		BB100029 /* ViewModelTests+Fetch.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000029 /* ViewModelTests+Fetch.swift */; };
 		BB10002A /* ProductionSettingsIntegrityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00002A /* ProductionSettingsIntegrityTests.swift */; };
+		BB10002B /* NotificationManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00002B /* NotificationManagerTests.swift */; };
+		BB10002C /* AlertCheckerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00002C /* AlertCheckerTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -159,6 +163,8 @@
 		AA000018 /* UsageViewModel+Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UsageViewModel+Settings.swift"; sourceTree = "<group>"; };
 		AA000019 /* UsageViewModel+Predict.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UsageViewModel+Predict.swift"; sourceTree = "<group>"; };
 		AA00001A /* WebViewCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebViewCoordinator.swift; sourceTree = "<group>"; };
+		AA00001B /* NotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManager.swift; sourceTree = "<group>"; };
+		AA00001C /* AlertChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertChecker.swift; sourceTree = "<group>"; };
 		AA000010 /* WeatherCC.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WeatherCC.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BB000001 /* SettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsTests.swift; sourceTree = "<group>"; };
 		BB000002 /* FetcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FetcherTests.swift; sourceTree = "<group>"; };
@@ -185,6 +191,8 @@
 		BB000028 /* ViewModelTests+Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ViewModelTests+Settings.swift"; sourceTree = "<group>"; };
 		BB000029 /* ViewModelTests+Fetch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ViewModelTests+Fetch.swift"; sourceTree = "<group>"; };
 		BB00002A /* ProductionSettingsIntegrityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProductionSettingsIntegrityTests.swift; sourceTree = "<group>"; };
+		BB00002B /* NotificationManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManagerTests.swift; sourceTree = "<group>"; };
+		BB00002C /* AlertCheckerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertCheckerTests.swift; sourceTree = "<group>"; };
 		BB000010 /* WeatherCCTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = WeatherCCTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -275,6 +283,8 @@
 				AA000018 /* UsageViewModel+Settings.swift */,
 				AA000019 /* UsageViewModel+Predict.swift */,
 				AA00001A /* WebViewCoordinator.swift */,
+				AA00001B /* NotificationManager.swift */,
+				AA00001C /* AlertChecker.swift */,
 				AA000005 /* Info.plist */,
 				AA000006 /* WeatherCC.entitlements */,
 			);
@@ -326,6 +336,8 @@
 				BB00000A /* UsageStoreTests.swift */,
 				BB00000B /* SettingsStoreTests.swift */,
 				BB00002A /* ProductionSettingsIntegrityTests.swift */,
+				BB00002B /* NotificationManagerTests.swift */,
+				BB00002C /* AlertCheckerTests.swift */,
 				BB00000C /* SnapshotStoreTests.swift */,
 				BB00000D /* AppGroupConfigTests.swift */,
 				BB00000E /* SQLiteBackupTests.swift */,
@@ -550,6 +562,8 @@
 				AA100018 /* UsageViewModel+Settings.swift in Sources */,
 				AA100019 /* UsageViewModel+Predict.swift in Sources */,
 				AA10001A /* WebViewCoordinator.swift in Sources */,
+				AA10001B /* NotificationManager.swift in Sources */,
+				AA10001C /* AlertChecker.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -572,6 +586,8 @@
 				BB10000A /* UsageStoreTests.swift in Sources */,
 				BB10000B /* SettingsStoreTests.swift in Sources */,
 				BB10002A /* ProductionSettingsIntegrityTests.swift in Sources */,
+				BB10002B /* NotificationManagerTests.swift in Sources */,
+				BB10002C /* AlertCheckerTests.swift in Sources */,
 				BB10000C /* SnapshotStoreTests.swift in Sources */,
 				BB10000D /* AppGroupConfigTests.swift in Sources */,
 				BB10000E /* SQLiteBackupTests.swift in Sources */,
@@ -972,7 +988,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.7.4;
+				MARKETING_VERSION = 0.8.0;
 				PRODUCT_BUNDLE_IDENTIFIER = grad13.weathercc.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -998,7 +1014,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.7.4;
+				MARKETING_VERSION = 0.8.0;
 				PRODUCT_BUNDLE_IDENTIFIER = grad13.weathercc.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;

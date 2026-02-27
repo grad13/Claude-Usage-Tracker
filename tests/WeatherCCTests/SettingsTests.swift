@@ -259,4 +259,137 @@ final class SettingsTests: XCTestCase {
         XCTAssertThrowsError(try decoder.decode(AppSettings.self, from: data),
                              "Type mismatch (String instead of Bool) should throw")
     }
+
+    // MARK: - Alert Settings: Default Values
+
+    func testAlertDefaultValues() {
+        let settings = AppSettings()
+        XCTAssertFalse(settings.weeklyAlertEnabled)
+        XCTAssertEqual(settings.weeklyAlertThreshold, 20)
+        XCTAssertFalse(settings.hourlyAlertEnabled)
+        XCTAssertEqual(settings.hourlyAlertThreshold, 20)
+        XCTAssertFalse(settings.dailyAlertEnabled)
+        XCTAssertEqual(settings.dailyAlertThreshold, 15)
+        XCTAssertEqual(settings.dailyAlertDefinition, .calendar)
+    }
+
+    // MARK: - Alert Settings: Backward Compatibility
+
+    func testJSONMissingKey_alertFields() throws {
+        // Old JSON without alert settings — should use defaults
+        let json = #"{"refresh_interval_minutes": 5, "start_at_login": false}"#
+        let data = json.data(using: .utf8)!
+
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let settings = try decoder.decode(AppSettings.self, from: data)
+
+        XCTAssertFalse(settings.weeklyAlertEnabled)
+        XCTAssertEqual(settings.weeklyAlertThreshold, 20)
+        XCTAssertFalse(settings.hourlyAlertEnabled)
+        XCTAssertEqual(settings.hourlyAlertThreshold, 20)
+        XCTAssertFalse(settings.dailyAlertEnabled)
+        XCTAssertEqual(settings.dailyAlertThreshold, 15)
+        XCTAssertEqual(settings.dailyAlertDefinition, .calendar)
+    }
+
+    // MARK: - Alert Settings: JSON Round Trip
+
+    func testAlertJSONRoundTrip() throws {
+        var original = AppSettings()
+        original.weeklyAlertEnabled = true
+        original.weeklyAlertThreshold = 30
+        original.hourlyAlertEnabled = true
+        original.hourlyAlertThreshold = 10
+        original.dailyAlertEnabled = true
+        original.dailyAlertThreshold = 25
+        original.dailyAlertDefinition = .session
+
+        let encoder = JSONEncoder()
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        let data = try encoder.encode(original)
+
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let decoded = try decoder.decode(AppSettings.self, from: data)
+
+        XCTAssertTrue(decoded.weeklyAlertEnabled)
+        XCTAssertEqual(decoded.weeklyAlertThreshold, 30)
+        XCTAssertTrue(decoded.hourlyAlertEnabled)
+        XCTAssertEqual(decoded.hourlyAlertThreshold, 10)
+        XCTAssertTrue(decoded.dailyAlertEnabled)
+        XCTAssertEqual(decoded.dailyAlertThreshold, 25)
+        XCTAssertEqual(decoded.dailyAlertDefinition, .session)
+    }
+
+    // MARK: - Alert Settings: Threshold Validation
+
+    func testValidation_alertThreshold_clampToMin() {
+        var settings = AppSettings()
+        settings.weeklyAlertThreshold = 0
+        settings.hourlyAlertThreshold = -5
+        settings.dailyAlertThreshold = 0
+        let validated = settings.validated()
+        XCTAssertEqual(validated.weeklyAlertThreshold, 1, "Threshold 0 should clamp to 1")
+        XCTAssertEqual(validated.hourlyAlertThreshold, 1, "Threshold -5 should clamp to 1")
+        XCTAssertEqual(validated.dailyAlertThreshold, 1, "Threshold 0 should clamp to 1")
+    }
+
+    func testValidation_alertThreshold_clampToMax() {
+        var settings = AppSettings()
+        settings.weeklyAlertThreshold = 101
+        settings.hourlyAlertThreshold = 200
+        settings.dailyAlertThreshold = 150
+        let validated = settings.validated()
+        XCTAssertEqual(validated.weeklyAlertThreshold, 100, "Threshold 101 should clamp to 100")
+        XCTAssertEqual(validated.hourlyAlertThreshold, 100, "Threshold 200 should clamp to 100")
+        XCTAssertEqual(validated.dailyAlertThreshold, 100, "Threshold 150 should clamp to 100")
+    }
+
+    func testValidation_alertThreshold_validRange() {
+        var settings = AppSettings()
+        settings.weeklyAlertThreshold = 1
+        settings.hourlyAlertThreshold = 50
+        settings.dailyAlertThreshold = 100
+        let validated = settings.validated()
+        XCTAssertEqual(validated.weeklyAlertThreshold, 1, "Threshold 1 is valid (lower bound)")
+        XCTAssertEqual(validated.hourlyAlertThreshold, 50, "Threshold 50 is valid")
+        XCTAssertEqual(validated.dailyAlertThreshold, 100, "Threshold 100 is valid (upper bound)")
+    }
+
+    // MARK: - DailyAlertDefinition
+
+    func testDailyAlertDefinition_jsonRoundTrip() throws {
+        let encoder = JSONEncoder()
+        let decoder = JSONDecoder()
+        for definition in DailyAlertDefinition.allCases {
+            let data = try encoder.encode(definition)
+            let decoded = try decoder.decode(DailyAlertDefinition.self, from: data)
+            XCTAssertEqual(decoded, definition)
+        }
+    }
+
+    func testDailyAlertDefinition_rawValues() {
+        XCTAssertEqual(DailyAlertDefinition.calendar.rawValue, "calendar")
+        XCTAssertEqual(DailyAlertDefinition.session.rawValue, "session")
+    }
+
+    // MARK: - Alert Settings: Snake Case Keys
+
+    func testAlertJSONSnakeCase() throws {
+        var settings = AppSettings()
+        settings.weeklyAlertEnabled = true
+        settings.dailyAlertDefinition = .session
+
+        let encoder = JSONEncoder()
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        encoder.outputFormatting = [.sortedKeys]
+        let data = try encoder.encode(settings)
+        let jsonString = String(data: data, encoding: .utf8)!
+
+        XCTAssertTrue(jsonString.contains("weekly_alert_enabled"))
+        XCTAssertTrue(jsonString.contains("daily_alert_definition"))
+        XCTAssertFalse(jsonString.contains("weeklyAlertEnabled"))
+        XCTAssertFalse(jsonString.contains("dailyAlertDefinition"))
+    }
 }
