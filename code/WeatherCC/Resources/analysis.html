@@ -316,7 +316,7 @@ const _rendered = {};
 
 Chart.register({
   id: 'dayBoundary',
-  afterDraw(chart) {
+  beforeDatasetsDraw(chart) {
     const xScale = chart.scales.x;
     if (!xScale || xScale.type !== 'time') return;
     const ctx = chart.ctx;
@@ -532,6 +532,10 @@ function buildHourlySessions(data) {
   function pushSession() {
     if (current.length === 0) return;
     const resetsAtMs = currentResetsAt ? currentResetsAt * 1000 : null;
+    // Add y=0 at resets_at to show usage dropping to 0 at session end
+    if (resetsAtMs) {
+      current.push({ x: resetsAtMs, y: 0 });
+    }
     sessions.push({
       data: current,
       start: resetsAtMs ? resetsAtMs - 5 * 3600000 : current[0].x,
@@ -541,50 +545,168 @@ function buildHourlySessions(data) {
     currentResetsAt = null;
   }
 
-  for (let i = 0; i < data.length; i++) {
-    const curr = data[i];
-    if (curr.hourly_percent == null) continue;
+  for (const d of data) {
+    if (d.hourly_percent == null) continue;
+    // Skip records without session assignment (idle periods between sessions)
+    if (!d.hourly_resets_at) continue;
 
-    if (curr.hourly_resets_at) {
-      // Session boundary: normalized resets_at changed
-      if (currentResetsAt && curr.hourly_resets_at !== currentResetsAt) {
-        pushSession();
-      }
-      current.push({ x: curr.timestamp * 1000, y: curr.hourly_percent });
-      currentResetsAt = curr.hourly_resets_at;
-    } else {
-      current.push({ x: curr.timestamp * 1000, y: curr.hourly_percent });
+    if (currentResetsAt && d.hourly_resets_at !== currentResetsAt) {
+      pushSession();
     }
+    current.push({ x: d.timestamp * 1000, y: d.hourly_percent });
+    currentResetsAt = d.hourly_resets_at;
   }
   pushSession();
   return sessions;
 }
 
+// Stripe pattern for session bands
+function createStripePattern(ctx, color, lineWidth, spacing) {
+  const size = spacing;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const pCtx = canvas.getContext('2d');
+  pCtx.strokeStyle = color;
+  pCtx.lineWidth = lineWidth;
+  pCtx.beginPath(); pCtx.moveTo(0, size); pCtx.lineTo(size, 0); pCtx.stroke();
+  pCtx.beginPath(); pCtx.moveTo(-size, size); pCtx.lineTo(size, -size); pCtx.stroke();
+  pCtx.beginPath(); pCtx.moveTo(0, size * 2); pCtx.lineTo(size * 2, 0); pCtx.stroke();
+  return ctx.createPattern(canvas, 'repeat');
+}
+
+// Binary search for nearest data point by timestamp
+function findNearest(sortedData, targetX) {
+  if (!sortedData.length) return null;
+  let lo = 0, hi = sortedData.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (sortedData[mid].x < targetX) lo = mid + 1; else hi = mid;
+  }
+  const candidates = [sortedData[lo]];
+  if (lo > 0) candidates.push(sortedData[lo - 1]);
+  let best = candidates[0];
+  for (const c of candidates) {
+    if (Math.abs(c.x - targetX) < Math.abs(best.x - targetX)) best = c;
+  }
+  return Math.abs(best.x - targetX) < 600000 ? best : null;
+}
+
 function renderUsageTab() {
   const weeklyData = buildWeeklyData(_usageData);
   const sessions = buildHourlySessions(_usageData);
+  const allHourlyData = sessions.flatMap(s => s.data).sort((a, b) => a.x - b.x);
 
   const hourlyDatasets = sessions.map((sess, i) => ({
     label: i === 0 ? 'Hourly Usage' : '',
     data: sess.data,
-    borderColor: '#64b4ff',
-    fill: false, borderWidth: 1.5, pointRadius: 2, tension: 0, stepped: 'before',
+    borderColor: '#64b4ff', backgroundColor: 'rgba(100,180,255,0.6)',
+    fill: true, borderWidth: 0.75, pointRadius: 1, tension: 0, stepped: 'before',
   }));
 
+  // Pattern C: even=stripes, odd=translucent
   const sessionBandPlugin = {
     id: 'sessionBands',
     beforeDraw(chart) {
       const xScale = chart.scales.x;
       const ctx = chart.ctx;
       const { top, bottom, left, right } = chart.chartArea;
+      const stripePattern = createStripePattern(ctx, 'rgba(255,255,255,0.07)', 1, 8);
       for (let i = 0; i < sessions.length; i++) {
-        if (i % 2 === 0) continue;
         const x0 = Math.max(xScale.getPixelForValue(sessions[i].start), left);
         const x1 = Math.min(xScale.getPixelForValue(sessions[i].end), right);
         if (x1 <= x0) continue;
-        ctx.fillStyle = 'rgba(255,255,255,0.04)';
+        if (i % 2 === 0) {
+          ctx.fillStyle = stripePattern;
+        } else {
+          ctx.fillStyle = 'rgba(255,255,255,0.06)';
+        }
         ctx.fillRect(x0, top, x1 - x0, bottom - top);
       }
+    },
+  };
+
+  // Crosshair + custom tooltip
+  const crosshairPlugin = {
+    id: 'crosshair',
+    afterDraw(chart) {
+      if (!chart._crosshairX) return;
+      const { top, bottom, left, right } = chart.chartArea;
+      const ctx = chart.ctx;
+      const xScale = chart.scales.x;
+      const yScale = chart.scales.y;
+      const tsMs = xScale.getValueForPixel(chart._crosshairX);
+
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      ctx.moveTo(chart._crosshairX, top);
+      ctx.lineTo(chart._crosshairX, bottom);
+      ctx.stroke();
+      ctx.restore();
+
+      const hourly = findNearest(allHourlyData, tsMs);
+      const weekly = findNearest(weeklyData, tsMs);
+      if (!hourly && !weekly) return;
+
+      ctx.save();
+      if (hourly) {
+        const hx = xScale.getPixelForValue(hourly.x);
+        const hy = yScale.getPixelForValue(hourly.y);
+        ctx.fillStyle = '#64b4ff';
+        ctx.beginPath(); ctx.arc(hx, hy, 4, 0, Math.PI * 2); ctx.fill();
+      }
+      if (weekly) {
+        const wx = xScale.getPixelForValue(weekly.x);
+        const wy = yScale.getPixelForValue(weekly.y);
+        ctx.fillStyle = '#ff82b4';
+        ctx.beginPath(); ctx.arc(wx, wy, 4, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+
+      const refTs = hourly ? hourly.x : weekly.x;
+      const d = new Date(refTs);
+      const timeStr = `${d.getMonth()+1}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+      const lines = [timeStr];
+      if (hourly) lines.push(`Hourly: ${hourly.y.toFixed(0)}%`);
+      if (weekly) lines.push(`Weekly: ${weekly.y.toFixed(0)}%`);
+
+      ctx.save();
+      ctx.font = '11px -apple-system, BlinkMacSystemFont, "SF Pro", system-ui, sans-serif';
+      const lineH = 16, pad = 8;
+      const maxW = Math.max(...lines.map(l => ctx.measureText(l).width));
+      const boxW = maxW + pad * 2;
+      const boxH = lines.length * lineH + pad * 2 - 4;
+      let bx = chart._crosshairX + 12;
+      if (bx + boxW > right) bx = chart._crosshairX - boxW - 12;
+      const by = top + 8;
+
+      ctx.fillStyle = 'rgba(22,27,34,0.92)';
+      ctx.strokeStyle = '#30363d';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.roundRect(bx, by, boxW, boxH, 4);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.textBaseline = 'top';
+      for (let i = 0; i < lines.length; i++) {
+        ctx.fillStyle = i === 0 ? '#8b949e' : '#c9d1d9';
+        ctx.fillText(lines[i], bx + pad, by + pad + i * lineH - 2);
+      }
+      ctx.restore();
+    },
+    afterEvent(chart, args) {
+      const evt = args.event;
+      if (evt.type === 'mousemove' && args.inChartArea) {
+        chart._crosshairX = evt.x;
+      } else if (evt.type === 'mouseout') {
+        chart._crosshairX = null;
+      }
+      chart.draw();
     },
   };
 
@@ -598,18 +720,36 @@ function renderUsageTab() {
           data: weeklyData,
           borderColor: '#ff82b4',
           fill: false, borderWidth: 1.5, pointRadius: 1, tension: 0, stepped: 'before',
+          order: -1,
         },
       ],
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { labels: { color: '#8b949e', font: { size: 11 }, filter: item => item.text !== '' } } },
+      plugins: {
+        legend: {
+          labels: { color: '#8b949e', font: { size: 11 }, filter: item => item.text !== '' },
+          onClick(e, legendItem, legend) {
+            const chart = legend.chart;
+            const ci = legendItem.datasetIndex;
+            const newVisible = !chart.isDatasetVisible(ci);
+            const targetColor = chart.data.datasets[ci].borderColor;
+            chart.data.datasets.forEach((ds, i) => {
+              if (ds.borderColor === targetColor) {
+                chart.setDatasetVisibility(i, newVisible);
+              }
+            });
+            chart.update();
+          },
+        },
+        tooltip: { enabled: false },
+      },
       scales: {
         x: timeXScale(),
         y: { min: 0, max: 100, ticks: { color: '#484f58', font: { size: 10 }, stepSize: 20 }, grid: { color: '#21262d' }, title: { display: true, text: '%', color: '#484f58' } },
       },
     },
-    plugins: [sessionBandPlugin],
+    plugins: [sessionBandPlugin, crosshairPlugin],
   });
 
 }
