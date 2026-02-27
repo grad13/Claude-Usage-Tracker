@@ -140,9 +140,9 @@ final class AnalysisTemplateRenderTests: AnalysisJSTestCase {
         let result = evalJS("""
             _usageData = [
                 {timestamp: 1771927200, hourly_percent: 10, weekly_percent: 5,
-                 hourly_resets_at: null, weekly_resets_at: null},
+                 hourly_resets_at: 1771945200, weekly_resets_at: 1772186400},
                 {timestamp: 1771927500, hourly_percent: 20, weekly_percent: 8,
-                 hourly_resets_at: null, weekly_resets_at: null},
+                 hourly_resets_at: 1771945200, weekly_resets_at: 1772186400},
             ];
             renderUsageTab();
             const config = _chartConfigs['usageTimeline'];
@@ -159,7 +159,7 @@ final class AnalysisTemplateRenderTests: AnalysisJSTestCase {
         XCTAssertEqual(result?["datasetCount"] as? Int, 2, "Usage chart has 2 datasets (hourly and weekly)")
         XCTAssertEqual(result?["firstLabel"] as? String, "Hourly Usage")
         XCTAssertEqual(result?["secondLabel"] as? String, "Weekly Usage")
-        XCTAssertEqual(result?["firstDataCount"] as? Int, 2, "2 data points in 5h dataset")
+        XCTAssertEqual(result?["firstDataCount"] as? Int, 3, "2 data points + y=0 reset point in 5h dataset")
         XCTAssertEqual(result?["type"] as? String, "line")
     }
 
@@ -470,7 +470,7 @@ final class AnalysisBugHuntingTests: AnalysisJSTestCase {
         let result = evalJS("""
             _usageData = [
                 {timestamp: 1771927200, hourly_percent: 50, weekly_percent: 25,
-                 hourly_resets_at: null, weekly_resets_at: null},
+                 hourly_resets_at: 1771945200, weekly_resets_at: 1772186400},
             ];
             renderUsageTab();
             const yScale = _chartConfigs['usageTimeline']?.options?.scales?.y;
@@ -484,7 +484,7 @@ final class AnalysisBugHuntingTests: AnalysisJSTestCase {
         let result = evalJS("""
             _usageData = [
                 {timestamp: 1771927200, hourly_percent: 50, weekly_percent: 25,
-                 hourly_resets_at: null, weekly_resets_at: null},
+                 hourly_resets_at: 1771945200, weekly_resets_at: 1772186400},
             ];
             renderUsageTab();
             return _chartConfigs['usageTimeline']?.options?.scales?.x?.type;
@@ -496,7 +496,7 @@ final class AnalysisBugHuntingTests: AnalysisJSTestCase {
         let result = evalJS("""
             _usageData = [
                 {timestamp: 1771927200, hourly_percent: 50, weekly_percent: 25,
-                 hourly_resets_at: null, weekly_resets_at: null},
+                 hourly_resets_at: 1771945200, weekly_resets_at: 1772186400},
             ];
             renderUsageTab();
             const ds = _chartConfigs['usageTimeline']?.data?.datasets;
@@ -737,7 +737,7 @@ final class AnalysisBugHuntingTests: AnalysisJSTestCase {
         let result = evalJS("""
             _usageData = [
                 {timestamp: 1771927200, hourly_percent: 50, weekly_percent: 25,
-                 hourly_resets_at: null, weekly_resets_at: null},
+                 hourly_resets_at: 1771945200, weekly_resets_at: 1772186400},
             ];
             renderUsageTab();
             const ds0 = _chartConfigs['usageTimeline']?.data?.datasets?.[0];
@@ -751,7 +751,7 @@ final class AnalysisBugHuntingTests: AnalysisJSTestCase {
         """) as? [String: Any]
         XCTAssertEqual(result?["ds0Stepped"] as? String, "before", "Hourly dataset should use stepped: before")
         XCTAssertEqual(result?["ds1Stepped"] as? String, "before", "Weekly dataset should use stepped: before")
-        XCTAssertEqual(result?["ds0BorderWidth"] as? Double, 1.5, "Hourly dataset borderWidth should be 1.5")
+        XCTAssertEqual(result?["ds0BorderWidth"] as? Double, 0.75, "Hourly dataset borderWidth should be 0.75")
         XCTAssertEqual(result?["ds1BorderWidth"] as? Double, 1.5, "Weekly dataset borderWidth should be 1.5")
     }
 
@@ -888,7 +888,7 @@ final class AnalysisBugHuntingTests: AnalysisJSTestCase {
         let result = evalJS("""
             _usageData = [
                 {timestamp: 1771927200, hourly_percent: 50, weekly_percent: 25,
-                 hourly_resets_at: null, weekly_resets_at: null},
+                 hourly_resets_at: 1771945200, weekly_resets_at: 1772186400},
             ];
             renderUsageTab();
             return _chartConfigs['usageTimeline']?.data?.datasets?.[0]?.label;
@@ -900,7 +900,7 @@ final class AnalysisBugHuntingTests: AnalysisJSTestCase {
         let result = evalJS("""
             _usageData = [
                 {timestamp: 1771927200, hourly_percent: 50, weekly_percent: 25,
-                 hourly_resets_at: null, weekly_resets_at: null},
+                 hourly_resets_at: 1771945200, weekly_resets_at: 1772186400},
             ];
             renderUsageTab();
             return _chartConfigs['usageTimeline']?.data?.datasets?.[1]?.label;
@@ -1109,14 +1109,14 @@ final class AnalysisBugHuntingTests: AnalysisJSTestCase {
     func testRenderUsageTab_datasets_haveFillFalseAndStepped() {
         let result = evalJS("""
             _usageData = [{timestamp: 1771927200, hourly_percent: 50, weekly_percent: 25,
-                           hourly_resets_at: null, weekly_resets_at: null}];
+                           hourly_resets_at: 1771945200, weekly_resets_at: 1772186400}];
             renderUsageTab();
             const ds = _chartConfigs['usageTimeline']?.data?.datasets;
             return { fill0: ds?.[0]?.fill, fill1: ds?.[1]?.fill,
                      tension0: ds?.[0]?.tension, tension1: ds?.[1]?.tension,
                      stepped0: ds?.[0]?.stepped, stepped1: ds?.[1]?.stepped };
         """) as? [String: Any]
-        XCTAssertFalse(result?["fill0"] as? Bool ?? true, "Hourly dataset should have fill: false")
+        XCTAssertTrue(result?["fill0"] as? Bool ?? false, "Hourly dataset should have fill: true")
         XCTAssertFalse(result?["fill1"] as? Bool ?? true, "Weekly dataset should have fill: false")
         XCTAssertEqual(result?["tension0"] as? Int, 0, "Hourly dataset tension should be 0")
         XCTAssertEqual(result?["tension1"] as? Int, 0, "Weekly dataset tension should be 0")
