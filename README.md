@@ -1,30 +1,45 @@
-<!-- meta: created=2026-02-21 updated=2026-02-21 checked=never -->
-# WeatherCC
+# ClaudeUsageTracker
 
-macOS メニューバーアプリ。Claude Code の使用量リミットをリアルタイム監視。
+macOS menu bar app for monitoring Claude Code usage limits in real time.
 
-## 要件
+## Features
+
+- Real-time 5h / 7d usage percentage display in the menu bar
+- Usage history graphs (area chart)
+- Analysis page with detailed usage timeline (Chart.js)
+- JSONL-based cost estimation (Predict)
+- WidgetKit widgets (small / medium / large)
+- Auto-refresh every 5 minutes (configurable)
+- Start at Login support
+
+## Requirements
 
 - macOS 14.0+
 - Xcode 16+
 
-## ビルド
+## Build
 
 ```bash
-xcodebuild -scheme WeatherCC -destination 'platform=macOS' build
+xcodebuild -project code/ClaudeUsageTracker.xcodeproj \
+  -scheme ClaudeUsageTracker \
+  -destination 'platform=macOS' build
 ```
 
-## 使い方
+## Usage
 
-1. アプリ起動 → メニューバーに `5h: -- / 7d: --`
-2. 「Sign In...」→ claude.ai にログイン
-3. 自動でデータ取得 → `5h: XX% / 7d: YY%`
-4. 以降5分ごとに自動更新（手動: ⌘R）
-5. 「Start at Login」で macOS ログイン時に自動起動
+1. Launch the app — menu bar shows `5h: -- / 7d: --`
+2. Click "Sign In..." → log in to claude.ai
+3. Data fetches automatically → `5h: XX% / 7d: YY%`
+4. Auto-refreshes every 5 minutes (manual: Cmd+R)
+5. Enable "Start at Login" for auto-launch
+
+## How It Works
+
+Uses a WKWebView to maintain a browser session with claude.ai, then calls the internal usage API via JavaScript injection. No OAuth tokens or API keys are stored — authentication relies entirely on the browser session cookies.
 
 ## Acknowledgments
 
-データ取得のアプローチ（WKWebView のブラウザセッションを利用した内部 API アクセス）は [AgentLimits](https://github.com/nicedmng/AgentLimits) を参考にしています。
+The data-fetching approach (using WKWebView browser sessions to access internal APIs) is inspired by [AgentLimits](https://github.com/nicedmng/AgentLimits).
 
 ## License
 
