@@ -1,4 +1,4 @@
-// meta: created=2026-02-21 updated=2026-02-26 checked=2026-02-26
+// meta: created=2026-02-21 updated=2026-02-27 checked=2026-02-26
 import Foundation
 import WebKit
 import Combine
@@ -31,6 +31,7 @@ final class UsageViewModel: ObservableObject {
     let widgetReloader: any WidgetReloading
     let tokenSync: any TokenSyncing
     let loginItemManager: any LoginItemManaging
+    let alertChecker: any AlertChecking
     var coordinator: WebViewCoordinator?
     var cookieObserver: CookieChangeObserver?
     var refreshTimer: Timer?
@@ -107,7 +108,8 @@ final class UsageViewModel: ObservableObject {
         snapshotWriter: any SnapshotWriting = DefaultSnapshotWriter(),
         widgetReloader: any WidgetReloading = DefaultWidgetReloader(),
         tokenSync: any TokenSyncing = TokenStore.shared,
-        loginItemManager: any LoginItemManaging = DefaultLoginItemManager()
+        loginItemManager: any LoginItemManaging = DefaultLoginItemManager(),
+        alertChecker: any AlertChecking = DefaultAlertChecker()
     ) {
         self.fetcher = fetcher
         self.settingsStore = settingsStore
@@ -116,6 +118,7 @@ final class UsageViewModel: ObservableObject {
         self.widgetReloader = widgetReloader
         self.tokenSync = tokenSync
         self.loginItemManager = loginItemManager
+        self.alertChecker = alertChecker
 
         let config = WKWebViewConfiguration()
         // Use app-specific persistent data store to avoid macOS TCC prompt
@@ -252,6 +255,7 @@ final class UsageViewModel: ObservableObject {
         fiveHourResetsAt = result.fiveHourResetsAt
         sevenDayResetsAt = result.sevenDayResetsAt
         usageStore.save(result)
+        alertChecker.checkAlerts(result: result, settings: settings)
         reloadHistory()
 
         snapshotWriter.saveAfterFetch(

@@ -1,4 +1,4 @@
-// meta: created=2026-02-23 updated=2026-02-23 checked=never
+// meta: created=2026-02-23 updated=2026-02-27 checked=never
 // Dependency injection protocols.
 // Enables testing UsageViewModel without touching production state.
 import Foundation
@@ -21,6 +21,7 @@ extension SettingsStore: SettingsStoring {}
 protocol UsageStoring {
     func save(_ result: UsageResult)
     func loadHistory(windowSeconds: TimeInterval) -> [UsageStore.DataPoint]
+    func loadDailyUsage(since: Date) -> Double?
 }
 
 extension UsageStore: UsageStoring {}
@@ -121,3 +122,25 @@ protocol TokenSyncing: Sendable {
 }
 
 extension TokenStore: TokenSyncing {}
+
+// MARK: - Alert Checking
+
+protocol AlertChecking {
+    func checkAlerts(result: UsageResult, settings: AppSettings)
+}
+
+// MARK: - Notification Sending
+
+protocol NotificationSending {
+    func requestAuthorization() async -> Bool
+    func send(title: String, body: String, identifier: String) async
+}
+
+struct DefaultNotificationSender: NotificationSending {
+    func requestAuthorization() async -> Bool {
+        await NotificationManager.shared.requestAuthorization()
+    }
+    func send(title: String, body: String, identifier: String) async {
+        await NotificationManager.shared.send(title: title, body: body, identifier: identifier)
+    }
+}
