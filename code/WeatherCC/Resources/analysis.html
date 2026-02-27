@@ -280,6 +280,8 @@ async function fetchJSON(url) {
 }
 
 async function loadData(fromEpoch, toEpoch) {
+  _xMin = fromEpoch != null ? fromEpoch * 1000 : null;
+  _xMax = toEpoch != null ? toEpoch * 1000 : null;
   document.getElementById('loading').textContent = 'Loading data...';
   document.getElementById('loading').style.display = '';
 
@@ -311,6 +313,7 @@ async function loadData(fromEpoch, toEpoch) {
 // ============================================================
 
 let _usageData, _tokenData, _allDeltas;
+let _xMin = null, _xMax = null;
 const _charts = {};
 const _rendered = {};
 
@@ -369,12 +372,15 @@ Chart.register({
 });
 
 function timeXScale() {
-  return {
+  const cfg = {
     type: 'time',
     ticks: { display: false },
     grid: { display: false },
     afterFit(scale) { scale.height = 40; },
   };
+  if (_xMin != null) cfg.min = _xMin;
+  if (_xMax != null) cfg.max = _xMax;
+  return cfg;
 }
 
 const timeSlots = [
