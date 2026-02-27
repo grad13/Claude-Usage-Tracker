@@ -531,6 +531,36 @@ final class AnalysisJSLogicTests: AnalysisJSTestCase {
                        0.50, accuracy: 0.001)
     }
 
+    // =========================================================
+    // MARK: - timeXScale
+    // =========================================================
+
+    func testTimeXScale_withMinMax_returnsMinMax() {
+        let result = evalJS("""
+            _xMin = 1709251200000;
+            _xMax = 1709856000000;
+            const cfg = timeXScale();
+            return {type: cfg.type, min: cfg.min, max: cfg.max, hasMin: 'min' in cfg, hasMax: 'max' in cfg};
+        """) as? [String: Any]
+        XCTAssertEqual(result?["type"] as? String, "time")
+        XCTAssertTrue(result?["hasMin"] as? Bool ?? false, "cfg should contain min")
+        XCTAssertTrue(result?["hasMax"] as? Bool ?? false, "cfg should contain max")
+        XCTAssertEqual(result?["min"] as? Double, 1709251200000)
+        XCTAssertEqual(result?["max"] as? Double, 1709856000000)
+    }
+
+    func testTimeXScale_withNullMinMax_omitsMinMax() {
+        let result = evalJS("""
+            _xMin = null;
+            _xMax = null;
+            const cfg = timeXScale();
+            return {type: cfg.type, hasMin: 'min' in cfg, hasMax: 'max' in cfg};
+        """) as? [String: Any]
+        XCTAssertEqual(result?["type"] as? String, "time")
+        XCTAssertFalse(result?["hasMin"] as? Bool ?? true, "cfg should NOT contain min when _xMin is null")
+        XCTAssertFalse(result?["hasMax"] as? Bool ?? true, "cfg should NOT contain max when _xMax is null")
+    }
+
 }
 
 // MARK: - Additional JS Logic Tests (edge cases, timeSlots, stats, cumulative)
