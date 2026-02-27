@@ -1,0 +1,1030 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ClaudeUsageTracker — Usage Analysis</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #0d1117;
+  color: #c9d1d9;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro', system-ui, sans-serif;
+  padding: 20px;
+}
+.header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+h1 {
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 0;
+  color: #e6edf3;
+}
+h2 {
+  font-size: 15px;
+  font-weight: 500;
+  margin-bottom: 8px;
+  color: #8b949e;
+}
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 16px;
+  padding-bottom: 28px;
+  overflow: visible;
+}
+.card.full { grid-column: 1 / -1; }
+.chart-container { position: relative; width: 100%; height: 300px; overflow: visible; }
+.chart-container.tall { height: 400px; }
+.stats {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.stat {
+  background: #21262d;
+  border-radius: 6px;
+  padding: 10px 16px;
+}
+.stat-value {
+  font-size: 22px;
+  font-weight: 600;
+  color: #e6edf3;
+}
+.stat-label {
+  font-size: 11px;
+  color: #8b949e;
+  margin-top: 2px;
+}
+.heatmap-grid {
+  display: grid;
+  grid-template-columns: 40px repeat(24, 1fr);
+  gap: 2px;
+  font-size: 10px;
+}
+.heatmap-cell {
+  aspect-ratio: 1;
+  border-radius: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  color: rgba(255,255,255,0.7);
+}
+.heatmap-label {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 4px;
+  color: #8b949e;
+  font-size: 10px;
+}
+.heatmap-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  color: #8b949e;
+  font-size: 9px;
+  padding-bottom: 2px;
+}
+.tab-bar {
+  display: flex;
+  gap: 0;
+  margin-bottom: 16px;
+  border-bottom: 1px solid #30363d;
+}
+.tab-btn {
+  background: none;
+  border: none;
+  color: #8b949e;
+  padding: 8px 20px;
+  font-size: 13px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+}
+.tab-btn:hover { color: #c9d1d9; }
+.tab-btn.active {
+  color: #e6edf3;
+  border-bottom-color: #58a6ff;
+}
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+.date-range {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.date-range label {
+  color: #8b949e;
+  font-size: 12px;
+}
+.date-range input[type="date"] {
+  background: #21262d;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  color: #c9d1d9;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+.date-range button {
+  background: #238636;
+  border: none;
+  border-radius: 4px;
+  color: #fff;
+  padding: 5px 14px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.date-range button:hover { background: #2ea043; }
+.date-range .preset-btn {
+  background: #21262d;
+  border: 1px solid #30363d;
+  color: #c9d1d9;
+  padding: 4px 12px;
+}
+.date-range .preset-btn:hover { background: #30363d; }
+.date-range .preset-btn.active {
+  background: #1f6feb;
+  border-color: #1f6feb;
+  color: #fff;
+}
+#loading {
+  text-align: center;
+  padding: 60px;
+  color: #8b949e;
+  font-size: 14px;
+}
+</style>
+</head>
+<body>
+<div class="header-row">
+  <h1>ClaudeUsageTracker — Usage Analysis</h1>
+  <div class="date-range" id="globalRange">
+    <label>From <input type="date" id="globalFrom"></label>
+    <label>To <input type="date" id="globalTo"></label>
+    <button class="preset-btn" data-days="7">7d</button>
+    <button class="preset-btn" data-days="30">30d</button>
+    <button class="preset-btn" data-days="0">All</button>
+    <button id="applyGlobal">Apply</button>
+  </div>
+</div>
+<div id="loading">Loading data...</div>
+<div id="app" style="display:none;">
+
+<div class="stats" id="stats"></div>
+
+<div class="tab-bar">
+  <button class="tab-btn active" data-tab="usage">Usage</button>
+  <button class="tab-btn" data-tab="cost">Cost</button>
+  <button class="tab-btn" data-tab="scatter">Scatter</button>
+  <button class="tab-btn" data-tab="kde">KDE</button>
+  <button class="tab-btn" data-tab="heatmap">Heatmap</button>
+  <button class="tab-btn" data-tab="cumulative">Cumulative</button>
+</div>
+
+<div class="tab-content active" id="tab-usage">
+  <div class="card full">
+    <h2>Usage Timeline</h2>
+    <div class="chart-container tall"><canvas id="usageTimeline"></canvas></div>
+  </div>
+</div>
+
+<div class="tab-content" id="tab-cost">
+  <div class="grid">
+    <div class="card full">
+      <h2>Cost Timeline (per request, USD)</h2>
+      <div class="chart-container tall"><canvas id="costTimeline"></canvas></div>
+    </div>
+  </div>
+</div>
+
+<div class="tab-content" id="tab-scatter">
+  <div class="card full">
+    <h2>Efficiency (Δ5h% vs Δ Cost)</h2>
+    <div class="chart-container tall"><canvas id="effScatter"></canvas></div>
+  </div>
+</div>
+
+<div class="tab-content" id="tab-kde">
+  <div class="card full">
+    <h2>KDE — Efficiency Distribution (Δ% / Δ$)</h2>
+    <div class="chart-container tall"><canvas id="kdeChart"></canvas></div>
+  </div>
+</div>
+
+<div class="tab-content" id="tab-heatmap">
+  <div class="card full">
+    <h2>Hourly Efficiency Heatmap (Δ% / Δ$)</h2>
+    <div id="heatmap"></div>
+  </div>
+</div>
+
+<div class="tab-content" id="tab-cumulative">
+  <div class="card full">
+    <h2>Cumulative Cost (USD)</h2>
+    <div class="chart-container tall"><canvas id="cumulativeCost"></canvas></div>
+  </div>
+</div>
+
+</div>
+
+<script>
+// ============================================================
+// Data loading: JSON fetched from Swift-side AnalysisSchemeHandler
+// ============================================================
+
+// Model pricing (USD per 1M tokens, mirrors CostEstimator.swift)
+const MODEL_PRICING = {
+  opus:   { input: 15.0,  output: 75.0, cacheWrite: 18.75, cacheRead: 1.50 },
+  sonnet: { input: 3.0,   output: 15.0, cacheWrite: 3.75,  cacheRead: 0.30 },
+  haiku:  { input: 0.80,  output: 4.0,  cacheWrite: 1.0,   cacheRead: 0.08 },
+};
+
+function pricingForModel(model) {
+  if (model.includes('opus')) return MODEL_PRICING.opus;
+  if (model.includes('haiku')) return MODEL_PRICING.haiku;
+  return MODEL_PRICING.sonnet;
+}
+
+function costForRecord(r) {
+  const p = pricingForModel(r.model);
+  const M = 1_000_000;
+  return r.input_tokens / M * p.input
+       + r.output_tokens / M * p.output
+       + r.cache_creation_tokens / M * p.cacheWrite
+       + r.cache_read_tokens / M * p.cacheRead;
+}
+
+async function fetchJSON(url) {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return [];
+    return await res.json();
+  } catch { return []; }
+}
+
+async function loadData(fromEpoch, toEpoch) {
+  _xMin = fromEpoch != null ? fromEpoch * 1000 : null;
+  _xMax = toEpoch != null ? toEpoch * 1000 : null;
+  document.getElementById('loading').textContent = 'Loading data...';
+  document.getElementById('loading').style.display = '';
+
+  let usageUrl = 'cut://usage.json';
+  let tokensUrl = 'cut://tokens.json';
+  if (fromEpoch != null && toEpoch != null) {
+    usageUrl += `?from=${fromEpoch}&to=${toEpoch}`;
+    // Token DB uses ISO text timestamps
+    const fromISO = new Date(fromEpoch * 1000).toISOString();
+    const toISO = new Date(toEpoch * 1000).toISOString();
+    tokensUrl += `?from=${encodeURIComponent(fromISO)}&to=${encodeURIComponent(toISO)}`;
+  }
+
+  const [usageData, rawTokenData] = await Promise.all([
+    fetchJSON(usageUrl),
+    fetchJSON(tokensUrl),
+  ]);
+
+  const tokenData = rawTokenData.map(r => ({
+    timestamp: r.timestamp,
+    costUSD: costForRecord(r),
+  }));
+
+  return { usageData, tokenData };
+}
+
+// ============================================================
+// Chart rendering (preserved from previous implementation)
+// ============================================================
+
+let _usageData, _tokenData, _allDeltas;
+let _xMin = null, _xMax = null;
+const _charts = {};
+const _rendered = {};
+
+Chart.register({
+  id: 'dayBoundary',
+  beforeDatasetsDraw(chart) {
+    const xScale = chart.scales.x;
+    if (!xScale || xScale.type !== 'time') return;
+    const ctx = chart.ctx;
+    const { top, bottom, left, right } = chart.chartArea;
+    const min = xScale.min;
+    const max = xScale.max;
+
+    // Collect midnight boundaries
+    const midnights = [];
+    const d = new Date(min);
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() + 1);
+    while (d.getTime() < max) {
+      midnights.push(d.getTime());
+      d.setDate(d.getDate() + 1);
+    }
+
+    // Draw vertical dashed lines at midnights
+    ctx.save();
+    ctx.strokeStyle = '#484f58';
+    ctx.lineWidth = 1;
+    for (const m of midnights) {
+      const x = xScale.getPixelForValue(m);
+      if (x >= left && x <= right) {
+        ctx.beginPath();
+        ctx.moveTo(x, top);
+        ctx.lineTo(x, bottom);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+
+    // Draw centered date labels below time ticks
+    const edges = [min, ...midnights, max];
+    ctx.save();
+    ctx.fillStyle = '#8b949e';
+    ctx.font = '11px -apple-system, BlinkMacSystemFont, "SF Pro", system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    const labelY = xScale.top + 26;
+    for (let i = 0; i < edges.length - 1; i++) {
+      const lx = Math.max(xScale.getPixelForValue(edges[i]), left);
+      const rx = Math.min(xScale.getPixelForValue(edges[i + 1]), right);
+      if (rx - lx < 30) continue;
+      const mid = new Date((edges[i] + edges[i + 1]) / 2);
+      const label = (mid.getMonth() + 1) + '/' + String(mid.getDate()).padStart(2, '0');
+      ctx.fillText(label, (lx + rx) / 2, labelY);
+    }
+    ctx.restore();
+  },
+});
+
+function timeXScale() {
+  const cfg = {
+    type: 'time',
+    ticks: { display: false },
+    grid: { display: false },
+    afterFit(scale) { scale.height = 40; },
+  };
+  if (_xMin != null) cfg.min = _xMin;
+  if (_xMax != null) cfg.max = _xMax;
+  return cfg;
+}
+
+const timeSlots = [
+  { label: 'Night (0\u20136h)',     color: 'rgba(100,150,255,0.7)', filter: d => d.hour < 6 },
+  { label: 'Morning (6\u201312h)',  color: 'rgba(255,200,80,0.7)',  filter: d => d.hour >= 6 && d.hour < 12 },
+  { label: 'Afternoon (12\u201318h)', color: 'rgba(255,130,80,0.7)', filter: d => d.hour >= 12 && d.hour < 18 },
+  { label: 'Evening (18\u201324h)', color: 'rgba(180,100,255,0.7)', filter: d => d.hour >= 18 },
+];
+
+function computeKDE(values) {
+  const n = values.length;
+  if (n < 2) return { xs: [], ys: [] };
+  const mean = values.reduce((a, b) => a + b, 0) / n;
+  const variance = values.reduce((a, b) => a + (b - mean) ** 2, 0) / n;
+  const std = Math.sqrt(variance) || 1;
+  const h = 1.06 * std * Math.pow(n, -0.2);
+  const lo = Math.min(...values) - 3 * h;
+  const hi = Math.max(...values) + 3 * h;
+  const step = (hi - lo) / 200;
+  const xs = [], ys = [];
+  const coeff = 1 / (n * h * Math.sqrt(2 * Math.PI));
+  for (let x = lo; x <= hi; x += step) {
+    let density = 0;
+    for (const xi of values) {
+      const u = (x - xi) / h;
+      density += Math.exp(-0.5 * u * u);
+    }
+    xs.push(x);
+    ys.push(density * coeff);
+  }
+  return { xs, ys };
+}
+
+function computeDeltas(usageData, tokenData) {
+  const deltas = [];
+  for (let i = 1; i < usageData.length; i++) {
+    const prev = usageData[i - 1];
+    const curr = usageData[i];
+    if (curr.hourly_percent == null || prev.hourly_percent == null) continue;
+    const d5h = curr.hourly_percent - prev.hourly_percent;
+    const t0 = prev.timestamp * 1000;
+    const t1 = curr.timestamp * 1000;
+    const intervalCost = tokenData
+      .filter(r => { const t = new Date(r.timestamp).getTime(); return t >= t0 && t < t1; })
+      .reduce((s, r) => s + r.costUSD, 0);
+    if (intervalCost > 0.001) {
+      const dt = new Date(t1);
+      deltas.push({ x: intervalCost, y: d5h, hour: dt.getHours(), timestamp: curr.timestamp, date: dt });
+    }
+  }
+  return deltas;
+}
+
+function buildHeatmap(deltas) {
+  const heatData = {};
+  for (const d of deltas) {
+    const dt = d.date || new Date(d.timestamp);
+    const key = `${dt.getDay()}-${dt.getHours()}`;
+    if (!heatData[key]) heatData[key] = { totalDelta: 0, totalCost: 0, count: 0 };
+    heatData[key].totalDelta += d.y;
+    heatData[key].totalCost += d.x;
+    heatData[key].count++;
+  }
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const ratios = [];
+  for (const v of Object.values(heatData)) {
+    if (v.totalCost > 0.001) ratios.push(v.totalDelta / v.totalCost);
+  }
+  const minR = Math.min(...ratios, 0);
+  const maxR = Math.max(...ratios, 1);
+  function ratioColor(ratio) {
+    if (ratio === null) return '#161b22';
+    const t = Math.max(0, Math.min(1, (ratio - minR) / (maxR - minR + 0.001)));
+    const r = Math.round(40 + t * 180), g = Math.round(180 - t * 140), b = 40;
+    return `rgba(${r},${g},${b},0.8)`;
+  }
+  let html = '<div class="heatmap-grid"><div></div>';
+  for (let h = 0; h < 24; h++) html += `<div class="heatmap-header">${h}</div>`;
+  for (let dow = 0; dow < 7; dow++) {
+    html += `<div class="heatmap-label">${dayNames[dow]}</div>`;
+    for (let h = 0; h < 24; h++) {
+      const d = heatData[`${dow}-${h}`];
+      let ratio = null, title = 'No data';
+      if (d && d.totalCost > 0.001) {
+        ratio = d.totalDelta / d.totalCost;
+        title = `\u0394%/\u0394$: ${ratio.toFixed(1)} (n=${d.count})`;
+      } else if (d) { title = `n=${d.count}, no cost data`; }
+      html += `<div class="heatmap-cell" style="background:${ratioColor(ratio)}" title="${title}">${ratio !== null ? ratio.toFixed(0) : ''}</div>`;
+    }
+  }
+  html += '</div>';
+  document.getElementById('heatmap').innerHTML = html;
+}
+
+function buildScatterChart(canvasId, deltas) {
+  return new Chart(document.getElementById(canvasId), {
+    type: 'scatter',
+    data: {
+      datasets: timeSlots.map(slot => ({
+        label: slot.label,
+        data: deltas.filter(slot.filter),
+        backgroundColor: slot.color,
+        pointRadius: 4,
+      })),
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: {
+        x: {
+          type: 'linear',
+          ticks: { color: '#484f58', font: { size: 10 } },
+          grid: { color: '#21262d' },
+          title: { display: true, text: '\u0394 Cost (USD)', color: '#484f58' },
+        },
+        y: {
+          ticks: { color: '#484f58', font: { size: 10 } },
+          grid: { color: '#21262d' },
+          title: { display: true, text: '\u0394 5h%', color: '#484f58' },
+        },
+      },
+      plugins: {
+        legend: { labels: { color: '#8b949e', font: { size: 11 } } },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              const d = ctx.raw;
+              return `\u0394$${d.x.toFixed(3)} \u2192 \u0394${d.y.toFixed(1)}% (${d.hour}:00)`;
+            },
+          },
+        },
+      },
+    },
+  });
+}
+
+// Weekly: single continuous dataset
+function buildWeeklyData(data) {
+  const result = [];
+  for (const d of data) {
+    if (d.weekly_percent != null) {
+      result.push({ x: d.timestamp * 1000, y: d.weekly_percent });
+    }
+  }
+  return result;
+}
+
+// Hourly: split into sessions when hourly_resets_at changes.
+// resets_at is now a normalized epoch (rounded to nearest hour),
+// so simple value comparison is sufficient — no tolerance needed.
+function buildHourlySessions(data) {
+  const sessions = [];
+  let current = [];
+  let currentResetsAt = null;
+
+  function pushSession() {
+    if (current.length === 0) return;
+    const resetsAtMs = currentResetsAt ? currentResetsAt * 1000 : null;
+    // Add y=0 at resets_at to show usage dropping to 0 at session end
+    if (resetsAtMs) {
+      current.push({ x: resetsAtMs, y: 0 });
+    }
+    sessions.push({
+      data: current,
+      start: resetsAtMs ? resetsAtMs - 5 * 3600000 : current[0].x,
+      end: resetsAtMs || current[current.length - 1].x,
+    });
+    current = [];
+    currentResetsAt = null;
+  }
+
+  for (const d of data) {
+    if (d.hourly_percent == null) continue;
+    // Skip records without session assignment (idle periods between sessions)
+    if (!d.hourly_resets_at) continue;
+
+    if (currentResetsAt && d.hourly_resets_at !== currentResetsAt) {
+      pushSession();
+    }
+    current.push({ x: d.timestamp * 1000, y: d.hourly_percent });
+    currentResetsAt = d.hourly_resets_at;
+  }
+  pushSession();
+  return sessions;
+}
+
+// Stripe pattern for session bands
+function createStripePattern(ctx, color, lineWidth, spacing) {
+  const size = spacing;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const pCtx = canvas.getContext('2d');
+  pCtx.strokeStyle = color;
+  pCtx.lineWidth = lineWidth;
+  pCtx.beginPath(); pCtx.moveTo(0, size); pCtx.lineTo(size, 0); pCtx.stroke();
+  pCtx.beginPath(); pCtx.moveTo(-size, size); pCtx.lineTo(size, -size); pCtx.stroke();
+  pCtx.beginPath(); pCtx.moveTo(0, size * 2); pCtx.lineTo(size * 2, 0); pCtx.stroke();
+  return ctx.createPattern(canvas, 'repeat');
+}
+
+// Binary search for nearest data point by timestamp
+function findNearest(sortedData, targetX) {
+  if (!sortedData.length) return null;
+  let lo = 0, hi = sortedData.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (sortedData[mid].x < targetX) lo = mid + 1; else hi = mid;
+  }
+  const candidates = [sortedData[lo]];
+  if (lo > 0) candidates.push(sortedData[lo - 1]);
+  let best = candidates[0];
+  for (const c of candidates) {
+    if (Math.abs(c.x - targetX) < Math.abs(best.x - targetX)) best = c;
+  }
+  return Math.abs(best.x - targetX) < 600000 ? best : null;
+}
+
+function renderUsageTab() {
+  const weeklyData = buildWeeklyData(_usageData);
+  const sessions = buildHourlySessions(_usageData);
+  const allHourlyData = sessions.flatMap(s => s.data).sort((a, b) => a.x - b.x);
+
+  const hourlyDatasets = sessions.map((sess, i) => ({
+    label: i === 0 ? 'Hourly Usage' : '',
+    data: sess.data,
+    borderColor: '#64b4ff', backgroundColor: 'rgba(100,180,255,0.6)',
+    fill: true, borderWidth: 0.75, pointRadius: 1, tension: 0, stepped: 'before',
+  }));
+
+  // Pattern C: even=stripes, odd=translucent
+  const sessionBandPlugin = {
+    id: 'sessionBands',
+    beforeDraw(chart) {
+      const xScale = chart.scales.x;
+      const ctx = chart.ctx;
+      const { top, bottom, left, right } = chart.chartArea;
+      const stripePattern = createStripePattern(ctx, 'rgba(255,255,255,0.07)', 1, 8);
+      for (let i = 0; i < sessions.length; i++) {
+        const x0 = Math.max(xScale.getPixelForValue(sessions[i].start), left);
+        const x1 = Math.min(xScale.getPixelForValue(sessions[i].end), right);
+        if (x1 <= x0) continue;
+        if (i % 2 === 0) {
+          ctx.fillStyle = stripePattern;
+        } else {
+          ctx.fillStyle = 'rgba(255,255,255,0.06)';
+        }
+        ctx.fillRect(x0, top, x1 - x0, bottom - top);
+      }
+    },
+  };
+
+  // Crosshair + custom tooltip
+  const crosshairPlugin = {
+    id: 'crosshair',
+    afterDraw(chart) {
+      if (!chart._crosshairX) return;
+      const { top, bottom, left, right } = chart.chartArea;
+      const ctx = chart.ctx;
+      const xScale = chart.scales.x;
+      const yScale = chart.scales.y;
+      const tsMs = xScale.getValueForPixel(chart._crosshairX);
+
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      ctx.moveTo(chart._crosshairX, top);
+      ctx.lineTo(chart._crosshairX, bottom);
+      ctx.stroke();
+      ctx.restore();
+
+      const hourly = findNearest(allHourlyData, tsMs);
+      const weekly = findNearest(weeklyData, tsMs);
+      if (!hourly && !weekly) return;
+
+      ctx.save();
+      if (hourly) {
+        const hx = xScale.getPixelForValue(hourly.x);
+        const hy = yScale.getPixelForValue(hourly.y);
+        ctx.fillStyle = '#64b4ff';
+        ctx.beginPath(); ctx.arc(hx, hy, 4, 0, Math.PI * 2); ctx.fill();
+      }
+      if (weekly) {
+        const wx = xScale.getPixelForValue(weekly.x);
+        const wy = yScale.getPixelForValue(weekly.y);
+        ctx.fillStyle = '#ff82b4';
+        ctx.beginPath(); ctx.arc(wx, wy, 4, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+
+      const refTs = hourly ? hourly.x : weekly.x;
+      const d = new Date(refTs);
+      const timeStr = `${d.getMonth()+1}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+      const lines = [timeStr];
+      if (hourly) lines.push(`Hourly: ${hourly.y.toFixed(0)}%`);
+      if (weekly) lines.push(`Weekly: ${weekly.y.toFixed(0)}%`);
+
+      ctx.save();
+      ctx.font = '11px -apple-system, BlinkMacSystemFont, "SF Pro", system-ui, sans-serif';
+      const lineH = 16, pad = 8;
+      const maxW = Math.max(...lines.map(l => ctx.measureText(l).width));
+      const boxW = maxW + pad * 2;
+      const boxH = lines.length * lineH + pad * 2 - 4;
+      let bx = chart._crosshairX + 12;
+      if (bx + boxW > right) bx = chart._crosshairX - boxW - 12;
+      const by = top + 8;
+
+      ctx.fillStyle = 'rgba(22,27,34,0.92)';
+      ctx.strokeStyle = '#30363d';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.roundRect(bx, by, boxW, boxH, 4);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.textBaseline = 'top';
+      for (let i = 0; i < lines.length; i++) {
+        ctx.fillStyle = i === 0 ? '#8b949e' : '#c9d1d9';
+        ctx.fillText(lines[i], bx + pad, by + pad + i * lineH - 2);
+      }
+      ctx.restore();
+    },
+    afterEvent(chart, args) {
+      const evt = args.event;
+      if (evt.type === 'mousemove' && args.inChartArea) {
+        chart._crosshairX = evt.x;
+      } else if (evt.type === 'mouseout') {
+        chart._crosshairX = null;
+      }
+      chart.draw();
+    },
+  };
+
+  _charts.usageTimeline = new Chart(document.getElementById('usageTimeline'), {
+    type: 'line',
+    data: {
+      datasets: [
+        ...hourlyDatasets,
+        {
+          label: 'Weekly Usage',
+          data: weeklyData,
+          borderColor: '#ff82b4',
+          fill: false, borderWidth: 1.5, pointRadius: 1, tension: 0, stepped: 'before',
+          order: -1,
+        },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          labels: { color: '#8b949e', font: { size: 11 }, filter: item => item.text !== '' },
+          onClick(e, legendItem, legend) {
+            const chart = legend.chart;
+            const ci = legendItem.datasetIndex;
+            const newVisible = !chart.isDatasetVisible(ci);
+            const targetColor = chart.data.datasets[ci].borderColor;
+            chart.data.datasets.forEach((ds, i) => {
+              if (ds.borderColor === targetColor) {
+                chart.setDatasetVisibility(i, newVisible);
+              }
+            });
+            chart.update();
+          },
+        },
+        tooltip: { enabled: false },
+      },
+      scales: {
+        x: timeXScale(),
+        y: { min: 0, max: 100, ticks: { color: '#484f58', font: { size: 10 }, stepSize: 20 }, grid: { color: '#21262d' }, title: { display: true, text: '%', color: '#484f58' } },
+      },
+    },
+    plugins: [sessionBandPlugin, crosshairPlugin],
+  });
+
+}
+
+function renderCostTab() {
+  _charts.costTimeline = new Chart(document.getElementById('costTimeline'), {
+    type: 'bar',
+    data: {
+      datasets: [{
+        label: 'Cost (USD)',
+        data: _tokenData.map(d => ({ x: d.timestamp, y: d.costUSD })),
+        backgroundColor: 'rgba(136,198,103,0.6)', borderColor: '#88c667',
+        borderWidth: 0.5, barPercentage: 1.0, categoryPercentage: 1.0,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: '#8b949e', font: { size: 11 } } } },
+      scales: {
+        x: timeXScale(),
+        y: { ticks: { color: '#484f58', font: { size: 10 } }, grid: { color: '#21262d' }, title: { display: true, text: 'USD', color: '#484f58' } },
+      },
+    },
+  });
+}
+
+function renderScatterTab(deltas) {
+  if (_charts.effScatter) _charts.effScatter.destroy();
+  _charts.effScatter = buildScatterChart('effScatter', deltas);
+}
+
+function renderKdeTab(deltas) {
+  if (_charts.kdeChart) _charts.kdeChart.destroy();
+  const ratios = deltas.filter(d => d.x > 0.001).map(d => d.y / d.x);
+  const { xs, ys } = computeKDE(ratios);
+  if (xs.length > 0) {
+    _charts.kdeChart = new Chart(document.getElementById('kdeChart'), {
+      type: 'line',
+      data: {
+        labels: xs,
+        datasets: [{
+          label: 'Density',
+          data: ys,
+          borderColor: '#64b4ff',
+          backgroundColor: 'rgba(100,180,255,0.15)',
+          fill: true, borderWidth: 1.5, pointRadius: 0, tension: 0.3,
+        }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: '#8b949e', font: { size: 11 } } } },
+        scales: {
+          x: {
+            type: 'linear',
+            ticks: { color: '#484f58', font: { size: 10 }, callback: v => v.toFixed(0) },
+            grid: { color: '#21262d' },
+            title: { display: true, text: '\u0394% / \u0394$ (ratio)', color: '#484f58' },
+          },
+          y: {
+            ticks: { color: '#484f58', font: { size: 10 } },
+            grid: { color: '#21262d' },
+            title: { display: true, text: 'Density', color: '#484f58' },
+          },
+        },
+      },
+    });
+  }
+}
+
+function renderHeatmapTab(deltas) {
+  buildHeatmap(deltas);
+}
+
+function renderCumulativeTab() {
+  let cumCost = 0;
+  const cumData = _tokenData.map(r => {
+    cumCost += r.costUSD;
+    return { x: r.timestamp, y: Math.round(cumCost * 100) / 100 };
+  });
+  _charts.cumulativeCost = new Chart(document.getElementById('cumulativeCost'), {
+    type: 'line',
+    data: {
+      datasets: [{
+        label: 'Cumulative Cost (USD)',
+        data: cumData,
+        borderColor: '#f0883e', backgroundColor: 'rgba(240,136,62,0.1)',
+        fill: true, borderWidth: 1.5, pointRadius: 0,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: '#8b949e', font: { size: 11 } } } },
+      scales: {
+        x: timeXScale(),
+        y: { ticks: { color: '#484f58', font: { size: 10 } }, grid: { color: '#21262d' }, title: { display: true, text: 'USD', color: '#484f58' } },
+      },
+    },
+  });
+}
+
+function renderTab(tabId) {
+  switch (tabId) {
+    case 'usage': renderUsageTab(); break;
+    case 'cost': renderCostTab(); break;
+    case 'scatter': renderScatterTab(_allDeltas); break;
+    case 'kde': renderKdeTab(_allDeltas); break;
+    case 'heatmap': renderHeatmapTab(_allDeltas); break;
+    case 'cumulative': renderCumulativeTab(); break;
+  }
+}
+
+function destroyAllCharts() {
+  for (const key of Object.keys(_charts)) {
+    if (_charts[key]) { _charts[key].destroy(); _charts[key] = null; }
+  }
+  for (const key of Object.keys(_rendered)) { delete _rendered[key]; }
+}
+
+function localDateStr(d) {
+  return d.getFullYear() + '-'
+    + String(d.getMonth() + 1).padStart(2, '0') + '-'
+    + String(d.getDate()).padStart(2, '0');
+}
+
+function dateInputToEpoch(dateStr, end) {
+  const d = new Date(dateStr + (end ? 'T23:59:59Z' : 'T00:00:00Z'));
+  return Math.floor(d.getTime() / 1000);
+}
+
+function initTabs() {
+  const tabs = document.querySelectorAll('.tab-btn');
+  const contents = document.querySelectorAll('.tab-content');
+
+  tabs.forEach(btn => {
+    btn.addEventListener('click', () => {
+      tabs.forEach(b => b.classList.remove('active'));
+      contents.forEach(c => c.classList.remove('active'));
+      btn.classList.add('active');
+      const tabId = btn.dataset.tab;
+      document.getElementById('tab-' + tabId).classList.add('active');
+      if (!_rendered[tabId]) {
+        renderTab(tabId);
+        _rendered[tabId] = true;
+      }
+    });
+  });
+}
+
+let _meta = {};
+
+function initGlobalRange() {
+  const fromInput = document.getElementById('globalFrom');
+  const toInput = document.getElementById('globalTo');
+  const applyBtn = document.getElementById('applyGlobal');
+  const presetBtns = document.querySelectorAll('.preset-btn');
+
+  async function applyRange() {
+    const fromEpoch = dateInputToEpoch(fromInput.value, false);
+    const toEpoch = dateInputToEpoch(toInput.value, true);
+    destroyAllCharts();
+    const { usageData, tokenData } = await loadData(fromEpoch, toEpoch);
+    renderMain(usageData, tokenData);
+  }
+
+  applyBtn.addEventListener('click', applyRange);
+
+  presetBtns.forEach(btn => {
+    btn.addEventListener('click', async () => {
+      presetBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const days = parseInt(btn.dataset.days);
+      if (days === 0) {
+        // All: clear range, fetch everything
+        if (_meta.oldestTimestamp) {
+          fromInput.value = localDateStr(new Date(_meta.oldestTimestamp * 1000));
+        }
+        toInput.value = localDateStr(new Date());
+        destroyAllCharts();
+        const { usageData, tokenData } = await loadData();
+        renderMain(usageData, tokenData);
+      } else {
+        const to = new Date();
+        const from = new Date(Date.now() - days * 86400000);
+        fromInput.value = localDateStr(from);
+        toInput.value = localDateStr(to);
+        await applyRange();
+      }
+    });
+  });
+}
+
+function renderMain(usageData, tokenData) {
+  document.getElementById('loading').textContent = 'Drawing charts...';
+  document.getElementById('app').style.display = '';
+
+  _usageData = usageData;
+  _tokenData = tokenData;
+  _allDeltas = computeDeltas(usageData, tokenData);
+
+  const totalCost = tokenData.reduce((s, r) => s + r.costUSD, 0);
+  const usageSpan = usageData.length > 1
+    ? ((usageData[usageData.length-1].timestamp - usageData[0].timestamp) / 3600).toFixed(1)
+    : '0';
+  const latestHourly = usageData[usageData.length - 1]?.hourly_percent;
+  const latestWeekly = usageData[usageData.length - 1]?.weekly_percent;
+  const hourlyDisplay = latestHourly != null ? latestHourly + '%' : '-';
+  const weeklyDisplay = latestWeekly != null ? latestWeekly + '%' : '-';
+
+  document.getElementById('stats').innerHTML = `
+    <div class="stat"><div class="stat-value">${usageData.length}</div><div class="stat-label">Usage Records</div></div>
+    <div class="stat"><div class="stat-value">${tokenData.length.toLocaleString()}</div><div class="stat-label">Token Records</div></div>
+    <div class="stat"><div class="stat-value">$${totalCost.toFixed(2)}</div><div class="stat-label">Total Est. Cost</div></div>
+    <div class="stat"><div class="stat-value">${usageSpan}h</div><div class="stat-label">Usage Span</div></div>
+    <div class="stat"><div class="stat-value">${hourlyDisplay}</div><div class="stat-label">Latest 5h</div></div>
+    <div class="stat"><div class="stat-value">${weeklyDisplay}</div><div class="stat-label">Latest 7d</div></div>
+  `;
+
+  // Render the currently active tab
+  const activeTab = document.querySelector('.tab-btn.active')?.dataset.tab || 'usage';
+  renderTab(activeTab);
+  _rendered[activeTab] = true;
+  document.getElementById('loading').style.display = 'none';
+}
+
+// Backward-compatible alias (used by tests that call main() directly)
+const main = renderMain;
+
+// ============================================================
+// Entry point: fetch meta → compute initial range → load data
+// ============================================================
+(async () => {
+  try {
+    // Fetch metadata for initial range calculation (values are epoch seconds)
+    const metaRes = await fetch('cut://meta.json');
+    _meta = metaRes.ok ? await metaRes.json() : {};
+
+    // Compute weekly session range from latestSevenDayResetsAt
+    let fromEpoch, toEpoch;
+    const now = new Date();
+    const nowEpoch = Math.floor(now.getTime() / 1000);
+    if (_meta.latestSevenDayResetsAt) {
+      const resetsAtEpoch = Math.min(_meta.latestSevenDayResetsAt, nowEpoch);
+      fromEpoch = resetsAtEpoch - 7 * 86400;
+      toEpoch = nowEpoch;
+    } else if (_meta.oldestTimestamp) {
+      // Fallback: last 7 days
+      fromEpoch = nowEpoch - 7 * 86400;
+      toEpoch = nowEpoch;
+    }
+
+    // Set date inputs
+    const fromInput = document.getElementById('globalFrom');
+    const toInput = document.getElementById('globalTo');
+    if (fromEpoch) fromInput.value = localDateStr(new Date(fromEpoch * 1000));
+    toInput.value = localDateStr(now);
+
+    // Highlight 7d preset as default
+    document.querySelector('.preset-btn[data-days="7"]')?.classList.add('active');
+
+    initTabs();
+    initGlobalRange();
+
+    const { usageData, tokenData } = await loadData(fromEpoch, toEpoch);
+    renderMain(usageData, tokenData);
+  } catch (err) {
+    document.getElementById('loading').textContent = 'Error: ' + err.message;
+    console.error(err);
+  }
+})();
+</script>
+</body>
+</html>
