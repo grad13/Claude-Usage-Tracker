@@ -7,7 +7,8 @@
 
 set -euo pipefail
 
-APPGROUP="$HOME/Library/Group Containers/C3WA2TT222.grad13.weathercc/Library/Application Support/WeatherCC"
+APPGROUP="$HOME/Library/Group Containers/group.grad13.claudeusagetracker/Library/Application Support/ClaudeUsageTracker"
+OLD_APPGROUP="$HOME/Library/Group Containers/C3WA2TT222.grad13.weathercc/Library/Application Support/WeatherCC"
 NONSANDBOX="$HOME/Library/Application Support/WeatherCC"
 SANDBOX="$HOME/Library/Containers/grad13.weathercc.app/Data/Library/Application Support/WeatherCC"
 
@@ -23,7 +24,7 @@ fi
 BEST_SOURCE=""
 BEST_COUNT=0
 
-for label_path in "sandbox:$SANDBOX" "nonsandbox:$NONSANDBOX"; do
+for label_path in "old-appgroup:$OLD_APPGROUP" "sandbox:$SANDBOX" "nonsandbox:$NONSANDBOX"; do
   label="${label_path%%:*}"
   path="${label_path#*:}"
   db="$path/usage.db"
@@ -67,7 +68,7 @@ if [ -f "$AG_SETTINGS" ]; then
   echo "  Settings already in App Group — skipping migration"
 else
   # App Group に settings がない場合のみレガシーから移行
-  for path in "$SANDBOX/settings.json" "$NONSANDBOX/settings.json"; do
+  for path in "$OLD_APPGROUP/settings.json" "$SANDBOX/settings.json" "$NONSANDBOX/settings.json"; do
     if [ -f "$path" ]; then
       echo "  Migrating settings: $path → App Group"
       cp -f "$path" "$AG_SETTINGS"
@@ -79,8 +80,32 @@ else
   fi
 fi
 
+# --- tokens.db 移行 ---
+AG_TOKENS="$APPGROUP/tokens.db"
+if [ ! -f "$AG_TOKENS" ]; then
+  for path in "$OLD_APPGROUP/tokens.db" "$SANDBOX/tokens.db" "$NONSANDBOX/tokens.db"; do
+    if [ -f "$path" ]; then
+      echo "  Migrating tokens.db: $path → App Group"
+      cp -f "$path" "$AG_TOKENS"
+      break
+    fi
+  done
+fi
+
+# --- snapshot.db 移行 ---
+AG_SNAPSHOT="$APPGROUP/snapshot.db"
+if [ ! -f "$AG_SNAPSHOT" ]; then
+  for path in "$OLD_APPGROUP/snapshot.db" "$SANDBOX/snapshot.db" "$NONSANDBOX/snapshot.db"; do
+    if [ -f "$path" ]; then
+      echo "  Migrating snapshot.db: $path → App Group"
+      cp -f "$path" "$AG_SNAPSHOT"
+      break
+    fi
+  done
+fi
+
 # --- legacy ディレクトリは削除しない（データ損失防止） ---
-for path in "$SANDBOX" "$NONSANDBOX"; do
+for path in "$OLD_APPGROUP" "$SANDBOX" "$NONSANDBOX"; do
   if [ -d "$path" ]; then
     echo "  Legacy exists (kept): $path"
   fi

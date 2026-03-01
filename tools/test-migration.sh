@@ -32,7 +32,7 @@ run_migrate() {
 
 setup_appgroup_dir() {
   local fake_home="$1"
-  mkdir -p "$fake_home/Library/Group Containers/C3WA2TT222.grad13.weathercc/Library/Application Support/WeatherCC"
+  mkdir -p "$fake_home/Library/Group Containers/group.grad13.claudeusagetracker/Library/Application Support/ClaudeUsageTracker"
 }
 
 setup_sandbox_dir() {
@@ -46,7 +46,7 @@ setup_nonsandbox_dir() {
 }
 
 appgroup_settings() {
-  echo "$1/Library/Group Containers/C3WA2TT222.grad13.weathercc/Library/Application Support/WeatherCC/settings.json"
+  echo "$1/Library/Group Containers/group.grad13.claudeusagetracker/Library/Application Support/ClaudeUsageTracker/settings.json"
 }
 
 sandbox_settings() {
@@ -58,11 +58,40 @@ nonsandbox_settings() {
 }
 
 appgroup_db() {
-  echo "$1/Library/Group Containers/C3WA2TT222.grad13.weathercc/Library/Application Support/WeatherCC/usage.db"
+  echo "$1/Library/Group Containers/group.grad13.claudeusagetracker/Library/Application Support/ClaudeUsageTracker/usage.db"
 }
 
 sandbox_db() {
   echo "$1/Library/Containers/grad13.weathercc.app/Data/Library/Application Support/WeatherCC/usage.db"
+}
+
+setup_old_appgroup_dir() {
+  local fake_home="$1"
+  mkdir -p "$fake_home/Library/Group Containers/C3WA2TT222.grad13.weathercc/Library/Application Support/WeatherCC"
+}
+
+old_appgroup_db() {
+  echo "$1/Library/Group Containers/C3WA2TT222.grad13.weathercc/Library/Application Support/WeatherCC/usage.db"
+}
+
+old_appgroup_tokens() {
+  echo "$1/Library/Group Containers/C3WA2TT222.grad13.weathercc/Library/Application Support/WeatherCC/tokens.db"
+}
+
+old_appgroup_snapshot() {
+  echo "$1/Library/Group Containers/C3WA2TT222.grad13.weathercc/Library/Application Support/WeatherCC/snapshot.db"
+}
+
+appgroup_tokens() {
+  echo "$1/Library/Group Containers/group.grad13.claudeusagetracker/Library/Application Support/ClaudeUsageTracker/tokens.db"
+}
+
+appgroup_snapshot() {
+  echo "$1/Library/Group Containers/group.grad13.claudeusagetracker/Library/Application Support/ClaudeUsageTracker/snapshot.db"
+}
+
+old_appgroup_settings() {
+  echo "$1/Library/Group Containers/C3WA2TT222.grad13.weathercc/Library/Application Support/WeatherCC/settings.json"
 }
 
 create_settings() {
@@ -279,6 +308,69 @@ assert_eq "hourly_sessions テーブルが存在する" "1" "$hs_exists"
 # weekly_sessions テーブルの存在確認
 ws_exists=$(sqlite3 "$T9_DB" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='weekly_sessions';")
 assert_eq "weekly_sessions テーブルが存在する" "1" "$ws_exists"
+
+echo ""
+
+# --- Test 10: tokens.db が旧 App Group から新 App Group に移行される ---
+echo "--- Test 10: tokens.db が旧 App Group から新に移行される ---"
+T10="$TMPDIR_BASE/t10"
+mkdir -p "$T10"
+setup_appgroup_dir "$T10"
+setup_old_appgroup_dir "$T10"
+
+echo "dummy" > "$(old_appgroup_tokens "$T10")"
+
+run_migrate "$T10" > /dev/null
+
+assert_file_exists "tokens.db が新 App Group に移行される" "$(appgroup_tokens "$T10")"
+
+echo ""
+
+# --- Test 11: snapshot.db が旧 App Group から新 App Group に移行される ---
+echo "--- Test 11: snapshot.db が旧 App Group から新に移行される ---"
+T11="$TMPDIR_BASE/t11"
+mkdir -p "$T11"
+setup_appgroup_dir "$T11"
+setup_old_appgroup_dir "$T11"
+
+echo "dummy" > "$(old_appgroup_snapshot "$T11")"
+
+run_migrate "$T11" > /dev/null
+
+assert_file_exists "snapshot.db が新 App Group に移行される" "$(appgroup_snapshot "$T11")"
+
+echo ""
+
+# --- Test 12: usage.db が旧 App Group をレガシーソースとしてマージされる ---
+echo "--- Test 12: usage.db が旧 App Group からマージされる ---"
+T12="$TMPDIR_BASE/t12"
+mkdir -p "$T12"
+setup_appgroup_dir "$T12"
+setup_old_appgroup_dir "$T12"
+
+create_usage_db "$(old_appgroup_db "$T12")" 6
+
+run_migrate "$T12" > /dev/null
+
+actual_rows=$(sqlite3 "$(appgroup_db "$T12")" "SELECT COUNT(*) FROM usage_log;")
+assert_eq "旧 App Group の usage.db がマージされた" "6" "$actual_rows"
+
+echo ""
+
+# --- Test 13: 旧 App Group から settings.json が移行される ---
+echo "--- Test 13: 旧 App Group から settings.json が移行される ---"
+T13="$TMPDIR_BASE/t13"
+mkdir -p "$T13"
+setup_appgroup_dir "$T13"
+setup_old_appgroup_dir "$T13"
+
+create_settings "$(old_appgroup_settings "$T13")" 42
+
+run_migrate "$T13" > /dev/null
+
+assert_file_exists "App Group に settings.json が作成される" "$(appgroup_settings "$T13")"
+actual_interval=$(python3 -c "import json; print(json.load(open('$(appgroup_settings "$T13")'))['refresh_interval_minutes'])")
+assert_eq "旧 App Group から移行された refresh_interval_minutes が 42" "42" "$actual_interval"
 
 echo ""
 

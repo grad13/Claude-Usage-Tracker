@@ -16,7 +16,7 @@ if [ -z "$DD_DIR" ]; then
 fi
 
 # --- データ保護: デプロイ前にバックアップを作成 ---
-APPGROUP_DIR="$HOME/Library/Group Containers/C3WA2TT222.grad13.weathercc/Library/Application Support/WeatherCC"
+APPGROUP_DIR="$HOME/Library/Group Containers/group.grad13.claudeusagetracker/Library/Application Support/ClaudeUsageTracker"
 APPGROUP_DB="$APPGROUP_DIR/usage.db"
 BACKUP_DIR="$APPGROUP_DIR/backups"
 PRE_COUNT=0
@@ -72,6 +72,10 @@ echo "==> Deregistering DerivedData from LaunchServices..."
 for dd in "$DERIVED_DATA"/${APP_NAME}-*/Build/Products/*/${APP_NAME}.app; do
     [ -d "$dd" ] && "$LSREGISTER" -u "$dd" 2>/dev/null || true
 done
+# 旧名の DerivedData もクリーンアップ
+for dd in "$DERIVED_DATA"/WeatherCC-*/Build/Products/*/WeatherCC.app; do
+    [ -d "$dd" ] && "$LSREGISTER" -u "$dd" 2>/dev/null || true
+done
 
 # Test gate: run migration tests
 echo "==> Running migration tests..."
@@ -123,7 +127,11 @@ echo "==> Cleaning stale LaunchServices registrations..."
 for dd in "$DERIVED_DATA"/${APP_NAME}-*/Build/Products/*/${APP_NAME}.app; do
     [ -d "$dd" ] && "$LSREGISTER" -u "$dd" 2>/dev/null || true
 done
-for trash in "$HOME/.Trash/${APP_NAME}"*.app; do
+# 旧名もクリーンアップ
+for dd in "$DERIVED_DATA"/WeatherCC-*/Build/Products/*/WeatherCC.app; do
+    [ -d "$dd" ] && "$LSREGISTER" -u "$dd" 2>/dev/null || true
+done
+for trash in "$HOME/.Trash/${APP_NAME}"*.app "$HOME/.Trash/WeatherCC"*.app; do
     [ -d "$trash" ] && "$LSREGISTER" -u "$trash" 2>/dev/null || true
 done
 
