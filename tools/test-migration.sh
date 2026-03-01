@@ -8,7 +8,7 @@
 #   3. App Group に usage.db がある場合 → 行数が減らない
 #   4. レガシーに何もない場合 → エラーにならない
 #
-# 使い方: ./scripts/test-migration.sh
+# 使い方: ./tools/test-migration.sh
 
 set -euo pipefail
 

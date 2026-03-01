@@ -3,8 +3,8 @@ set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-APP_NAME="WeatherCC"
-SCHEME="WeatherCC"
+APP_NAME="ClaudeUsageTracker"
+SCHEME="ClaudeUsageTracker"
 DERIVED_DATA="$HOME/Library/Developer/Xcode/DerivedData"
 INSTALL_DIR="/Applications"
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Versions/Current/Frameworks/LaunchServices.framework/Versions/Current/Support/lsregister"
@@ -44,9 +44,10 @@ fi
 
 # Test gate: run unit tests before building
 echo "==> Running unit tests..."
-TEST_OUTPUT=$(xcodebuild -project "$PROJECT_DIR/code/WeatherCC.xcodeproj" \
+TEST_OUTPUT=$(xcodebuild -project "$PROJECT_DIR/code/ClaudeUsageTracker.xcodeproj" \
     -scheme "$SCHEME" \
     -destination 'platform=macOS' \
+    DEVELOPMENT_TEAM=C3WA2TT222 \
     test 2>&1) || TEST_EXIT=$?
 TEST_EXIT=${TEST_EXIT:-0}
 echo "$TEST_OUTPUT" | tail -5
@@ -78,10 +79,11 @@ echo "==> Running migration tests..."
 
 # Build
 echo "==> Building $SCHEME..."
-xcodebuild -project "$PROJECT_DIR/code/WeatherCC.xcodeproj" \
+xcodebuild -project "$PROJECT_DIR/code/ClaudeUsageTracker.xcodeproj" \
     -scheme "$SCHEME" \
     -destination 'platform=macOS' \
     -configuration Debug \
+    DEVELOPMENT_TEAM=C3WA2TT222 \
     build 2>&1 | tail -5
 
 # Re-resolve DerivedData after build
@@ -104,10 +106,10 @@ sleep 0.5
 echo "==> Installing to $INSTALL_DIR..."
 rm -rf "$INSTALL_DIR/${APP_NAME}.app"
 cp -R "$BUILD_APP" "$INSTALL_DIR/${APP_NAME}.app"
-rm -rf "$INSTALL_DIR/${APP_NAME}.app/Contents/PlugIns/WeatherCCTests.xctest"
+rm -rf "$INSTALL_DIR/${APP_NAME}.app/Contents/PlugIns/ClaudeUsageTrackerTests.xctest"
 
 # Verify widget extension exists before registration
-WIDGET_APPEX="$INSTALL_DIR/${APP_NAME}.app/Contents/PlugIns/WeatherCCWidgetExtension.appex"
+WIDGET_APPEX="$INSTALL_DIR/${APP_NAME}.app/Contents/PlugIns/ClaudeUsageTrackerWidgetExtension.appex"
 if [ ! -d "$WIDGET_APPEX" ]; then
     echo "ERROR: Widget extension not found at $WIDGET_APPEX"
     echo "       PlugIns contents:"
@@ -128,13 +130,13 @@ done
 # Register with LaunchServices, activate widget extension, restart chronod
 echo "==> Registering /Applications/${APP_NAME}.app with LaunchServices..."
 "$LSREGISTER" -f "$INSTALL_DIR/${APP_NAME}.app"
-pluginkit -e use -i grad13.weathercc.app.WeatherCCWidget 2>/dev/null || true
+pluginkit -e use -i grad13.claudeusagetracker.widget 2>/dev/null || true
 killall chronod 2>/dev/null || true
 sleep 3
 
 # Verify widget extension is registered from /Applications (not DerivedData)
 echo "==> Verifying widget extension registration..."
-WIDGET_REG=$("$LSREGISTER" -dump 2>/dev/null | grep -B80 "plugin Identifiers:         grad13.weathercc.app.WeatherCCWidget" | grep "^path:" | head -1 || true)
+WIDGET_REG=$("$LSREGISTER" -dump 2>/dev/null | grep -B80 "plugin Identifiers:         grad13.claudeusagetracker.widget" | grep "^path:" | head -1 || true)
 if echo "$WIDGET_REG" | grep -q "DerivedData"; then
     echo "ERROR: Widget extension is still registered from DerivedData!"
     echo "       $WIDGET_REG"

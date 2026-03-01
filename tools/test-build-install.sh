@@ -7,7 +7,7 @@
 #   2. バックアップ DB が空の場合にエラーにならない
 #   3. バックアップファイルローテーション（10個保持）
 #
-# 使い方: ./code/_tools/test-build-install.sh
+# 使い方: ./tools/test-build-install.sh
 
 set -euo pipefail
 

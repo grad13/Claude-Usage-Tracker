@@ -3,7 +3,7 @@
 # sandbox 内のアプリからは ~/Library/Application Support/ にアクセスできないため、
 # アプリ起動前にこのスクリプトで移行する。
 #
-# 使い方: ./scripts/migrate-to-appgroup.sh
+# 使い方: ./tools/migrate-to-appgroup.sh
 
 set -euo pipefail
 
