@@ -80,29 +80,25 @@ else
   fi
 fi
 
-# --- tokens.db 移行 ---
+# --- tokens.db 移行（レガシーから常に上書きコピー） ---
 AG_TOKENS="$APPGROUP/tokens.db"
-if [ ! -f "$AG_TOKENS" ]; then
-  for path in "$OLD_APPGROUP/tokens.db" "$SANDBOX/tokens.db" "$NONSANDBOX/tokens.db"; do
-    if [ -f "$path" ]; then
-      echo "  Migrating tokens.db: $path → App Group"
-      cp -f "$path" "$AG_TOKENS"
-      break
-    fi
-  done
-fi
+for path in "$OLD_APPGROUP/tokens.db" "$SANDBOX/tokens.db" "$NONSANDBOX/tokens.db"; do
+  if [ -f "$path" ]; then
+    echo "  Copying tokens.db: $path → App Group"
+    cp -f "$path" "$AG_TOKENS"
+    break
+  fi
+done
 
-# --- snapshot.db 移行 ---
+# --- snapshot.db 移行（レガシーから常に上書きコピー） ---
 AG_SNAPSHOT="$APPGROUP/snapshot.db"
-if [ ! -f "$AG_SNAPSHOT" ]; then
-  for path in "$OLD_APPGROUP/snapshot.db" "$SANDBOX/snapshot.db" "$NONSANDBOX/snapshot.db"; do
-    if [ -f "$path" ]; then
-      echo "  Migrating snapshot.db: $path → App Group"
-      cp -f "$path" "$AG_SNAPSHOT"
-      break
-    fi
-  done
-fi
+for path in "$OLD_APPGROUP/snapshot.db" "$SANDBOX/snapshot.db" "$NONSANDBOX/snapshot.db"; do
+  if [ -f "$path" ]; then
+    echo "  Copying snapshot.db: $path → App Group"
+    cp -f "$path" "$AG_SNAPSHOT"
+    break
+  fi
+done
 
 # --- legacy ディレクトリは削除しない（データ損失防止） ---
 for path in "$OLD_APPGROUP" "$SANDBOX" "$NONSANDBOX"; do
