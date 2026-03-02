@@ -161,28 +161,10 @@ fi
 echo "==> Migrating data to App Group..."
 "$SCRIPT_DIR/migrate-to-appgroup.sh"
 
-# データ整合性チェック（デプロイ後にデータが減っていたらバックアップからマージ復元）
+# データ整合性チェック（情報表示のみ、バックアップは手動復旧用に保持）
 if [ -f "$APPGROUP_DB" ]; then
     POST_COUNT=$(sqlite3 -readonly "$APPGROUP_DB" "SELECT COUNT(*) FROM usage_log;" 2>/dev/null || echo 0)
-    echo "==> Data integrity: before=$PRE_COUNT after=$POST_COUNT"
-    if [ "$POST_COUNT" -lt "$PRE_COUNT" ]; then
-        echo "WARNING: Data loss detected ($PRE_COUNT → $POST_COUNT rows). Merging from backup..."
-        if [ -n "${BACKUP_FILE:-}" ] && [ -f "$BACKUP_FILE" ]; then
-            # cp ではなく INSERT マージ — 現在のDBにある新規データを壊さない
-            sqlite3 "$BACKUP_FILE" "ATTACH '${APPGROUP_DB}' AS current;
-              INSERT OR IGNORE INTO current.usage_log(timestamp, hourly_percent, weekly_percent, hourly_session_id, weekly_session_id)
-              SELECT timestamp, hourly_percent, weekly_percent, hourly_session_id, weekly_session_id
-              FROM usage_log
-              WHERE timestamp NOT IN (SELECT timestamp FROM current.usage_log);"
-            RESTORED_COUNT=$(sqlite3 -readonly "$APPGROUP_DB" "SELECT COUNT(*) FROM usage_log;" 2>/dev/null || echo 0)
-            echo "==> Merged from backup: $POST_COUNT → $RESTORED_COUNT rows"
-        else
-            echo "WARNING: No backup available. Proceeding with current data."
-        fi
-    fi
-    if [ "$POST_COUNT" -eq 0 ] && [ "$PRE_COUNT" -eq 0 ]; then
-        echo "WARNING: DB has 0 rows (was already empty before deploy)"
-    fi
+    echo "==> Data integrity: before=$PRE_COUNT after=$POST_COUNT (backup: ${BACKUP_FILE:-none})"
 fi
 
 # Launch

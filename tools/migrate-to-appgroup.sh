@@ -14,52 +14,15 @@ SANDBOX="$HOME/Library/Containers/grad13.weathercc.app/Data/Library/Application 
 
 mkdir -p "$APPGROUP"
 
-# --- usage.db 移行 ---
+# --- usage.db 移行（レガシーから常に上書きコピー） ---
 AG_DB="$APPGROUP/usage.db"
-AG_COUNT=0
-if [ -f "$AG_DB" ]; then
-  AG_COUNT=$(sqlite3 "$AG_DB" "SELECT COUNT(*) FROM usage_log;" 2>/dev/null || echo 0)
-fi
-
-BEST_SOURCE=""
-BEST_COUNT=0
-
-for label_path in "old-appgroup:$OLD_APPGROUP" "sandbox:$SANDBOX" "nonsandbox:$NONSANDBOX"; do
-  label="${label_path%%:*}"
-  path="${label_path#*:}"
-  db="$path/usage.db"
-  if [ -f "$db" ]; then
-    count=$(sqlite3 "$db" "SELECT COUNT(*) FROM usage_log;" 2>/dev/null || echo 0)
-    echo "  $label DB: $count rows"
-    if [ "$count" -gt "$BEST_COUNT" ]; then
-      BEST_COUNT=$count
-      BEST_SOURCE="$db"
-    fi
+for path in "$OLD_APPGROUP/usage.db" "$SANDBOX/usage.db" "$NONSANDBOX/usage.db"; do
+  if [ -f "$path" ]; then
+    echo "  Copying usage.db: $path → App Group"
+    cp -f "$path" "$AG_DB"
+    break
   fi
 done
-
-if [ "$AG_COUNT" -gt 0 ]; then
-  # App Group DB にデータがある場合は絶対に上書きしない
-  # レガシー DB にしかないデータがあれば INSERT で追加する
-  if [ -n "$BEST_SOURCE" ] && [ "$BEST_COUNT" -gt 0 ]; then
-    BEFORE=$AG_COUNT
-    sqlite3 "$BEST_SOURCE" "ATTACH '${AG_DB}' AS ag;
-      INSERT OR IGNORE INTO ag.usage_log(timestamp, hourly_percent, weekly_percent, hourly_session_id, weekly_session_id)
-      SELECT timestamp, hourly_percent, weekly_percent, hourly_session_id, weekly_session_id
-      FROM usage_log
-      WHERE timestamp NOT IN (SELECT timestamp FROM ag.usage_log);"
-    AFTER=$(sqlite3 "$AG_DB" "SELECT COUNT(*) FROM usage_log;" 2>/dev/null || echo 0)
-    echo "  Merged legacy → App Group: $BEFORE → $AFTER rows (added $((AFTER - BEFORE)))"
-  else
-    echo "  DB migration not needed (App Group: $AG_COUNT rows, no legacy data)"
-  fi
-elif [ -n "$BEST_SOURCE" ] && [ "$BEST_COUNT" -gt 0 ]; then
-  # App Group DB が空または存在しない場合のみコピーを許可
-  echo "  Migrating DB: $BEST_SOURCE ($BEST_COUNT rows) → App Group (was empty)"
-  cp -f "$BEST_SOURCE" "$AG_DB"
-else
-  echo "  DB migration not needed (no data anywhere)"
-fi
 
 # --- settings.json 移行 ---
 AG_SETTINGS="$APPGROUP/settings.json"

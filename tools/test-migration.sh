@@ -180,8 +180,8 @@ assert_eq "移行された refresh_interval_minutes が 10" "10" "$actual_interv
 
 echo ""
 
-# --- Test 3: App Group の usage.db の行数が減らない ---
-echo "--- Test 3: usage.db の行数が減らない ---"
+# --- Test 3: usage.db がレガシーから上書きコピーされる ---
+echo "--- Test 3: usage.db がレガシーから上書きコピーされる ---"
 T3="$TMPDIR_BASE/t3"
 mkdir -p "$T3"
 setup_appgroup_dir "$T3"
@@ -193,7 +193,7 @@ create_usage_db "$(sandbox_db "$T3")" 3
 run_migrate "$T3" > /dev/null
 
 actual_rows=$(sqlite3 "$(appgroup_db "$T3")" "SELECT COUNT(*) FROM usage_log;")
-assert_eq "App Group DB の行数が 5 以上" "1" "$([ "$actual_rows" -ge 5 ] && echo 1 || echo 0)"
+assert_eq "App Group DB がレガシーで上書きされる（3行）" "3" "$actual_rows"
 
 echo ""
 
@@ -249,8 +249,8 @@ assert_eq "App Group の refresh_interval_minutes が 1 のまま（mtime に関
 
 echo ""
 
-# --- Test 7: App Group DB + legacy DB（legacy の方が行数が少ない）→ App Group DB が変わらない ---
-echo "--- Test 7: legacy DB の行数が少ない場合、App Group DB は変わらない ---"
+# --- Test 7: legacy DB の行数が少なくても上書きコピーされる ---
+echo "--- Test 7: legacy DB の行数が少なくても上書きコピーされる ---"
 T7="$TMPDIR_BASE/t7"
 mkdir -p "$T7"
 setup_appgroup_dir "$T7"
@@ -262,7 +262,7 @@ create_usage_db "$(sandbox_db "$T7")" 2
 run_migrate "$T7" > /dev/null
 
 actual_rows=$(sqlite3 "$(appgroup_db "$T7")" "SELECT COUNT(*) FROM usage_log;")
-assert_eq "App Group DB の行数が 8 のまま" "8" "$actual_rows"
+assert_eq "App Group DB がレガシーで上書きされる（2行）" "2" "$actual_rows"
 
 echo ""
 
@@ -284,7 +284,7 @@ run_migrate "$T8" > /dev/null
 actual_interval=$(python3 -c "import json; print(json.load(open('$(appgroup_settings "$T8")'))['refresh_interval_minutes'])")
 actual_rows=$(sqlite3 "$(appgroup_db "$T8")" "SELECT COUNT(*) FROM usage_log;")
 assert_eq "2回目以降も settings が 5 のまま" "5" "$actual_interval"
-assert_eq "2回目以降も DB 行数が 4 のまま" "4" "$actual_rows"
+assert_eq "2回目以降も DB 行数がレガシーと同じ 2" "2" "$actual_rows"
 
 echo ""
 
@@ -341,8 +341,8 @@ assert_file_exists "snapshot.db が新 App Group に移行される" "$(appgroup
 
 echo ""
 
-# --- Test 12: usage.db が旧 App Group をレガシーソースとしてマージされる ---
-echo "--- Test 12: usage.db が旧 App Group からマージされる ---"
+# --- Test 12: usage.db が旧 App Group からコピーされる ---
+echo "--- Test 12: usage.db が旧 App Group からコピーされる ---"
 T12="$TMPDIR_BASE/t12"
 mkdir -p "$T12"
 setup_appgroup_dir "$T12"
@@ -353,7 +353,7 @@ create_usage_db "$(old_appgroup_db "$T12")" 6
 run_migrate "$T12" > /dev/null
 
 actual_rows=$(sqlite3 "$(appgroup_db "$T12")" "SELECT COUNT(*) FROM usage_log;")
-assert_eq "旧 App Group の usage.db がマージされた" "6" "$actual_rows"
+assert_eq "旧 App Group の usage.db がコピーされた" "6" "$actual_rows"
 
 echo ""
 
