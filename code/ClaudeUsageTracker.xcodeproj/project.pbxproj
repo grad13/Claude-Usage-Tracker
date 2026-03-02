@@ -65,6 +65,7 @@
 		BB10002A /* ProductionSettingsIntegrityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00002A /* ProductionSettingsIntegrityTests.swift */; };
 		BB10002B /* NotificationManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00002B /* NotificationManagerTests.swift */; };
 		BB10002C /* AlertCheckerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00002C /* AlertCheckerTests.swift */; };
+		AA10001D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AA00001D /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -165,6 +166,7 @@
 		AA00001A /* WebViewCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebViewCoordinator.swift; sourceTree = "<group>"; };
 		AA00001B /* NotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManager.swift; sourceTree = "<group>"; };
 		AA00001C /* AlertChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertChecker.swift; sourceTree = "<group>"; };
+		AA00001D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		AA000010 /* ClaudeUsageTracker.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ClaudeUsageTracker.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BB000001 /* SettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsTests.swift; sourceTree = "<group>"; };
 		BB000002 /* FetcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FetcherTests.swift; sourceTree = "<group>"; };
@@ -261,6 +263,7 @@
 		AA200002 /* ClaudeUsageTracker */ = {
 			isa = PBXGroup;
 			children = (
+				AA00001D /* Assets.xcassets */,
 				AA200016 /* Resources */,
 				AA000001 /* ClaudeUsageTrackerApp.swift */,
 				AA000002 /* UsageViewModel.swift */,
@@ -509,6 +512,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AA10001D /* Assets.xcassets in Resources */,
 				AA100016 /* analysis.html in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
