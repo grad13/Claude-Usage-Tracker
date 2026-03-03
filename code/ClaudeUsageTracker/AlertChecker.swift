@@ -1,4 +1,4 @@
-// meta: created=2026-02-27 updated=2026-02-27 checked=never
+// meta: created=2026-02-27 updated=2026-02-27 checked=2026-03-03
 import Foundation
 
 final class AlertChecker {

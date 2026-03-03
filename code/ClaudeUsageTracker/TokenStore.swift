@@ -1,4 +1,4 @@
-// meta: created=2026-02-22 updated=2026-02-23 checked=never
+// meta: created=2026-02-22 updated=2026-02-23 checked=2026-03-03
 import Foundation
 import SQLite3
 import ClaudeUsageTrackerShared

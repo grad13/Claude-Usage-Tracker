@@ -1,4 +1,4 @@
-// meta: created=2026-02-23 updated=2026-02-27 checked=never
+// meta: created=2026-02-23 updated=2026-02-27 checked=2026-03-03
 // Dependency injection protocols.
 // Enables testing UsageViewModel without touching production state.
 import Foundation
