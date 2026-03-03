@@ -192,7 +192,7 @@ final class TokenStoreTests: XCTestCase {
         XCTAssertEqual(records.count, 0, "Sync with empty directory should produce no records")
     }
 
-    // MARK: - Web Search Requests (documented: NOT stored in DB)
+    // MARK: - Upsert edge cases
 
     func testSync_upsertKeepsOldWhenNewIsLower() {
         let _ = writeJSONLFile(name: "high.jsonl", lines: [
@@ -232,9 +232,7 @@ final class TokenStoreTests: XCTestCase {
                        "Equal outputTokens: new record should replace old (>= condition)")
     }
 
-    func testSync_webSearchRequestsNotPreserved() {
-        // token_records table has no web_search_requests column
-        // Records loaded from DB always have webSearchRequests = 0
+    func testSync_webSearchRequestsStored() {
         let line = #"{"type":"assistant","requestId":"req_ws","timestamp":"2026-02-22T10:00:00.000Z","message":{"model":"claude-sonnet-4-6","usage":{"input_tokens":10,"output_tokens":20,"server_tool_use":{"web_search_requests":5}}}}"#
         let file = jsonlDir.appendingPathComponent("ws.jsonl")
         try! line.write(to: file, atomically: true, encoding: .utf8)
@@ -242,8 +240,8 @@ final class TokenStoreTests: XCTestCase {
         store.sync(directories: [jsonlDir])
         let records = store.loadAll()
         XCTAssertEqual(records.count, 1)
-        XCTAssertEqual(records[0].webSearchRequests, 0,
-                       "web_search_requests is not stored in DB (documented limitation)")
+        XCTAssertEqual(records[0].webSearchRequests, 5,
+                       "web_search_requests should be stored in DB")
     }
 
     // MARK: - loadRecords Boundary
@@ -270,9 +268,9 @@ final class TokenStoreTests: XCTestCase {
         XCTAssertFalse(ids.contains("req_before"))
     }
 
-    // MARK: - Speed Hardcoded
+    // MARK: - Speed Round-Trip
 
-    func testLoadAll_speedIsAlwaysStandard() {
+    func testLoadAll_speedDefaultsToStandard() {
         let _ = writeJSONLFile(name: "test.jsonl", lines: [
             makeAssistantLine(requestId: "req_speed"),
         ])
@@ -280,7 +278,20 @@ final class TokenStoreTests: XCTestCase {
         let records = store.loadAll()
         XCTAssertEqual(records.count, 1)
         XCTAssertEqual(records[0].speed, "standard",
-                       "speed is hardcoded to 'standard' when loaded from DB")
+                       "speed should default to 'standard' when not specified in JSONL")
+    }
+
+    func testSync_speedRoundTrip() {
+        // JSONL with speed = "fast" in usage object (where JSONLParser reads it)
+        let line = #"{"type":"assistant","requestId":"req_fast","timestamp":"2026-02-22T10:00:00.000Z","message":{"model":"claude-sonnet-4-6","usage":{"speed":"fast","input_tokens":100,"output_tokens":200,"cache_read_input_tokens":50,"cache_creation_input_tokens":10}}}"#
+        let file = jsonlDir.appendingPathComponent("fast.jsonl")
+        try! line.write(to: file, atomically: true, encoding: .utf8)
+
+        store.sync(directories: [jsonlDir])
+        let records = store.loadAll()
+        XCTAssertEqual(records.count, 1)
+        XCTAssertEqual(records[0].speed, "fast",
+                       "speed should round-trip through DB")
     }
 
     // MARK: - Sync with invalid path (directory creation failure)

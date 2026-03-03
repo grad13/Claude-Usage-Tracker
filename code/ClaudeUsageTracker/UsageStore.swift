@@ -1,4 +1,4 @@
-// meta: created=2026-02-21 updated=2026-02-27 checked=2026-03-03
+// meta: created=2026-02-21 updated=2026-03-03 checked=2026-03-03
 import Foundation
 import SQLite3
 import ClaudeUsageTrackerShared
@@ -75,48 +75,43 @@ final class UsageStore {
         do {
             try FileManager.default.createDirectory(at: dirURL, withIntermediateDirectories: true)
         } catch {
-            print("[UsageStore] Failed to create directory: \(error)")
+            NSLog("[UsageStore] Failed to create directory: %@", error.localizedDescription)
             return
         }
 
-        var db: OpaquePointer?
-        guard sqlite3_open(dbPath, &db) == SQLITE_OK else {
-            print("[UsageStore] Failed to open DB")
-            return
-        }
-        defer { sqlite3_close(db) }
+        withDatabase { db in
+            sqlite3_exec(db, "PRAGMA foreign_keys = ON", nil, nil, nil)
 
-        sqlite3_exec(db, "PRAGMA foreign_keys = ON", nil, nil, nil)
+            guard sqlite3_exec(db, Self.createSQL, nil, nil, nil) == SQLITE_OK else {
+                NSLog("[UsageStore] Failed to create table")
+                return
+            }
 
-        guard sqlite3_exec(db, Self.createSQL, nil, nil, nil) == SQLITE_OK else {
-            print("[UsageStore] Failed to create table")
-            return
-        }
+            let now = Int64(Date().timeIntervalSince1970)
 
-        let now = Int64(Date().timeIntervalSince1970)
+            let hourlySID = result.fiveHourResetsAt.flatMap { self.getOrCreateSessionId(db: db, table: "hourly_sessions", date: $0) }
+            let weeklySID = result.sevenDayResetsAt.flatMap { self.getOrCreateSessionId(db: db, table: "weekly_sessions", date: $0) }
 
-        let hourlySID = result.fiveHourResetsAt.flatMap { getOrCreateSessionId(db: db, table: "hourly_sessions", date: $0) }
-        let weeklySID = result.sevenDayResetsAt.flatMap { getOrCreateSessionId(db: db, table: "weekly_sessions", date: $0) }
+            let insertSQL = """
+                INSERT INTO usage_log (timestamp, hourly_percent, weekly_percent,
+                    hourly_session_id, weekly_session_id) VALUES (?, ?, ?, ?, ?);
+                """
+            var stmt: OpaquePointer?
+            guard sqlite3_prepare_v2(db, insertSQL, -1, &stmt, nil) == SQLITE_OK else {
+                NSLog("[UsageStore] Failed to prepare statement")
+                return
+            }
+            defer { sqlite3_finalize(stmt) }
 
-        let insertSQL = """
-            INSERT INTO usage_log (timestamp, hourly_percent, weekly_percent,
-                hourly_session_id, weekly_session_id) VALUES (?, ?, ?, ?, ?);
-            """
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, insertSQL, -1, &stmt, nil) == SQLITE_OK else {
-            print("[UsageStore] Failed to prepare statement")
-            return
-        }
-        defer { sqlite3_finalize(stmt) }
+            sqlite3_bind_int64(stmt, 1, now)
+            self.bindDouble(stmt, 2, result.fiveHourPercent)
+            self.bindDouble(stmt, 3, result.sevenDayPercent)
+            if let sid = hourlySID { sqlite3_bind_int64(stmt, 4, sid) } else { sqlite3_bind_null(stmt, 4) }
+            if let sid = weeklySID { sqlite3_bind_int64(stmt, 5, sid) } else { sqlite3_bind_null(stmt, 5) }
 
-        sqlite3_bind_int64(stmt, 1, now)
-        bindDouble(stmt, 2, result.fiveHourPercent)
-        bindDouble(stmt, 3, result.sevenDayPercent)
-        if let sid = hourlySID { sqlite3_bind_int64(stmt, 4, sid) } else { sqlite3_bind_null(stmt, 4) }
-        if let sid = weeklySID { sqlite3_bind_int64(stmt, 5, sid) } else { sqlite3_bind_null(stmt, 5) }
-
-        if sqlite3_step(stmt) != SQLITE_DONE {
-            print("[UsageStore] Failed to insert row")
+            if sqlite3_step(stmt) != SQLITE_DONE {
+                NSLog("[UsageStore] Failed to insert row")
+            }
         }
     }
 
@@ -142,23 +137,119 @@ final class UsageStore {
     // MARK: - Load All History
 
     func loadAllHistory() -> [DataPoint] {
+        withDatabase { db in
+            let sql = """
+                SELECT u.timestamp, u.hourly_percent, u.weekly_percent,
+                       hs.resets_at AS hourly_resets_at,
+                       ws.resets_at AS weekly_resets_at
+                FROM usage_log u
+                LEFT JOIN hourly_sessions hs ON u.hourly_session_id = hs.id
+                LEFT JOIN weekly_sessions ws ON u.weekly_session_id = ws.id
+                ORDER BY u.timestamp ASC;
+                """
+            var stmt: OpaquePointer?
+            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
+            defer { sqlite3_finalize(stmt) }
+
+            return readDataPoints(stmt)
+        } ?? []
+    }
+
+    // MARK: - Load History (windowed)
+
+    func loadHistory(windowSeconds: TimeInterval) -> [DataPoint] {
+        withDatabase { db in
+            let cutoff = Int64(Date().addingTimeInterval(-windowSeconds).timeIntervalSince1970)
+            let sql = """
+                SELECT u.timestamp, u.hourly_percent, u.weekly_percent,
+                       hs.resets_at AS hourly_resets_at,
+                       ws.resets_at AS weekly_resets_at
+                FROM usage_log u
+                LEFT JOIN hourly_sessions hs ON u.hourly_session_id = hs.id
+                LEFT JOIN weekly_sessions ws ON u.weekly_session_id = ws.id
+                WHERE u.timestamp >= ?
+                ORDER BY u.timestamp ASC;
+                """
+            var stmt: OpaquePointer?
+            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
+            defer { sqlite3_finalize(stmt) }
+
+            sqlite3_bind_int64(stmt, 1, cutoff)
+
+            return readDataPoints(stmt)
+        } ?? []
+    }
+
+    // MARK: - Load Daily Usage
+
+    /// Calculate the total sevenDayPercent increase since a given date.
+    /// Returns nil if insufficient data (no records in the range).
+    /// Handles session boundaries: accumulates usage within each session separately.
+    func loadDailyUsage(since: Date) -> Double? {
+        withDatabase { db in
+            let cutoff = Int64(since.timeIntervalSince1970)
+            let sql = """
+                SELECT u.weekly_percent, ws.resets_at AS weekly_resets_at
+                FROM usage_log u
+                LEFT JOIN weekly_sessions ws ON u.weekly_session_id = ws.id
+                WHERE u.timestamp >= ? AND u.weekly_percent IS NOT NULL
+                ORDER BY u.timestamp ASC;
+                """
+            var stmt: OpaquePointer?
+            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return nil }
+            defer { sqlite3_finalize(stmt) }
+
+            sqlite3_bind_int64(stmt, 1, cutoff)
+
+            struct Record {
+                let weeklyPercent: Double
+                let sessionResetsAt: Int64?
+            }
+
+            var records: [Record] = []
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                let percent = sqlite3_column_double(stmt, 0)
+                let resetsAt: Int64? = sqlite3_column_type(stmt, 1) != SQLITE_NULL
+                    ? sqlite3_column_int64(stmt, 1)
+                    : nil
+                records.append(Record(weeklyPercent: percent, sessionResetsAt: resetsAt))
+            }
+
+            guard records.count >= 2 else { return nil }
+
+            var totalUsage = 0.0
+            var sessionStart = records[0].weeklyPercent
+            var currentSession = records[0].sessionResetsAt
+
+            for i in 1..<records.count {
+                let record = records[i]
+                if record.sessionResetsAt != currentSession {
+                    let previousLast = records[i - 1].weeklyPercent
+                    totalUsage += max(0, previousLast - sessionStart)
+                    sessionStart = record.weeklyPercent
+                    currentSession = record.sessionResetsAt
+                }
+            }
+
+            let lastPercent = records[records.count - 1].weeklyPercent
+            totalUsage += max(0, lastPercent - sessionStart)
+
+            return totalUsage
+        }
+    }
+
+    // MARK: - Private: Database Helper
+
+    private func withDatabase<T>(_ body: (OpaquePointer) -> T?) -> T? {
         var db: OpaquePointer?
-        guard sqlite3_open(dbPath, &db) == SQLITE_OK else { return [] }
+        guard sqlite3_open(dbPath, &db) == SQLITE_OK else { return nil }
         defer { sqlite3_close(db) }
+        return body(db!)
+    }
 
-        let sql = """
-            SELECT u.timestamp, u.hourly_percent, u.weekly_percent,
-                   hs.resets_at AS hourly_resets_at,
-                   ws.resets_at AS weekly_resets_at
-            FROM usage_log u
-            LEFT JOIN hourly_sessions hs ON u.hourly_session_id = hs.id
-            LEFT JOIN weekly_sessions ws ON u.weekly_session_id = ws.id
-            ORDER BY u.timestamp ASC;
-            """
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
-        defer { sqlite3_finalize(stmt) }
-
+    /// Read DataPoints from a prepared statement with 5 columns:
+    /// timestamp, hourly_percent, weekly_percent, hourly_resets_at, weekly_resets_at
+    private func readDataPoints(_ stmt: OpaquePointer?) -> [DataPoint] {
         var results: [DataPoint] = []
         while sqlite3_step(stmt) == SQLITE_ROW {
             let tsEpoch = sqlite3_column_int64(stmt, 0)
@@ -175,101 +266,6 @@ final class UsageStore {
                                      fiveHourResetsAt: fiveHResets, sevenDayResetsAt: sevenDResets))
         }
         return results
-    }
-
-    // MARK: - Load History (windowed)
-
-    func loadHistory(windowSeconds: TimeInterval) -> [DataPoint] {
-        var db: OpaquePointer?
-        guard sqlite3_open(dbPath, &db) == SQLITE_OK else { return [] }
-        defer { sqlite3_close(db) }
-
-        let cutoff = Int64(Date().addingTimeInterval(-windowSeconds).timeIntervalSince1970)
-        let sql = """
-            SELECT timestamp, hourly_percent, weekly_percent
-            FROM usage_log
-            WHERE timestamp >= ?
-            ORDER BY timestamp ASC;
-            """
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
-        defer { sqlite3_finalize(stmt) }
-
-        sqlite3_bind_int64(stmt, 1, cutoff)
-
-        var results: [DataPoint] = []
-        while sqlite3_step(stmt) == SQLITE_ROW {
-            let tsEpoch = sqlite3_column_int64(stmt, 0)
-            let ts = Date(timeIntervalSince1970: TimeInterval(tsEpoch))
-            let fiveH: Double? = sqlite3_column_type(stmt, 1) != SQLITE_NULL ? sqlite3_column_double(stmt, 1) : nil
-            let sevenD: Double? = sqlite3_column_type(stmt, 2) != SQLITE_NULL ? sqlite3_column_double(stmt, 2) : nil
-            results.append(DataPoint(timestamp: ts, fiveHourPercent: fiveH, sevenDayPercent: sevenD))
-        }
-        return results
-    }
-
-    // MARK: - Load Daily Usage
-
-    /// Calculate the total sevenDayPercent increase since a given date.
-    /// Returns nil if insufficient data (no records in the range).
-    /// Handles session boundaries: accumulates usage within each session separately.
-    func loadDailyUsage(since: Date) -> Double? {
-        var db: OpaquePointer?
-        guard sqlite3_open(dbPath, &db) == SQLITE_OK else { return nil }
-        defer { sqlite3_close(db) }
-
-        let cutoff = Int64(since.timeIntervalSince1970)
-        let sql = """
-            SELECT u.weekly_percent, ws.resets_at AS weekly_resets_at
-            FROM usage_log u
-            LEFT JOIN weekly_sessions ws ON u.weekly_session_id = ws.id
-            WHERE u.timestamp >= ? AND u.weekly_percent IS NOT NULL
-            ORDER BY u.timestamp ASC;
-            """
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return nil }
-        defer { sqlite3_finalize(stmt) }
-
-        sqlite3_bind_int64(stmt, 1, cutoff)
-
-        struct Record {
-            let weeklyPercent: Double
-            let sessionResetsAt: Int64?  // normalized resets_at epoch
-        }
-
-        var records: [Record] = []
-        while sqlite3_step(stmt) == SQLITE_ROW {
-            let percent = sqlite3_column_double(stmt, 0)
-            let resetsAt: Int64? = sqlite3_column_type(stmt, 1) != SQLITE_NULL
-                ? sqlite3_column_int64(stmt, 1)
-                : nil
-            records.append(Record(weeklyPercent: percent, sessionResetsAt: resetsAt))
-        }
-
-        guard records.count >= 2 else { return nil }
-
-        // Group by session and calculate usage within each session
-        var totalUsage = 0.0
-        var sessionStart = records[0].weeklyPercent
-        var currentSession = records[0].sessionResetsAt
-
-        for i in 1..<records.count {
-            let record = records[i]
-            if record.sessionResetsAt != currentSession {
-                // Session boundary: finalize previous session
-                let previousLast = records[i - 1].weeklyPercent
-                totalUsage += max(0, previousLast - sessionStart)
-                // Start new session
-                sessionStart = record.weeklyPercent
-                currentSession = record.sessionResetsAt
-            }
-        }
-
-        // Finalize last session
-        let lastPercent = records[records.count - 1].weeklyPercent
-        totalUsage += max(0, lastPercent - sessionStart)
-
-        return totalUsage
     }
 
     // MARK: - Private Helpers

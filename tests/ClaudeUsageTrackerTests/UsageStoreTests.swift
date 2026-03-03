@@ -291,17 +291,19 @@ final class UsageStoreTests: XCTestCase {
         XCTAssertEqual(ts, now, accuracy: 1.0, "Epoch round-trip should preserve second precision")
     }
 
-    // MARK: - loadHistory does NOT return resets_at (documented behavior)
+    // MARK: - loadHistory returns resets_at via JOIN
 
-    func testLoadHistory_doesNotReturnResetsAt() {
+    func testLoadHistory_returnsResetsAt() {
         let resetsAt = Date(timeIntervalSince1970: 1_740_024_000)
         store.save(makeResult(fiveHourPercent: 50.0, fiveHourResetsAt: resetsAt, sevenDayResetsAt: resetsAt))
 
         let windowed = store.loadHistory(windowSeconds: 3600)
         XCTAssertEqual(windowed.count, 1)
-        XCTAssertNil(windowed[0].fiveHourResetsAt,
-                     "loadHistory does not select resets_at columns (documented limitation)")
-        XCTAssertNil(windowed[0].sevenDayResetsAt)
+        XCTAssertNotNil(windowed[0].fiveHourResetsAt,
+                        "loadHistory should return resets_at via JOIN")
+        XCTAssertNotNil(windowed[0].sevenDayResetsAt)
+        XCTAssertEqual(windowed[0].fiveHourResetsAt!.timeIntervalSince1970,
+                       resetsAt.timeIntervalSince1970, accuracy: 0.0)
     }
 
     // MARK: - Sequential Saves

@@ -113,7 +113,9 @@ enum AnalysisTestDB {
                 input_tokens INTEGER NOT NULL,
                 output_tokens INTEGER NOT NULL,
                 cache_read_tokens INTEGER NOT NULL,
-                cache_creation_tokens INTEGER NOT NULL
+                cache_creation_tokens INTEGER NOT NULL,
+                speed TEXT NOT NULL DEFAULT 'standard',
+                web_search_requests INTEGER NOT NULL DEFAULT 0
             );
             """
         sqlite3_exec(db, createSQL, nil, nil, nil)

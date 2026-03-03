@@ -1,4 +1,4 @@
-// meta: created=2026-02-22 updated=2026-02-23 checked=2026-03-03
+// meta: created=2026-02-22 updated=2026-03-03 checked=2026-03-03
 import Foundation
 import SQLite3
 import ClaudeUsageTrackerShared
@@ -64,40 +64,13 @@ final class TokenStore {
 
         createTables(db)
 
-        // 1. Load known files from DB
         let known = loadKnownFiles(db)
-
-        // 2. Scan directories for JSONL files
-        var filesToProcess: [(url: URL, modDate: Double)] = []
-        for directory in directories {
-            guard let enumerator = FileManager.default.enumerator(
-                at: directory,
-                includingPropertiesForKeys: [.contentModificationDateKey],
-                options: [.skipsHiddenFiles]
-            ) else { continue }
-
-            for case let fileURL as URL in enumerator {
-                guard fileURL.pathExtension == "jsonl" else { continue }
-                guard let values = try? fileURL.resourceValues(forKeys: [.contentModificationDateKey]),
-                      let modDate = values.contentModificationDate else { continue }
-
-                let modTime = modDate.timeIntervalSince1970
-                let path = fileURL.path
-
-                // Skip if already processed with same mod date
-                if let knownMod = known[path], abs(knownMod - modTime) < 1.0 {
-                    continue
-                }
-
-                filesToProcess.append((url: fileURL, modDate: modTime))
-            }
-        }
+        let filesToProcess = findFilesToProcess(directories: directories, known: known)
 
         guard !filesToProcess.isEmpty else { return }
 
         NSLog("[TokenStore] Syncing %d files", filesToProcess.count)
 
-        // 3. Process in a transaction for performance
         sqlite3_exec(db, "BEGIN TRANSACTION", nil, nil, nil)
 
         for file in filesToProcess {
@@ -122,7 +95,7 @@ final class TokenStore {
 
         let sql = """
             SELECT request_id, timestamp, model, input_tokens, output_tokens,
-                   cache_read_tokens, cache_creation_tokens
+                   cache_read_tokens, cache_creation_tokens, speed, web_search_requests
             FROM token_records ORDER BY timestamp ASC;
             """
         return queryRecords(db, sql: sql)
@@ -137,7 +110,7 @@ final class TokenStore {
         let cutoffStr = iso.string(from: cutoff)
         let sql = """
             SELECT request_id, timestamp, model, input_tokens, output_tokens,
-                   cache_read_tokens, cache_creation_tokens
+                   cache_read_tokens, cache_creation_tokens, speed, web_search_requests
             FROM token_records WHERE timestamp >= ? ORDER BY timestamp ASC;
             """
         return queryRecords(db, sql: sql, bindTimestamp: cutoffStr)
@@ -166,6 +139,10 @@ final class TokenStore {
         if sqlite3_exec(db, sql, nil, nil, nil) != SQLITE_OK {
             NSLog("[TokenStore] Failed to create tables")
         }
+
+        // Migration: add speed and web_search_requests columns (idempotent — fails silently if already present)
+        sqlite3_exec(db, "ALTER TABLE token_records ADD COLUMN speed TEXT NOT NULL DEFAULT 'standard'", nil, nil, nil)
+        sqlite3_exec(db, "ALTER TABLE token_records ADD COLUMN web_search_requests INTEGER NOT NULL DEFAULT 0", nil, nil, nil)
     }
 
     // MARK: - Private: Known Files
@@ -186,6 +163,35 @@ final class TokenStore {
         return result
     }
 
+    // MARK: - Private: File Scanning
+
+    private func findFilesToProcess(directories: [URL], known: [String: Double]) -> [(url: URL, modDate: Double)] {
+        var filesToProcess: [(url: URL, modDate: Double)] = []
+        for directory in directories {
+            guard let enumerator = FileManager.default.enumerator(
+                at: directory,
+                includingPropertiesForKeys: [.contentModificationDateKey],
+                options: [.skipsHiddenFiles]
+            ) else { continue }
+
+            for case let fileURL as URL in enumerator {
+                guard fileURL.pathExtension == "jsonl" else { continue }
+                guard let values = try? fileURL.resourceValues(forKeys: [.contentModificationDateKey]),
+                      let modDate = values.contentModificationDate else { continue }
+
+                let modTime = modDate.timeIntervalSince1970
+                let path = fileURL.path
+
+                if let knownMod = known[path], abs(knownMod - modTime) < 1.0 {
+                    continue
+                }
+
+                filesToProcess.append((url: fileURL, modDate: modTime))
+            }
+        }
+        return filesToProcess
+    }
+
     // MARK: - Private: Upsert Record
 
     private func upsertRecord(_ db: OpaquePointer?, _ record: TokenRecord) {
@@ -193,8 +199,9 @@ final class TokenStore {
             INSERT INTO token_records (
                 request_id, timestamp, model,
                 input_tokens, output_tokens,
-                cache_read_tokens, cache_creation_tokens
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                cache_read_tokens, cache_creation_tokens,
+                speed, web_search_requests
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(request_id) DO UPDATE SET
                 timestamp = CASE
                     WHEN excluded.output_tokens >= token_records.output_tokens
@@ -211,7 +218,13 @@ final class TokenStore {
                     THEN excluded.cache_read_tokens ELSE token_records.cache_read_tokens END,
                 cache_creation_tokens = CASE
                     WHEN excluded.output_tokens >= token_records.output_tokens
-                    THEN excluded.cache_creation_tokens ELSE token_records.cache_creation_tokens END;
+                    THEN excluded.cache_creation_tokens ELSE token_records.cache_creation_tokens END,
+                speed = CASE
+                    WHEN excluded.output_tokens >= token_records.output_tokens
+                    THEN excluded.speed ELSE token_records.speed END,
+                web_search_requests = CASE
+                    WHEN excluded.output_tokens >= token_records.output_tokens
+                    THEN excluded.web_search_requests ELSE token_records.web_search_requests END;
             """
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
@@ -225,6 +238,8 @@ final class TokenStore {
         sqlite3_bind_int(stmt, 5, Int32(record.outputTokens))
         sqlite3_bind_int(stmt, 6, Int32(record.cacheReadTokens))
         sqlite3_bind_int(stmt, 7, Int32(record.cacheCreationTokens))
+        sqlite3_bind_text(stmt, 8, (record.speed as NSString).utf8String, -1, nil)
+        sqlite3_bind_int(stmt, 9, Int32(record.webSearchRequests))
 
         sqlite3_step(stmt)
     }
@@ -246,6 +261,9 @@ final class TokenStore {
 
     // MARK: - Private: Query Helper
 
+    /// Read token records from a prepared statement with 9 columns:
+    /// request_id, timestamp, model, input_tokens, output_tokens,
+    /// cache_read_tokens, cache_creation_tokens, speed, web_search_requests
     private func queryRecords(_ db: OpaquePointer?, sql: String, bindTimestamp: String? = nil) -> [TokenRecord] {
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
@@ -263,16 +281,23 @@ final class TokenStore {
 
             guard let timestamp = iso.date(from: String(cString: tsRaw)) else { continue }
 
+            let speed: String
+            if let speedRaw = sqlite3_column_text(stmt, 7) {
+                speed = String(cString: speedRaw)
+            } else {
+                speed = "standard"
+            }
+
             results.append(TokenRecord(
                 timestamp: timestamp,
                 requestId: String(cString: reqId),
                 model: String(cString: modelRaw),
-                speed: "standard",
+                speed: speed,
                 inputTokens: Int(sqlite3_column_int(stmt, 3)),
                 outputTokens: Int(sqlite3_column_int(stmt, 4)),
                 cacheReadTokens: Int(sqlite3_column_int(stmt, 5)),
                 cacheCreationTokens: Int(sqlite3_column_int(stmt, 6)),
-                webSearchRequests: 0
+                webSearchRequests: Int(sqlite3_column_int(stmt, 8))
             ))
         }
         return results

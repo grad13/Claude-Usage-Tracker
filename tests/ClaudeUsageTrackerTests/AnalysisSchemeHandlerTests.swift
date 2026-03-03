@@ -43,15 +43,15 @@ final class AnalysisSchemeHandlerTests: XCTestCase {
             """)
         createDb(at: tokensDbPath, sql: """
             CREATE TABLE token_records (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                request_id TEXT NOT NULL,
+                request_id TEXT PRIMARY KEY,
                 timestamp TEXT NOT NULL,
                 model TEXT NOT NULL,
-                speed TEXT NOT NULL DEFAULT 'standard',
                 input_tokens INTEGER NOT NULL DEFAULT 0,
                 output_tokens INTEGER NOT NULL DEFAULT 0,
                 cache_read_tokens INTEGER NOT NULL DEFAULT 0,
-                cache_creation_tokens INTEGER NOT NULL DEFAULT 0
+                cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
+                speed TEXT NOT NULL DEFAULT 'standard',
+                web_search_requests INTEGER NOT NULL DEFAULT 0
             );
             INSERT INTO token_records (request_id, timestamp, model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens)
             VALUES ('req-1', '2026-02-24T10:00:00.000Z', 'claude-sonnet-4-20250514', 1000, 500, 200, 100);

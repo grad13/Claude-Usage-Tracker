@@ -1,4 +1,4 @@
-// meta: created=2026-02-24 updated=2026-02-27 checked=2026-03-03
+// meta: created=2026-02-24 updated=2026-03-03 checked=2026-03-03
 // changed: 2026-02-27 JOIN query for normalized sessions, epoch timestamps, new JSON key names
 import Foundation
 import SQLite3
@@ -99,7 +99,8 @@ final class AnalysisSchemeHandler: NSObject, WKURLSchemeHandler {
 
         var sql = """
             SELECT timestamp, model, input_tokens, output_tokens,
-                   cache_read_tokens, cache_creation_tokens
+                   cache_read_tokens, cache_creation_tokens,
+                   speed, web_search_requests
             FROM token_records
             """
         var bindings: [String] = []
@@ -126,6 +127,8 @@ final class AnalysisSchemeHandler: NSObject, WKURLSchemeHandler {
                 "output_tokens": Int(sqlite3_column_int64(stmt, 3)),
                 "cache_read_tokens": Int(sqlite3_column_int64(stmt, 4)),
                 "cache_creation_tokens": Int(sqlite3_column_int64(stmt, 5)),
+                "speed": columnText(stmt, 6),
+                "web_search_requests": Int(sqlite3_column_int64(stmt, 7)),
             ])
         }
         return serializeJSON(rows)
