@@ -26,15 +26,9 @@ final class MenuContentSupplementTests: XCTestCase {
     }
 
     func makeVM() -> UsageViewModel {
-        UsageViewModel(
+        ViewModelTestFactory.makeVM(
             fetcher: stubFetcher,
-            settingsStore: settingsStore,
-            usageStore: InMemoryUsageStore(),
-            snapshotWriter: InMemorySnapshotWriter(),
-            widgetReloader: InMemoryWidgetReloader(),
-            tokenSync: InMemoryTokenSync(),
-            loginItemManager: InMemoryLoginItemManager(),
-            alertChecker: MockAlertChecker()
+            settingsStore: settingsStore
         )
     }
 

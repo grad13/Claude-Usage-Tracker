@@ -152,3 +152,59 @@ final class MockAlertChecker: AlertChecking {
         checkRecords.append(CheckRecord(result: result, settings: settings))
     }
 }
+
+// MARK: - Test Factories
+
+enum ViewModelTestFactory {
+    @MainActor static func makeVM(
+        fetcher: StubUsageFetcher = StubUsageFetcher(),
+        settingsStore: InMemorySettingsStore = InMemorySettingsStore(),
+        usageStore: InMemoryUsageStore = InMemoryUsageStore(),
+        snapshotWriter: InMemorySnapshotWriter = InMemorySnapshotWriter(),
+        widgetReloader: InMemoryWidgetReloader = InMemoryWidgetReloader(),
+        tokenSync: InMemoryTokenSync = InMemoryTokenSync(),
+        loginItemManager: InMemoryLoginItemManager = InMemoryLoginItemManager(),
+        alertChecker: MockAlertChecker = MockAlertChecker()
+    ) -> UsageViewModel {
+        UsageViewModel(
+            fetcher: fetcher,
+            settingsStore: settingsStore,
+            usageStore: usageStore,
+            snapshotWriter: snapshotWriter,
+            widgetReloader: widgetReloader,
+            tokenSync: tokenSync,
+            loginItemManager: loginItemManager,
+            alertChecker: alertChecker
+        )
+    }
+}
+
+enum UsageResultFactory {
+    static func make(
+        fiveHourPercent: Double? = nil,
+        sevenDayPercent: Double? = nil,
+        fiveHourResetsAt: Date? = nil,
+        sevenDayResetsAt: Date? = nil,
+        fiveHourStatus: Int? = nil,
+        sevenDayStatus: Int? = nil,
+        fiveHourLimit: Double? = nil,
+        fiveHourRemaining: Double? = nil,
+        sevenDayLimit: Double? = nil,
+        sevenDayRemaining: Double? = nil,
+        rawJSON: String? = nil
+    ) -> UsageResult {
+        UsageResult(
+            fiveHourPercent: fiveHourPercent,
+            sevenDayPercent: sevenDayPercent,
+            fiveHourResetsAt: fiveHourResetsAt,
+            sevenDayResetsAt: sevenDayResetsAt,
+            fiveHourStatus: fiveHourStatus,
+            sevenDayStatus: sevenDayStatus,
+            fiveHourLimit: fiveHourLimit,
+            fiveHourRemaining: fiveHourRemaining,
+            sevenDayLimit: sevenDayLimit,
+            sevenDayRemaining: sevenDayRemaining,
+            rawJSON: rawJSON
+        )
+    }
+}

@@ -40,7 +40,7 @@ final class ViewModelSessionTests: XCTestCase {
     }
 
     func makeVM() -> UsageViewModel {
-        UsageViewModel(
+        ViewModelTestFactory.makeVM(
             fetcher: stubFetcher,
             settingsStore: settingsStore,
             usageStore: usageStore,

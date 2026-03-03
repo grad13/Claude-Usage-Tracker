@@ -1,132 +1,19 @@
-// Supplement for: architecture integration tests
+// Supplement for: architecture integration tests (ViewModel state)
 // Source spec: spec/meta/architecture.md
 // Generated: 2026-03-03
 //
 // Coverage intent:
-//   - Cookie監視のコールバック接続性（WKHTTPCookieStoreObserver 登録）
-//   - ページ遷移の5秒クールダウンロジック
-//   - WebView dataStore の構造テスト（永続化・型）
-//   - サインアウト（dataStore 全削除 + 個別Cookie削除）の構造テスト
 //   - isAutoRefreshEnabled の3状態遷移（nil / true / false）
-//   - デリゲート配置（Coordinator は ViewModel が所有し、init で設定される）
-//   - LoginWebView はデリゲートを設定しない（ViewModel 側に統合）
+//   - ページ遷移の5秒クールダウンロジック
+//   - サインアウト（dataStore 全削除 + 個別Cookie削除）の構造テスト
+//   - Cookie監視のコールバック接続性（WKHTTPCookieStoreObserver 登録）
 //
 // Skip policy:
-//   - OAuth ポップアップ（Google OAuth の WKWebView ブロック問題）は実機依存のためスキップ
-//   - didFinish デリゲートのトリガーはネットワーク実行が必要なためスキップ
 //   - JS フォールバック（org ID 取得4段階）は WKWebView 実行環境依存のためスキップ
 
 import XCTest
 import WebKit
 @testable import ClaudeUsageTracker
-
-// MARK: - WebView DataStore Structure Tests
-// spec: "WKWebsiteDataStore.default() を使用。App Sandbox 無効と組み合わせてセッション間で Cookie を永続化する。"
-
-@MainActor
-final class ArchitectureDataStoreTests: XCTestCase {
-
-    func makeVM() -> UsageViewModel {
-        UsageViewModel(
-            fetcher: StubUsageFetcher(),
-            settingsStore: InMemorySettingsStore(),
-            usageStore: InMemoryUsageStore(),
-            snapshotWriter: InMemorySnapshotWriter(),
-            widgetReloader: InMemoryWidgetReloader(),
-            tokenSync: InMemoryTokenSync(),
-            loginItemManager: InMemoryLoginItemManager(),
-            alertChecker: MockAlertChecker()
-        )
-    }
-
-    // spec: "WKWebsiteDataStore.default() を使用"
-    // → default() は App Group 共有 Cookie ストアを指す。永続ストアであることを確認する。
-    func testWebView_dataStoreIsPersistent() {
-        let vm = makeVM()
-        let store = vm.webView.configuration.websiteDataStore
-        XCTAssertTrue(
-            store.isPersistent,
-            "DataStore must be persistent — spec requires cookie retention across app restarts"
-        )
-    }
-
-    // spec: Cookie 永続化のために WKWebsiteDataStore.default() を使用
-    // → webView が nonEphemeral（永続）ストアを持つことを確認。
-    func testWebView_dataStoreIsNotEphemeral() {
-        let vm = makeVM()
-        let store = vm.webView.configuration.websiteDataStore
-        let ephemeral = WKWebsiteDataStore.nonPersistent()
-        XCTAssertNotEqual(
-            store, ephemeral,
-            "DataStore must not be ephemeral — session cookies would be lost on restart"
-        )
-    }
-
-    // spec: "UsageViewModel が単一の WKWebView インスタンスを所有"
-    // → 同一 VM からの2回アクセスで同じインスタンスが返ることを確認。
-    func testWebView_isSingletonInstance() {
-        let vm = makeVM()
-        let ref1 = vm.webView
-        let ref2 = vm.webView
-        XCTAssertTrue(
-            ref1 === ref2,
-            "webView must be a single owned instance — shared between login UI and API fetch"
-        )
-    }
-}
-
-// MARK: - Delegate Placement Tests
-// spec: "WebViewCoordinator（WKNavigationDelegate + WKUIDelegate）は UsageViewModel が所有。
-//        init() でデリゲートを設定し、アプリのライフサイクル全体で維持する。"
-
-@MainActor
-final class ArchitectureDelegatePlacementTests: XCTestCase {
-
-    func makeVM() -> UsageViewModel {
-        UsageViewModel(
-            fetcher: StubUsageFetcher(),
-            settingsStore: InMemorySettingsStore(),
-            usageStore: InMemoryUsageStore(),
-            snapshotWriter: InMemorySnapshotWriter(),
-            widgetReloader: InMemoryWidgetReloader(),
-            tokenSync: InMemoryTokenSync(),
-            loginItemManager: InMemoryLoginItemManager(),
-            alertChecker: MockAlertChecker()
-        )
-    }
-
-    // spec: "init() でデリゲートを設定し、アプリのライフサイクル全体で維持する"
-    // → VM 初期化直後に navigationDelegate が設定されていることを確認。
-    func testWebView_navigationDelegateIsSetOnInit() {
-        let vm = makeVM()
-        XCTAssertNotNil(
-            vm.webView.navigationDelegate,
-            "navigationDelegate must be set in init() — coordinator must be ready before first page load"
-        )
-    }
-
-    // spec: "WKUIDelegate（OAuth ポップアップ createWebViewWith）は UsageViewModel が所有"
-    // → VM 初期化直後に uiDelegate が設定されていることを確認。
-    func testWebView_uiDelegateIsSetOnInit() {
-        let vm = makeVM()
-        XCTAssertNotNil(
-            vm.webView.uiDelegate,
-            "uiDelegate must be set in init() — OAuth popup handling via createWebViewWith requires it"
-        )
-    }
-
-    // spec: デリゲートは ViewModel の Coordinator が常時担当
-    // → navigationDelegate と uiDelegate が同一オブジェクト（Coordinator）であることを確認。
-    func testWebView_navigationAndUIDelegateAreSameCoordinator() {
-        let vm = makeVM()
-        let navDel = vm.webView.navigationDelegate
-        let uiDel = vm.webView.uiDelegate
-        XCTAssertTrue(
-            navDel === uiDel,
-            "navigationDelegate and uiDelegate must be the same Coordinator instance per spec"
-        )
-    }
-}
 
 // MARK: - isAutoRefreshEnabled State Tests
 // spec: "isAutoRefreshEnabled フラグで制御
@@ -137,18 +24,7 @@ final class ArchitectureDelegatePlacementTests: XCTestCase {
 @MainActor
 final class ArchitectureAutoRefreshFlagTests: XCTestCase {
 
-    func makeVM() -> UsageViewModel {
-        UsageViewModel(
-            fetcher: StubUsageFetcher(),
-            settingsStore: InMemorySettingsStore(),
-            usageStore: InMemoryUsageStore(),
-            snapshotWriter: InMemorySnapshotWriter(),
-            widgetReloader: InMemoryWidgetReloader(),
-            tokenSync: InMemoryTokenSync(),
-            loginItemManager: InMemoryLoginItemManager(),
-            alertChecker: MockAlertChecker()
-        )
-    }
+    func makeVM() -> UsageViewModel { ViewModelTestFactory.makeVM() }
 
     // spec: "nil（未確定）: ページ準備完了時にフェッチを試行"
     // → 初期状態は nil であることを確認。
@@ -206,18 +82,7 @@ final class ArchitectureAutoRefreshFlagTests: XCTestCase {
 @MainActor
 final class ArchitectureRedirectCooldownTests: XCTestCase {
 
-    func makeVM() -> UsageViewModel {
-        UsageViewModel(
-            fetcher: StubUsageFetcher(),
-            settingsStore: InMemorySettingsStore(),
-            usageStore: InMemoryUsageStore(),
-            snapshotWriter: InMemorySnapshotWriter(),
-            widgetReloader: InMemoryWidgetReloader(),
-            tokenSync: InMemoryTokenSync(),
-            loginItemManager: InMemoryLoginItemManager(),
-            alertChecker: MockAlertChecker()
-        )
-    }
+    func makeVM() -> UsageViewModel { ViewModelTestFactory.makeVM() }
 
     // spec: "5秒のクールダウンで無限ループを防止する"
     // → 初期状態では lastRedirectTime が nil（クールダウン未発動）であることを確認。
@@ -273,18 +138,7 @@ final class ArchitectureRedirectCooldownTests: XCTestCase {
 @MainActor
 final class ArchitectureSignOutTests: XCTestCase {
 
-    func makeVM() -> UsageViewModel {
-        UsageViewModel(
-            fetcher: StubUsageFetcher(),
-            settingsStore: InMemorySettingsStore(),
-            usageStore: InMemoryUsageStore(),
-            snapshotWriter: InMemorySnapshotWriter(),
-            widgetReloader: InMemoryWidgetReloader(),
-            tokenSync: InMemoryTokenSync(),
-            loginItemManager: InMemoryLoginItemManager(),
-            alertChecker: MockAlertChecker()
-        )
-    }
+    func makeVM() -> UsageViewModel { ViewModelTestFactory.makeVM() }
 
     // spec: signOut 後に isLoggedIn=false になることを確認
     // （実際の Cookie 削除の完了は非同期・実機依存のため、フラグ変化のみを検証）
@@ -332,18 +186,7 @@ final class ArchitectureCookieObserverTests: XCTestCase {
         stubFetcher = StubUsageFetcher()
     }
 
-    func makeVM() -> UsageViewModel {
-        UsageViewModel(
-            fetcher: stubFetcher,
-            settingsStore: InMemorySettingsStore(),
-            usageStore: InMemoryUsageStore(),
-            snapshotWriter: InMemorySnapshotWriter(),
-            widgetReloader: InMemoryWidgetReloader(),
-            tokenSync: InMemoryTokenSync(),
-            loginItemManager: InMemoryLoginItemManager(),
-            alertChecker: MockAlertChecker()
-        )
-    }
+    func makeVM() -> UsageViewModel { ViewModelTestFactory.makeVM(fetcher: stubFetcher) }
 
     /// Cookie monitoring is handled by CookieChangeObserver, NOT WebViewCoordinator.
     /// WebViewCoordinator conforms to WKNavigationDelegate + WKUIDelegate.

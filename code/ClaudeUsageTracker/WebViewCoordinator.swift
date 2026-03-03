@@ -5,9 +5,9 @@ import WebKit
 // MARK: - WebView Coordinator (navigation + OAuth popup handling)
 
 final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
-    private weak var viewModel: UsageViewModel?
+    private weak var viewModel: (any WebViewCoordinatorDelegate)?
 
-    init(viewModel: UsageViewModel) {
+    init(viewModel: any WebViewCoordinatorDelegate) {
         self.viewModel = viewModel
     }
 

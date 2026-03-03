@@ -123,6 +123,20 @@ protocol TokenSyncing: Sendable {
 
 extension TokenStore: TokenSyncing {}
 
+// MARK: - WebView Coordinator Delegate
+
+/// Interface used by WebViewCoordinator to communicate with its owner.
+/// Decouples the coordinator from concrete UsageViewModel for testability.
+@MainActor
+protocol WebViewCoordinatorDelegate: AnyObject {
+    var popupWebView: WKWebView? { get set }
+    func debug(_ message: String)
+    func checkPopupLogin()
+    func handlePageReady()
+    func closePopup()
+    func handlePopupClosed()
+}
+
 // MARK: - Alert Checking
 
 protocol AlertChecking {

@@ -4,6 +4,10 @@ import SQLite3
 @testable import ClaudeUsageTracker
 
 // MARK: - SQL Query Correctness Tests
+//
+// Responsibilities:
+//   - Usage query: column order, JOIN, sorting, NULL handling
+//   - Token query: column order, cost calculation via CostEstimator
 
 /// Verifies that the SQL queries used in the HTML template produce correct results
 /// when run against real SQLite databases with the same schema as UsageStore/TokenStore.
@@ -21,6 +25,8 @@ final class AnalysisSQLQueryTests: XCTestCase {
     override func tearDownWithError() throws {
         try? FileManager.default.removeItem(at: tmpDir)
     }
+
+    // MARK: - Usage Query: Column Order
 
     /// Execute the EXACT usage JOIN query from AnalysisSchemeHandler against a real SQLite DB.
     func testUsageQuery_columnOrderMatchesJSMapping() {
@@ -82,6 +88,8 @@ final class AnalysisSQLQueryTests: XCTestCase {
                        "Column 4 must be weekly_resets_at (epoch)")
     }
 
+    // MARK: - Token Query: Column Order
+
     /// Execute the EXACT token_records query from the HTML template.
     func testTokenQuery_columnOrderMatchesJSMapping() {
         let path = tmpDir.appendingPathComponent("tokens.db").path
@@ -129,6 +137,8 @@ final class AnalysisSQLQueryTests: XCTestCase {
         XCTAssertEqual(sqlite3_column_int(stmt, 5), 200000,
                        "Column 5 must be cache_creation_tokens")
     }
+
+    // MARK: - Usage Query: Sort Order
 
     /// Verify usage query returns rows sorted by timestamp ascending.
     func testUsageQuery_orderByTimestampAsc() {
@@ -185,6 +195,8 @@ final class AnalysisSQLQueryTests: XCTestCase {
         XCTAssertEqual(sqlite3_column_double(stmt, 1), 30.0, accuracy: 0.01)
     }
 
+    // MARK: - Usage Query: NULL Handling
+
     /// Verify null session IDs produce NULL resets_at via LEFT JOIN.
     func testUsageQuery_nullSessionIds_joinReturnsNull() {
         let path = tmpDir.appendingPathComponent("usage.db").path
@@ -229,6 +241,8 @@ final class AnalysisSQLQueryTests: XCTestCase {
         XCTAssertEqual(sqlite3_column_type(stmt, 3), SQLITE_NULL, "hourly_resets_at should be NULL (no session)")
         XCTAssertEqual(sqlite3_column_type(stmt, 4), SQLITE_NULL, "weekly_resets_at should be NULL (no session)")
     }
+
+    // MARK: - Token Query: Cost Calculation
 
     /// Token query returns correct cost when piped through CostEstimator.
     func testTokenQuery_costMatchesCostEstimator() {

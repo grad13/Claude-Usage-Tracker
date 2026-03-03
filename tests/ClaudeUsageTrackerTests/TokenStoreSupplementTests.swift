@@ -28,10 +28,7 @@ final class TokenStoreSupplementTests: XCTestCase {
     }
 
     private func writeJSONLFile(name: String, lines: [String]) -> URL {
-        let url = jsonlDir.appendingPathComponent(name)
-        let content = lines.joined(separator: "\n")
-        try! content.write(to: url, atomically: true, encoding: .utf8)
-        return url
+        TokenStoreTestHelpers.writeJSONLFile(name: name, lines: lines, in: jsonlDir)
     }
 
     private func makeAssistantLine(
@@ -41,9 +38,13 @@ final class TokenStoreSupplementTests: XCTestCase {
         inputTokens: Int = 100,
         outputTokens: Int = 200
     ) -> String {
-        return """
-        {"type":"assistant","requestId":"\(requestId)","timestamp":"\(timestamp)","message":{"model":"\(model)","usage":{"input_tokens":\(inputTokens),"output_tokens":\(outputTokens),"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}
-        """
+        TokenStoreTestHelpers.makeAssistantLine(
+            requestId: requestId,
+            timestamp: timestamp,
+            model: model,
+            inputTokens: inputTokens,
+            outputTokens: outputTokens
+        )
     }
 
     // MARK: - UT-01: shared singleton — XCTest environment uses tmp directory

@@ -1,10 +1,19 @@
 import XCTest
 @testable import ClaudeUsageTracker
 
+// MARK: - CostEstimator Parity Tests
+//
+// Responsibilities:
+//   - JS/Swift pricing parity (AnalysisExporter.htmlTemplate vs CostEstimator constants)
+//   - Cost formula verification (per-model, mixed tokens, cache pricing)
+//   - Field mapping validation (cache_creation_tokens → cacheWrite, etc.)
+
 /// Verifies that the JS costForRecord function in the HTML template
 /// produces the same results as Swift's CostEstimator.cost(for:).
 /// If these diverge, the Analysis window shows wrong cost data.
 final class CostEstimatorParityTests: XCTestCase {
+
+    // MARK: - Helpers
 
     /// Compute cost using Swift CostEstimator for comparison.
     private func swiftCost(model: String, input: Int, output: Int, cacheRead: Int, cacheWrite: Int) -> Double {
@@ -21,6 +30,8 @@ final class CostEstimatorParityTests: XCTestCase {
         )
         return CostEstimator.cost(for: record)
     }
+
+    // MARK: - JS/Swift Pricing Parity
 
     /// Extract JS pricing from the HTML template and verify it matches Swift.
     func testJsPricing_opus_matchesSwift() {
@@ -62,6 +73,8 @@ final class CostEstimatorParityTests: XCTestCase {
         XCTAssertTrue(html.contains("cacheRead: 0.08"))
     }
 
+    // MARK: - Model Routing
+
     /// Verify model routing: JS pricingForModel uses same matching as Swift.
     func testJsModelRouting_matchesSwift() {
         let html = AnalysisExporter.htmlTemplate
@@ -74,6 +87,8 @@ final class CostEstimatorParityTests: XCTestCase {
         // JS should return sonnet as default (fall-through)
         XCTAssertTrue(html.contains("return MODEL_PRICING.sonnet"))
     }
+
+    // MARK: - Cost Formula Verification
 
     /// Verify cost formula: JS uses same calculation as Swift.
     /// Swift: input/1M * pricing.input + output/1M * pricing.output + cacheCreation/1M * pricing.cacheWrite + cacheRead/1M * pricing.cacheRead
@@ -108,6 +123,8 @@ final class CostEstimatorParityTests: XCTestCase {
         let cost = swiftCost(model: "claude-sonnet-4-20250514", input: 0, output: 0, cacheRead: 0, cacheWrite: 0)
         XCTAssertEqual(cost, 0.0, accuracy: 0.0001)
     }
+
+    // MARK: - Field Mapping
 
     /// JS formula must use same field mapping as Swift.
     /// Swift: cacheCreationTokens → cacheWrite pricing

@@ -26,18 +26,11 @@ final class UsageStoreTests: XCTestCase {
         fiveHourResetsAt: Date? = nil,
         sevenDayResetsAt: Date? = nil
     ) -> UsageResult {
-        UsageResult(
+        UsageResultFactory.make(
             fiveHourPercent: fiveHourPercent,
             sevenDayPercent: sevenDayPercent,
             fiveHourResetsAt: fiveHourResetsAt,
-            sevenDayResetsAt: sevenDayResetsAt,
-            fiveHourStatus: nil,
-            sevenDayStatus: nil,
-            fiveHourLimit: nil,
-            fiveHourRemaining: nil,
-            sevenDayLimit: nil,
-            sevenDayRemaining: nil,
-            rawJSON: nil
+            sevenDayResetsAt: sevenDayResetsAt
         )
     }
 

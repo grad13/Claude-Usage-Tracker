@@ -7,33 +7,6 @@ final class FetcherTests: XCTestCase {
     // These helpers are private, so we test indirectly via the parsing output.
     // For unit tests, we test the UsageViewModel's time progress and remaining text instead.
 
-    // MARK: - UsageFetchError.isAuthError
-
-    func testIsAuthError_missingOrganization() {
-        let error = UsageFetchError.scriptFailed("Missing organization id")
-        XCTAssertTrue(error.isAuthError)
-    }
-
-    func testIsAuthError_http401() {
-        let error = UsageFetchError.scriptFailed("HTTP 401")
-        XCTAssertTrue(error.isAuthError)
-    }
-
-    func testIsAuthError_http403() {
-        let error = UsageFetchError.scriptFailed("HTTP 403")
-        XCTAssertTrue(error.isAuthError)
-    }
-
-    func testIsAuthError_otherError() {
-        let error = UsageFetchError.scriptFailed("HTTP 500")
-        XCTAssertFalse(error.isAuthError)
-    }
-
-    func testIsAuthError_decodingFailed() {
-        let error = UsageFetchError.decodingFailed
-        XCTAssertFalse(error.isAuthError)
-    }
-
     // MARK: - parseResetDate
 
     func testParseResetDate_iso8601() {
@@ -123,11 +96,6 @@ final class FetcherTests: XCTestCase {
                        "Should handle - timezone offset")
     }
 
-    func testIsAuthError_mixedCase() {
-        let error = UsageFetchError.scriptFailed("MISSING ORGANIZATION ID")
-        XCTAssertTrue(error.isAuthError, "isAuthError uses lowercased(), mixed case should match")
-    }
-
     func testParseResetDate_completelyInvalid() {
         XCTAssertNil(UsageFetcher.parseResetDate("not a date at all"))
     }
@@ -145,14 +113,6 @@ final class FetcherTests: XCTestCase {
         // Forces the trimFractionalSeconds path + non-Z timezone suffix
         let date = UsageFetcher.parseResetDate("2026-02-22T12:00:00.123456+05:30")
         XCTAssertNotNil(date, "High-precision timestamp with +offset should parse via trim path")
-    }
-
-    func testUsageFetchError_errorDescription() {
-        let scriptErr = UsageFetchError.scriptFailed("HTTP 500")
-        XCTAssertEqual(scriptErr.errorDescription, "HTTP 500")
-
-        let decodingErr = UsageFetchError.decodingFailed
-        XCTAssertEqual(decodingErr.errorDescription, "Failed to decode usage data")
     }
 
     // MARK: - calcPercent

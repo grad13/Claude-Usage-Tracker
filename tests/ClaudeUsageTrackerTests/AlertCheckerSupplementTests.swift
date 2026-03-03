@@ -29,10 +29,10 @@ final class AlertCheckerSupplementTests: XCTestCase {
         sevenDayPercent: Double? = nil,
         sevenDayResetsAt: Date? = nil
     ) -> UsageResult {
-        var r = UsageResult()
-        r.sevenDayPercent = sevenDayPercent
-        r.sevenDayResetsAt = sevenDayResetsAt
-        return r
+        UsageResultFactory.make(
+            sevenDayPercent: sevenDayPercent,
+            sevenDayResetsAt: sevenDayResetsAt
+        )
     }
 
     private func makeDailySettings(

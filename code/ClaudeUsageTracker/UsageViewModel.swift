@@ -6,7 +6,7 @@ import ServiceManagement
 import ClaudeUsageTrackerShared
 
 @MainActor
-final class UsageViewModel: ObservableObject {
+final class UsageViewModel: ObservableObject, WebViewCoordinatorDelegate {
     @Published var fiveHourPercent: Double?
     @Published var sevenDayPercent: Double?
     @Published var fiveHourResetsAt: Date?

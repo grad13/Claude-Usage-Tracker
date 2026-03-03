@@ -7,7 +7,7 @@ import WebKit
 /// Minimal mock that records calls made by WebViewCoordinator and allows
 /// setting `popupWebView` as required by the spec.
 @MainActor
-final class MockUsageViewModel {
+final class MockUsageViewModel: WebViewCoordinatorDelegate {
     var popupWebView: WKWebView?
     var checkPopupLoginCallCount = 0
     var handlePageReadyCallCount = 0
@@ -73,8 +73,6 @@ final class MockWKWindowFeatures: WKWindowFeatures {}
 final class WebViewCoordinatorTests: XCTestCase {
 
     var mockViewModel: MockUsageViewModel!
-    /// Retains the real UsageViewModel so the coordinator's weak reference stays alive.
-    var retainedVM: UsageViewModel!
 
     override func setUp() {
         super.setUp()
@@ -83,17 +81,15 @@ final class WebViewCoordinatorTests: XCTestCase {
 
     override func tearDown() {
         mockViewModel = nil
-        retainedVM = nil
         super.tearDown()
     }
 
     // MARK: - Helpers
 
-    /// Creates a WebViewCoordinator backed by a real UsageViewModel.
-    /// The VM is retained as `retainedVM` to prevent deallocation of the weak reference.
+    /// Creates a WebViewCoordinator backed by MockUsageViewModel.
+    /// The mock is retained as `mockViewModel` to prevent deallocation of the weak reference.
     func makeCoordinator() -> WebViewCoordinator {
-        retainedVM = UsageViewModel()
-        return WebViewCoordinator(viewModel: retainedVM)
+        WebViewCoordinator(viewModel: mockViewModel)
     }
 
     // MARK: - CookieChangeObserver: cookiesDidChange
@@ -197,19 +193,42 @@ final class WebViewCoordinatorTests: XCTestCase {
                       "spec 3.2: javaScriptCanOpenWindowsAutomatically must be set to true on the configuration")
     }
 
-    // MARK: - webViewDidClose: popup reference mismatch → no action
+    // MARK: - webViewDidClose
 
     /// Section 3.3: webViewDidClose with a WKWebView that is NOT the popup → no ViewModel calls.
     func testWebViewDidClose_nonPopupWebView_doesNotCallClosePopup() {
-        // We need a real UsageViewModel to observe its closePopup behavior.
-        // Since we cannot inject MockUsageViewModel (no protocol boundary in this spec),
-        // we verify behavior via the absence of side effects on an unrelated WKWebView.
         let coordinator = makeCoordinator()
         let unrelatedWebView = WKWebView(frame: .zero)
 
-        // webViewDidClose should silently return without crashing or mutating state.
         coordinator.webViewDidClose(unrelatedWebView)
-        // No assertion needed beyond the call not crashing; the spec says "return / 何もしない"
+
+        XCTAssertEqual(mockViewModel.closePopupCallCount, 0,
+                       "webViewDidClose must not call closePopup when webView is not the popup")
+        XCTAssertEqual(mockViewModel.handlePopupClosedCallCount, 0,
+                       "webViewDidClose must not call handlePopupClosed when webView is not the popup")
+    }
+
+    /// Section 3.3: webViewDidClose with the popup WebView → calls closePopup + handlePopupClosed.
+    func testWebViewDidClose_popupWebView_callsClosePopupAndHandlePopupClosed() {
+        let coordinator = makeCoordinator()
+        let configuration = WKWebViewConfiguration()
+        let action = MockWKNavigationAction(targetFrame: nil)
+        let features = MockWKWindowFeatures()
+
+        // Create a popup so that viewModel.popupWebView is set
+        let popup = coordinator.webView(
+            WKWebView(frame: .zero),
+            createWebViewWith: configuration,
+            for: action,
+            windowFeatures: features
+        )!
+
+        coordinator.webViewDidClose(popup)
+
+        XCTAssertEqual(mockViewModel.closePopupCallCount, 1,
+                       "webViewDidClose must call closePopup when webView matches popup")
+        XCTAssertEqual(mockViewModel.handlePopupClosedCallCount, 1,
+                       "webViewDidClose must call handlePopupClosed when webView matches popup")
     }
 
     // MARK: - CookieChangeObserver: init stores closure
@@ -227,6 +246,28 @@ final class WebViewCoordinatorTests: XCTestCase {
     func testCookieChangeObserver_conformsToWKHTTPCookieStoreObserver() {
         let observer = CookieChangeObserver(onChange: {})
         XCTAssertTrue(observer is WKHTTPCookieStoreObserver)
+    }
+
+    // MARK: - createWebViewWith: sets popupWebView on viewModel
+
+    /// Section 3.2: createWebViewWith stores the popup in viewModel.popupWebView.
+    func testCreateWebViewWith_nilTargetFrame_setsPopupWebViewOnViewModel() {
+        let coordinator = makeCoordinator()
+        let configuration = WKWebViewConfiguration()
+        let action = MockWKNavigationAction(targetFrame: nil)
+        let features = MockWKWindowFeatures()
+
+        XCTAssertNil(mockViewModel.popupWebView, "popupWebView must be nil before popup creation")
+
+        let popup = coordinator.webView(
+            WKWebView(frame: .zero),
+            createWebViewWith: configuration,
+            for: action,
+            windowFeatures: features
+        )
+
+        XCTAssertTrue(mockViewModel.popupWebView === popup,
+                      "createWebViewWith must store the returned popup in viewModel.popupWebView")
     }
 
     // MARK: - State diagram: Idle → PopupOpen (createWebViewWith)
