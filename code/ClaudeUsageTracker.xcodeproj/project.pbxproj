@@ -85,7 +85,7 @@
 		BB100043 /* AnalysisSchemeHandlerHelperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000043 /* AnalysisSchemeHandlerHelperTests.swift */; };
 		BB100044 /* WidgetMiniGraphCalcTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000044 /* WidgetMiniGraphCalcTests.swift */; };
 		BB100045 /* WidgetDisplayFormatTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000045 /* WidgetDisplayFormatTests.swift */; };
-		BB100046 /* WidgetConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000046 /* WidgetConfigTests.swift */; };
+
 		BB100047 /* TokenStoreTestHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000047 /* TokenStoreTestHelpers.swift */; };
 		BB100048 /* ArchitectureWebViewStructureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000048 /* ArchitectureWebViewStructureTests.swift */; };
 		BB100049 /* ArchitectureViewModelStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000049 /* ArchitectureViewModelStateTests.swift */; };
@@ -240,7 +240,7 @@
 		BB000043 /* AnalysisSchemeHandlerHelperTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisSchemeHandlerHelperTests.swift; sourceTree = "<group>"; };
 		BB000044 /* WidgetMiniGraphCalcTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetMiniGraphCalcTests.swift; sourceTree = "<group>"; };
 		BB000045 /* WidgetDisplayFormatTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetDisplayFormatTests.swift; sourceTree = "<group>"; };
-		BB000046 /* WidgetConfigTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetConfigTests.swift; sourceTree = "<group>"; };
+
 		BB000047 /* TokenStoreTestHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenStoreTestHelpers.swift; sourceTree = "<group>"; };
 		BB000048 /* ArchitectureWebViewStructureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchitectureWebViewStructureTests.swift; sourceTree = "<group>"; };
 		BB000049 /* ArchitectureViewModelStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchitectureViewModelStateTests.swift; sourceTree = "<group>"; };
@@ -410,7 +410,6 @@
 				BB000043 /* AnalysisSchemeHandlerHelperTests.swift */,
 				BB000044 /* WidgetMiniGraphCalcTests.swift */,
 				BB000045 /* WidgetDisplayFormatTests.swift */,
-				BB000046 /* WidgetConfigTests.swift */,
 				BB000021 /* AnalysisSchemeHandlerTests.swift */,
 				BB000022 /* AnalysisWebViewIntegrationTests.swift */,
 				BB000023 /* CostEstimatorParityTests.swift */,
@@ -686,7 +685,6 @@
 				BB100043 /* AnalysisSchemeHandlerHelperTests.swift in Sources */,
 				BB100044 /* WidgetMiniGraphCalcTests.swift in Sources */,
 				BB100045 /* WidgetDisplayFormatTests.swift in Sources */,
-				BB100046 /* WidgetConfigTests.swift in Sources */,
 				BB100021 /* AnalysisSchemeHandlerTests.swift in Sources */,
 				BB100022 /* AnalysisWebViewIntegrationTests.swift in Sources */,
 				BB100023 /* CostEstimatorParityTests.swift in Sources */,

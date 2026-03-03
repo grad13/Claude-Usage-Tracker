@@ -1,4 +1,4 @@
-// meta: created=2026-02-22 updated=2026-02-22 checked=2026-03-03
+// meta: created=2026-02-22 updated=2026-03-04 checked=2026-03-03
 import Foundation
 import CoreGraphics
 
@@ -24,13 +24,14 @@ public enum DisplayHelpers {
     }
 
     /// Whether percent text should render below the marker (true) or above (false).
-    /// Prefer above (away from area fill). Only show below when marker is near top edge.
+    /// Prefer above (away from area fill). Show below when marker is near top edge
+    /// or in the lower half of the graph (where area fill is below).
     public static func percentTextShowsBelow(
         markerY: CGFloat,
         graphHeight: CGFloat,
         topMargin: CGFloat = 14
     ) -> Bool {
-        markerY < topMargin
+        markerY < topMargin || markerY > graphHeight / 2
     }
 
     /// Horizontal anchor for percent text (0 = leading, 0.5 = center, 1 = trailing).

@@ -49,8 +49,8 @@ final class DisplayHelpersTests: XCTestCase {
     }
 
     func testShowsBelow_lowerHalf() {
-        // markerY = 40 (> 60*0.5=30), NOT near top → should show above (false)
-        XCTAssertFalse(DisplayHelpers.percentTextShowsBelow(markerY: 40, graphHeight: 60))
+        // markerY = 40 (> 60/2=30), lower half → should show below (true)
+        XCTAssertTrue(DisplayHelpers.percentTextShowsBelow(markerY: 40, graphHeight: 60))
     }
 
     func testShowsBelow_upperHalf() {
@@ -125,8 +125,8 @@ final class DisplayHelpersTests: XCTestCase {
     func testShowsBelow_customTopMargin() {
         // markerY = 20, custom topMargin = 30 → 20 < 30 → near top → shows below
         XCTAssertTrue(DisplayHelpers.percentTextShowsBelow(markerY: 20, graphHeight: 60, topMargin: 30))
-        // markerY = 35, topMargin = 30, graphHeight * 0.5 = 30 → 35 > 30 (not near top) AND 35 > 30 (lower half) → false
-        XCTAssertFalse(DisplayHelpers.percentTextShowsBelow(markerY: 35, graphHeight: 60, topMargin: 30))
+        // markerY = 35, topMargin = 30, graphHeight / 2 = 30 → 35 > 30 (lower half) → true
+        XCTAssertTrue(DisplayHelpers.percentTextShowsBelow(markerY: 35, graphHeight: 60, topMargin: 30))
     }
 
     // MARK: - Non-default margin for anchorX

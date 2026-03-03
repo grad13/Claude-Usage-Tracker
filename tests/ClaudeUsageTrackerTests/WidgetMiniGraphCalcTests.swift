@@ -421,83 +421,70 @@ final class NowXFractionTests: XCTestCase {
 }
 
 // MARK: - WidgetMiniGraph marker text positioning logic
+// Tests call DisplayHelpers (Shared module) directly — no spec re-implementation.
 
 final class MarkerTextPositioningTests: XCTestCase {
 
-    // Spec: percent text vertical position
-    //   - top margin < 14pt OR in lower half → place 14pt below marker
-    //   - otherwise → place 10pt above marker
-
-    private func specTextIsBelow(markerY: Double, graphHeight: Double) -> Bool {
-        let topMargin = markerY
-        let isLowerHalf = markerY > graphHeight / 2
-        return topMargin < 14 || isLowerHalf
-    }
+    // MARK: - percentTextShowsBelow (vertical position)
+    // Rule: near top (< topMargin) OR lower half (> graphHeight/2) → below marker
 
     func testMarkerTextPosition_nearTop_placedBelow() {
-        // markerY = 5 (topMargin = 5 < 14) → below
-        XCTAssertTrue(specTextIsBelow(markerY: 5, graphHeight: 80))
+        // markerY = 5 (< 14 default topMargin) → below
+        XCTAssertTrue(DisplayHelpers.percentTextShowsBelow(markerY: 5, graphHeight: 80))
     }
 
     func testMarkerTextPosition_atTop_placedBelow() {
-        // markerY = 0 → topMargin = 0 < 14 → below
-        XCTAssertTrue(specTextIsBelow(markerY: 0, graphHeight: 80))
+        // markerY = 0 → below
+        XCTAssertTrue(DisplayHelpers.percentTextShowsBelow(markerY: 0, graphHeight: 80))
     }
 
     func testMarkerTextPosition_upperHalfAwayFromTop_placedAbove() {
-        // markerY = 20 (topMargin=20 >= 14, upper half) → above
-        XCTAssertFalse(specTextIsBelow(markerY: 20, graphHeight: 80))
+        // markerY = 20 (>= 14, upper half 20 <= 40) → above
+        XCTAssertFalse(DisplayHelpers.percentTextShowsBelow(markerY: 20, graphHeight: 80))
     }
 
     func testMarkerTextPosition_lowerHalf_placedBelow() {
-        // markerY = 50 out of 80 (lower half, 50 > 40) → below
-        XCTAssertTrue(specTextIsBelow(markerY: 50, graphHeight: 80))
+        // markerY = 50, graphHeight = 80 → 50 > 40 (lower half) → below
+        XCTAssertTrue(DisplayHelpers.percentTextShowsBelow(markerY: 50, graphHeight: 80))
     }
 
     func testMarkerTextPosition_exactlyAtHalfHeight_lowerHalfBoundary() {
-        // markerY = 40, graphHeight = 80 → 40 > 40 is false → upper half
-        // topMargin = 40 >= 14 → above
-        XCTAssertFalse(specTextIsBelow(markerY: 40, graphHeight: 80))
+        // markerY = 40, graphHeight = 80 → 40 > 40 is false, 40 >= 14 → above
+        XCTAssertFalse(DisplayHelpers.percentTextShowsBelow(markerY: 40, graphHeight: 80))
     }
 
     func testMarkerTextPosition_justBelowHalf_placedBelow() {
         // markerY = 41, graphHeight = 80 → 41 > 40 → lower half → below
-        XCTAssertTrue(specTextIsBelow(markerY: 41, graphHeight: 80))
+        XCTAssertTrue(DisplayHelpers.percentTextShowsBelow(markerY: 41, graphHeight: 80))
     }
 
-    // Spec: percent text horizontal anchor
-    //   x < 16 → leading; x > (width - 16) → trailing; else → center
-
-    private func specTextAnchor(markerX: Double, graphWidth: Double) -> String {
-        if markerX < 16 { return "leading" }
-        if markerX > graphWidth - 16 { return "trailing" }
-        return "center"
-    }
+    // MARK: - percentTextAnchorX (horizontal anchor)
+    // Rule: x < margin(16) → 0 (leading); x > width-margin → 1 (trailing); else → 0.5 (center)
 
     func testMarkerTextAnchor_nearLeftEdge_isLeading() {
-        XCTAssertEqual(specTextAnchor(markerX: 10, graphWidth: 100), "leading")
+        XCTAssertEqual(DisplayHelpers.percentTextAnchorX(markerX: 10, graphWidth: 100), 0)
     }
 
     func testMarkerTextAnchor_atLeftMarginBoundary_isLeading() {
-        // x = 15 < 16 → leading
-        XCTAssertEqual(specTextAnchor(markerX: 15, graphWidth: 100), "leading")
+        // x = 15 < 16 → leading (0)
+        XCTAssertEqual(DisplayHelpers.percentTextAnchorX(markerX: 15, graphWidth: 100), 0)
     }
 
     func testMarkerTextAnchor_justInsideLeftMargin_isCenter() {
-        // x = 16 is NOT < 16 → check right; 16 < 84 → center
-        XCTAssertEqual(specTextAnchor(markerX: 16, graphWidth: 100), "center")
+        // x = 16 is NOT < 16 → check right; 16 < 84 → center (0.5)
+        XCTAssertEqual(DisplayHelpers.percentTextAnchorX(markerX: 16, graphWidth: 100), 0.5)
     }
 
     func testMarkerTextAnchor_nearRightEdge_isTrailing() {
-        XCTAssertEqual(specTextAnchor(markerX: 90, graphWidth: 100), "trailing")
+        XCTAssertEqual(DisplayHelpers.percentTextAnchorX(markerX: 90, graphWidth: 100), 1)
     }
 
     func testMarkerTextAnchor_atRightMarginBoundary_isTrailing() {
-        // x = 85, width = 100 → 85 > 84 → trailing
-        XCTAssertEqual(specTextAnchor(markerX: 85, graphWidth: 100), "trailing")
+        // x = 85, width = 100 → 85 > 84 → trailing (1)
+        XCTAssertEqual(DisplayHelpers.percentTextAnchorX(markerX: 85, graphWidth: 100), 1)
     }
 
     func testMarkerTextAnchor_middleOfGraph_isCenter() {
-        XCTAssertEqual(specTextAnchor(markerX: 50, graphWidth: 100), "center")
+        XCTAssertEqual(DisplayHelpers.percentTextAnchorX(markerX: 50, graphWidth: 100), 0.5)
     }
 }

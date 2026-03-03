@@ -120,66 +120,53 @@ extension ViewModelTests {
 
     // (writeSnapshot data flow tests removed — SQLite migration moved this logic to SnapshotStore)
 
-    /// ウィジェットのグラフが描画可能かを判定するロジックのテスト。
-    /// WidgetMiniGraph は resetsAt=nil かつ history が空のとき早期 return する。
-    /// snapshot の各状態でウィジェットが何を描画できるかを検証する。
+    /// ウィジェットのグラフが描画可能かの前提条件テスト。
+    /// WidgetMiniGraph は resolveWindowStart() で windowStart を決定する:
+    ///   1. resetsAt != nil → resetsAt - windowSeconds
+    ///   2. resetsAt == nil, history non-empty → history.first.timestamp
+    ///   3. both absent → nil (描画なし)
+    /// ここではソースロジックを再実装せず、snapshot の状態と期待結果のみを検証する。
     func testWidgetGraphRenderability_variousSnapshotStates() {
-        struct TestCase {
-            let label: String
-            let resetsAt: Date?
-            let history: [HistoryPoint]
-            let expectRenderable: Bool
-        }
-
         let now = Date()
-        let cases: [TestCase] = [
-            TestCase(label: "resetsAt あり, history あり",
-                     resetsAt: now.addingTimeInterval(3600),
-                     history: [HistoryPoint(timestamp: now, percent: 20.0)],
-                     expectRenderable: true),
-            TestCase(label: "resetsAt あり, history 空",
-                     resetsAt: now.addingTimeInterval(3600),
-                     history: [],
-                     expectRenderable: true), // resetsAt だけでも windowStart は決まる（ただし points は空→return）
-            TestCase(label: "resetsAt nil, history あり",
-                     resetsAt: nil,
-                     history: [HistoryPoint(timestamp: now, percent: 20.0)],
-                     expectRenderable: true), // history.first で windowStart を決定
-            TestCase(label: "resetsAt nil, history 空",
-                     resetsAt: nil,
-                     history: [],
-                     expectRenderable: false), // 早期 return → 何も描画されない
-        ]
 
-        for tc in cases {
-            // WidgetMiniGraph の描画判定ロジックを再現
-            let windowSeconds: TimeInterval = 5 * 3600
-            let windowStart: Date?
-            if let resetsAt = tc.resetsAt {
-                windowStart = resetsAt.addingTimeInterval(-windowSeconds)
-            } else if let first = tc.history.first {
-                windowStart = first.timestamp
-            } else {
-                windowStart = nil
-            }
+        // Case 1: resetsAt あり → windowStart は決まる → 描画可能
+        let snap1 = UsageSnapshot(
+            timestamp: now,
+            fiveHourPercent: 20.0, sevenDayPercent: 10.0,
+            fiveHourResetsAt: now.addingTimeInterval(3600),
+            sevenDayResetsAt: now.addingTimeInterval(3 * 24 * 3600),
+            fiveHourHistory: [HistoryPoint(timestamp: now, percent: 20.0)],
+            sevenDayHistory: [],
+            isLoggedIn: true,
+            predictFiveHourCost: nil, predictSevenDayCost: nil
+        )
+        XCTAssertNotNil(snap1.fiveHourResetsAt, "resetsAt あり → windowStart 決定可能")
+        XCTAssertFalse(snap1.fiveHourHistory.isEmpty, "history あり → points 生成可能")
 
-            guard let ws = windowStart else {
-                XCTAssertFalse(tc.expectRenderable, "\(tc.label): windowStart=nil → not renderable")
-                continue
-            }
+        // Case 2: resetsAt nil, history あり → history.first で windowStart 決定
+        let snap2 = UsageSnapshot(
+            timestamp: now,
+            fiveHourPercent: 20.0, sevenDayPercent: 10.0,
+            fiveHourResetsAt: nil, sevenDayResetsAt: nil,
+            fiveHourHistory: [HistoryPoint(timestamp: now, percent: 20.0)],
+            sevenDayHistory: [],
+            isLoggedIn: true,
+            predictFiveHourCost: nil, predictSevenDayCost: nil
+        )
+        XCTAssertNil(snap2.fiveHourResetsAt)
+        XCTAssertFalse(snap2.fiveHourHistory.isEmpty, "history fallback で描画可能")
 
-            // points フィルタリング
-            var points: [(x: Double, y: Double)] = []
-            for dp in tc.history {
-                let elapsed = dp.timestamp.timeIntervalSince(ws)
-                guard elapsed >= 0 else { continue }
-                points.append((x: elapsed / windowSeconds, y: dp.percent / 100.0))
-            }
-
-            if tc.expectRenderable && !tc.history.isEmpty {
-                XCTAssertFalse(points.isEmpty, "\(tc.label): should have renderable points")
-            }
-        }
+        // Case 3: resetsAt nil, history 空 → windowStart nil → 描画不可
+        let snap3 = UsageSnapshot(
+            timestamp: now,
+            fiveHourPercent: nil, sevenDayPercent: nil,
+            fiveHourResetsAt: nil, sevenDayResetsAt: nil,
+            fiveHourHistory: [], sevenDayHistory: [],
+            isLoggedIn: false,
+            predictFiveHourCost: nil, predictSevenDayCost: nil
+        )
+        XCTAssertNil(snap3.fiveHourResetsAt)
+        XCTAssertTrue(snap3.fiveHourHistory.isEmpty, "resetsAt nil + history 空 → 描画不可")
     }
 
     // MARK: - Widget reload (reloadAllTimelines)
