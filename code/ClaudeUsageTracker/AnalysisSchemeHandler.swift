@@ -150,6 +150,13 @@ final class AnalysisSchemeHandler: NSObject, WKURLSchemeHandler {
 
         guard sqlite3_step(stmt) == SQLITE_ROW else { return "{}".data(using: .utf8) }
 
+        // Aggregate functions (MAX/MIN) always return one row, even on empty tables.
+        // All columns will be NULL when usage_log is empty.
+        guard sqlite3_column_type(stmt, 1) != SQLITE_NULL ||
+              sqlite3_column_type(stmt, 2) != SQLITE_NULL else {
+            return "{}".data(using: .utf8)
+        }
+
         let result: [String: Any?] = [
             "latestSevenDayResetsAt": columnInt(stmt, 0),
             "latestTimestamp": columnInt(stmt, 1),

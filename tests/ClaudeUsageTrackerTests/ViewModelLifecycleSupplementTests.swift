@@ -229,12 +229,17 @@ final class ViewModelLifecycleSupplementTests: XCTestCase {
         let vm = makeVM()
         vm.isLoggedIn = true
 
-        let done = expectation(description: "fetchSilently completes")
+        // fetchSilently() is sync and launches an internal Task. Poll for state change.
+        vm.fetchSilently()
+
+        let done = expectation(description: "error becomes non-nil")
         Task {
-            await vm.fetchSilently()
-            done.fulfill()
+            for _ in 0..<30 {
+                try? await Task.sleep(nanoseconds: 100_000_000)
+                if vm.error != nil { done.fulfill(); return }
+            }
         }
-        wait(for: [done], timeout: 3.0)
+        wait(for: [done], timeout: 5.0)
 
         XCTAssertNotNil(vm.error,
                         "fetchSilently must set error when isLoggedIn == true and fetch fails")
@@ -244,25 +249,30 @@ final class ViewModelLifecycleSupplementTests: XCTestCase {
     // MARK: - fetchSilently vs fetch(): authentication error disables auto-refresh
 
     /// Spec: both fetch() and fetchSilently() set isAutoRefreshEnabled = false on auth error.
-    /// This test verifies fetchSilently shares that behaviour.
-    /// (Auth error is signalled by the fetcher throwing; ViewModel interprets it as auth failure.)
+    /// Auth error requires UsageFetchError with isAuthError == true (e.g., "Missing organization").
     func testFetchSilently_authError_disablesAutoRefresh() {
-        struct AuthError: Error {}
-        stubFetcher.fetchResult = .failure(AuthError())
+        // Must use UsageFetchError with isAuthError == true
+        stubFetcher.fetchResult = .failure(UsageFetchError.scriptFailed("Missing organization"))
 
         let vm = makeVM()
         vm.isLoggedIn = true
         vm.isAutoRefreshEnabled = true
 
-        let done = expectation(description: "fetchSilently completes")
+        // fetch()/fetchSilently() are sync methods that launch internal Tasks.
+        // We must wait for the internal Task to complete by polling state.
+        vm.fetchSilently()
+
+        let done = expectation(description: "isAutoRefreshEnabled becomes false")
         Task {
-            await vm.fetchSilently()
-            done.fulfill()
+            for _ in 0..<30 {
+                try? await Task.sleep(nanoseconds: 100_000_000)
+                if vm.isAutoRefreshEnabled == false { done.fulfill(); return }
+            }
         }
-        wait(for: [done], timeout: 3.0)
+        wait(for: [done], timeout: 5.0)
 
         XCTAssertEqual(vm.isAutoRefreshEnabled, false,
-                       "fetchSilently must set isAutoRefreshEnabled = false on auth/fetch error")
+                       "fetchSilently must set isAutoRefreshEnabled = false on auth error")
         _ = vm
     }
 
@@ -279,12 +289,17 @@ final class ViewModelLifecycleSupplementTests: XCTestCase {
         let vm = makeVM()
         vm.isLoggedIn = false
 
-        let done = expectation(description: "fetch completes")
+        // fetch() is sync and launches an internal Task. Poll for state change.
+        vm.fetch()
+
+        let done = expectation(description: "error becomes non-nil")
         Task {
-            await vm.fetch()
-            done.fulfill()
+            for _ in 0..<30 {
+                try? await Task.sleep(nanoseconds: 100_000_000)
+                if vm.error != nil { done.fulfill(); return }
+            }
         }
-        wait(for: [done], timeout: 3.0)
+        wait(for: [done], timeout: 5.0)
 
         XCTAssertNotNil(vm.error,
                         "fetch() must always set error on failure, regardless of isLoggedIn")

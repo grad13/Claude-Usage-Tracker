@@ -19,6 +19,7 @@
 //     that is unavailable in a plain XCTest target.
 
 import XCTest
+import ClaudeUsageTrackerShared
 @testable import ClaudeUsageTracker
 
 // MARK: - Helpers used across tests
@@ -652,8 +653,9 @@ final class DisplayHelpersRemainingTextTests: XCTestCase {
 
     /// 1m
     func testRemainingText_1minute() {
-        let future = Date().addingTimeInterval(60)
-        let result = DisplayHelpers.remainingText(until: future)
+        let now = Date()
+        let future = now.addingTimeInterval(60)
+        let result = DisplayHelpers.remainingText(until: future, now: now)
         XCTAssertEqual(result, "1m")
     }
 

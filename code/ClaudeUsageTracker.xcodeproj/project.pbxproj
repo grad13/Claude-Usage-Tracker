@@ -65,6 +65,20 @@
 		BB10002A /* ProductionSettingsIntegrityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00002A /* ProductionSettingsIntegrityTests.swift */; };
 		BB10002B /* NotificationManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00002B /* NotificationManagerTests.swift */; };
 		BB10002C /* AlertCheckerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00002C /* AlertCheckerTests.swift */; };
+		BB10002D /* AlertCheckerSupplementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00002D /* AlertCheckerSupplementTests.swift */; };
+		BB10002E /* AnalysisSchemeHandlerSupplementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00002E /* AnalysisSchemeHandlerSupplementTests.swift */; };
+		BB10002F /* AppWindowsSupplementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00002F /* AppWindowsSupplementTests.swift */; };
+		BB100030 /* ArchitectureSupplementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000030 /* ArchitectureSupplementTests.swift */; };
+		BB100031 /* MenuContentSupplementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000031 /* MenuContentSupplementTests.swift */; };
+		BB100033 /* ProtocolsSupplementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000033 /* ProtocolsSupplementTests.swift */; };
+		BB100034 /* SettingsSupplementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000034 /* SettingsSupplementTests.swift */; };
+		BB100035 /* TokenStoreSupplementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000035 /* TokenStoreSupplementTests.swift */; };
+		BB100036 /* UsageFetcherSupplementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000036 /* UsageFetcherSupplementTests.swift */; };
+		BB100037 /* UsageStoreSupplementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000037 /* UsageStoreSupplementTests.swift */; };
+		BB100038 /* ViewModelLifecycleSupplementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000038 /* ViewModelLifecycleSupplementTests.swift */; };
+		BB100039 /* ViewModelSessionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000039 /* ViewModelSessionTests.swift */; };
+		BB10003A /* WebViewCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00003A /* WebViewCoordinatorTests.swift */; };
+		BB10003B /* WidgetDesignSupplementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00003B /* WidgetDesignSupplementTests.swift */; };
 		AA10001D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AA00001D /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
@@ -195,6 +209,20 @@
 		BB00002A /* ProductionSettingsIntegrityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProductionSettingsIntegrityTests.swift; sourceTree = "<group>"; };
 		BB00002B /* NotificationManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManagerTests.swift; sourceTree = "<group>"; };
 		BB00002C /* AlertCheckerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertCheckerTests.swift; sourceTree = "<group>"; };
+		BB00002D /* AlertCheckerSupplementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertCheckerSupplementTests.swift; sourceTree = "<group>"; };
+		BB00002E /* AnalysisSchemeHandlerSupplementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisSchemeHandlerSupplementTests.swift; sourceTree = "<group>"; };
+		BB00002F /* AppWindowsSupplementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppWindowsSupplementTests.swift; sourceTree = "<group>"; };
+		BB000030 /* ArchitectureSupplementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchitectureSupplementTests.swift; sourceTree = "<group>"; };
+		BB000031 /* MenuContentSupplementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuContentSupplementTests.swift; sourceTree = "<group>"; };
+		BB000033 /* ProtocolsSupplementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtocolsSupplementTests.swift; sourceTree = "<group>"; };
+		BB000034 /* SettingsSupplementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsSupplementTests.swift; sourceTree = "<group>"; };
+		BB000035 /* TokenStoreSupplementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenStoreSupplementTests.swift; sourceTree = "<group>"; };
+		BB000036 /* UsageFetcherSupplementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageFetcherSupplementTests.swift; sourceTree = "<group>"; };
+		BB000037 /* UsageStoreSupplementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageStoreSupplementTests.swift; sourceTree = "<group>"; };
+		BB000038 /* ViewModelLifecycleSupplementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewModelLifecycleSupplementTests.swift; sourceTree = "<group>"; };
+		BB000039 /* ViewModelSessionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewModelSessionTests.swift; sourceTree = "<group>"; };
+		BB00003A /* WebViewCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebViewCoordinatorTests.swift; sourceTree = "<group>"; };
+		BB00003B /* WidgetDesignSupplementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetDesignSupplementTests.swift; sourceTree = "<group>"; };
 		BB000010 /* ClaudeUsageTrackerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ClaudeUsageTrackerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -351,6 +379,20 @@
 				BB000024 /* AnalysisJSTests.swift */,
 				BB000025 /* AnalysisSQLQueryTests.swift */,
 				BB000026 /* AnalysisRenderTests.swift */,
+				BB00002D /* AlertCheckerSupplementTests.swift */,
+				BB00002E /* AnalysisSchemeHandlerSupplementTests.swift */,
+				BB00002F /* AppWindowsSupplementTests.swift */,
+				BB000030 /* ArchitectureSupplementTests.swift */,
+				BB000031 /* MenuContentSupplementTests.swift */,
+				BB000033 /* ProtocolsSupplementTests.swift */,
+				BB000034 /* SettingsSupplementTests.swift */,
+				BB000035 /* TokenStoreSupplementTests.swift */,
+				BB000036 /* UsageFetcherSupplementTests.swift */,
+				BB000037 /* UsageStoreSupplementTests.swift */,
+				BB000038 /* ViewModelLifecycleSupplementTests.swift */,
+				BB000039 /* ViewModelSessionTests.swift */,
+				BB00003A /* WebViewCoordinatorTests.swift */,
+				BB00003B /* WidgetDesignSupplementTests.swift */,
 			);
 			path = ClaudeUsageTrackerTests;
 			sourceTree = "<group>";
@@ -602,6 +644,20 @@
 				BB100024 /* AnalysisJSTests.swift in Sources */,
 				BB100025 /* AnalysisSQLQueryTests.swift in Sources */,
 				BB100026 /* AnalysisRenderTests.swift in Sources */,
+				BB10002D /* AlertCheckerSupplementTests.swift in Sources */,
+				BB10002E /* AnalysisSchemeHandlerSupplementTests.swift in Sources */,
+				BB10002F /* AppWindowsSupplementTests.swift in Sources */,
+				BB100030 /* ArchitectureSupplementTests.swift in Sources */,
+				BB100031 /* MenuContentSupplementTests.swift in Sources */,
+				BB100033 /* ProtocolsSupplementTests.swift in Sources */,
+				BB100034 /* SettingsSupplementTests.swift in Sources */,
+				BB100035 /* TokenStoreSupplementTests.swift in Sources */,
+				BB100036 /* UsageFetcherSupplementTests.swift in Sources */,
+				BB100037 /* UsageStoreSupplementTests.swift in Sources */,
+				BB100038 /* ViewModelLifecycleSupplementTests.swift in Sources */,
+				BB100039 /* ViewModelSessionTests.swift in Sources */,
+				BB10003A /* WebViewCoordinatorTests.swift in Sources */,
+				BB10003B /* WidgetDesignSupplementTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

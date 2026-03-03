@@ -21,29 +21,26 @@ import ClaudeUsageTrackerShared
 
 final class SettingsStoringConformanceTests: XCTestCase {
 
-    // Verifies that SettingsStore can be assigned to a SettingsStoring variable,
-    // confirming the extension-based conformance declaration is present and the
-    // required method signatures match the protocol.
+    private func makeTempURL() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("test-settings-\(UUID().uuidString).json")
+    }
+
     func test_settingsStore_isAssignableToSettingsStoring() {
-        let store = SettingsStore()
+        let store = SettingsStore(fileURL: makeTempURL())
         let _: any SettingsStoring = store
-        // If this compiles and reaches here, conformance is confirmed.
     }
 
-    // Verifies that SettingsStore.load() returns an AppSettings value without crashing.
     func test_settingsStore_load_returnsAppSettings() {
-        let store: any SettingsStoring = SettingsStore()
+        let store: any SettingsStoring = SettingsStore(fileURL: makeTempURL())
         let result = store.load()
-        // load() must return a valid AppSettings instance (not a crash or nil).
-        _ = result  // type check: result is AppSettings
+        _ = result
     }
 
-    // Verifies that SettingsStore.save(_:) accepts an AppSettings value without crashing.
     func test_settingsStore_save_acceptsAppSettings() {
-        let store: any SettingsStoring = SettingsStore()
+        let store: any SettingsStoring = SettingsStore(fileURL: makeTempURL())
         let settings = AppSettings()
         store.save(settings)
-        // If no crash occurs, save(_:) is callable through the protocol interface.
     }
 }
 
@@ -51,38 +48,33 @@ final class SettingsStoringConformanceTests: XCTestCase {
 
 final class UsageStoringConformanceTests: XCTestCase {
 
-    // Verifies that UsageStore can be assigned to a UsageStoring variable,
-    // confirming the extension-based conformance declaration is present and the
-    // required method signatures match the protocol.
+    private func makeTempDbPath() -> String {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("test-usage-\(UUID().uuidString).sqlite").path
+    }
+
     func test_usageStore_isAssignableToUsageStoring() {
-        let store = UsageStore()
+        let store = UsageStore(dbPath: makeTempDbPath())
         let _: any UsageStoring = store
     }
 
-    // Verifies that UsageStore.save(_:) accepts a UsageResult without crashing.
     func test_usageStore_save_acceptsUsageResult() {
-        let store: any UsageStoring = UsageStore()
+        let store: any UsageStoring = UsageStore(dbPath: makeTempDbPath())
         let result = UsageResult()
         store.save(result)
     }
 
-    // Verifies that UsageStore.loadHistory(windowSeconds:) returns an array
-    // (possibly empty) without crashing when called through the protocol interface.
     func test_usageStore_loadHistory_returnsArray() {
-        let store: any UsageStoring = UsageStore()
+        let store: any UsageStoring = UsageStore(dbPath: makeTempDbPath())
         let history = store.loadHistory(windowSeconds: 3600)
-        // Result is [UsageStore.DataPoint]; an empty array is acceptable.
         XCTAssertNotNil(history)
     }
 
-    // Verifies that UsageStore.loadDailyUsage(since:) is callable through the
-    // protocol interface and returns an Optional Double without crashing.
     func test_usageStore_loadDailyUsage_returnsOptionalDouble() {
-        let store: any UsageStoring = UsageStore()
+        let store: any UsageStoring = UsageStore(dbPath: makeTempDbPath())
         let since = Date(timeIntervalSinceNow: -86400)
         let daily = store.loadDailyUsage(since: since)
-        // daily is Double?; nil is a valid result when no data is stored.
-        _ = daily  // type check: daily is Double?
+        _ = daily
     }
 }
 
@@ -90,34 +82,30 @@ final class UsageStoringConformanceTests: XCTestCase {
 
 final class TokenSyncingConformanceTests: XCTestCase {
 
-    // Verifies that TokenStore can be assigned to a TokenSyncing variable,
-    // confirming the extension-based conformance declaration is present, the
-    // required method signatures match the protocol, and Sendable is satisfied.
+    private func makeTempDbPath() -> String {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("test-tokens-\(UUID().uuidString).sqlite").path
+    }
+
     func test_tokenStore_isAssignableToTokenSyncing() {
-        let store = TokenStore()
+        let store = TokenStore(dbPath: makeTempDbPath())
         let _: any TokenSyncing = store
     }
 
-    // Verifies that TokenStore.sync(directories:) accepts an empty directory list
-    // without crashing when called through the protocol interface.
     func test_tokenStore_sync_acceptsEmptyDirectories() {
-        let store: any TokenSyncing = TokenStore()
+        let store: any TokenSyncing = TokenStore(dbPath: makeTempDbPath())
         store.sync(directories: [])
     }
 
-    // Verifies that TokenStore.loadRecords(since:) returns an array
-    // (possibly empty) without crashing when called through the protocol interface.
     func test_tokenStore_loadRecords_returnsArray() {
-        let store: any TokenSyncing = TokenStore()
+        let store: any TokenSyncing = TokenStore(dbPath: makeTempDbPath())
         let cutoff = Date(timeIntervalSinceNow: -3600)
         let records = store.loadRecords(since: cutoff)
         XCTAssertNotNil(records)
     }
 
-    // Verifies that TokenSyncing conforms to Sendable as declared in the protocol.
-    // Assigns to a Sendable-constrained variable to confirm the constraint is met.
     func test_tokenStore_satisfiesSendableConstraint() {
-        let store = TokenStore()
+        let store = TokenStore(dbPath: makeTempDbPath())
         let _: any TokenSyncing & Sendable = store
     }
 }
