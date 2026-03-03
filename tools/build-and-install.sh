@@ -48,6 +48,7 @@ TEST_OUTPUT=$(xcodebuild -project "$PROJECT_DIR/code/ClaudeUsageTracker.xcodepro
     -scheme "$SCHEME" \
     -destination 'platform=macOS' \
     DEVELOPMENT_TEAM=C3WA2TT222 \
+    -allowProvisioningUpdates \
     test 2>&1) || TEST_EXIT=$?
 TEST_EXIT=${TEST_EXIT:-0}
 echo "$TEST_OUTPUT" | tail -5
@@ -88,6 +89,7 @@ xcodebuild -project "$PROJECT_DIR/code/ClaudeUsageTracker.xcodeproj" \
     -destination 'platform=macOS' \
     -configuration Debug \
     DEVELOPMENT_TEAM=C3WA2TT222 \
+    -allowProvisioningUpdates \
     build 2>&1 | tail -5
 
 # Re-resolve DerivedData after build
