@@ -374,59 +374,115 @@
 		BB200002 /* ClaudeUsageTrackerTests */ = {
 			isa = PBXGroup;
 			children = (
-				BB000001 /* SettingsTests.swift */,
-				BB000002 /* FetcherTests.swift */,
-				BB000003 /* ViewModelTests.swift */,
+				BB800001 /* meta */,
+				BB800002 /* data */,
+				BB800003 /* ui */,
+				BB800004 /* analysis */,
+				BB800005 /* predict */,
+				BB800006 /* widget */,
+				BB800007 /* shared */,
+			);
+			path = ClaudeUsageTrackerTests;
+			sourceTree = "<group>";
+		};
+		BB800001 /* meta */ = {
+			isa = PBXGroup;
+			children = (
 				BB000027 /* ViewModelTestDoubles.swift */,
-				BB000028 /* ViewModelTests+Settings.swift */,
+				BB000003 /* ViewModelTests.swift */,
 				BB000029 /* ViewModelTests+Fetch.swift */,
-				BB000004 /* JSONLParserTests.swift */,
-				BB000005 /* CostEstimatorTests.swift */,
-				BB000006 /* DisplayHelpersTests.swift */,
-				BB000007 /* SnapshotModelTests.swift */,
-				BB000008 /* AnalysisExporterTests.swift */,
-				BB000009 /* TokenStoreTests.swift */,
-				BB00000A /* UsageStoreTests.swift */,
-				BB00000B /* SettingsStoreTests.swift */,
-				BB00002A /* ProductionSettingsIntegrityTests.swift */,
-				BB00002B /* NotificationManagerTests.swift */,
-				BB00002C /* AlertCheckerTests.swift */,
-				BB00000C /* SnapshotStoreTests.swift */,
-				BB00000D /* AppGroupConfigTests.swift */,
-				BB00000E /* SQLiteBackupTests.swift */,
-				BB000020 /* AnalysisTestHelpers.swift */,
-				BB000047 /* TokenStoreTestHelpers.swift */,
-				BB000048 /* ArchitectureWebViewStructureTests.swift */,
+				BB000028 /* ViewModelTests+Settings.swift */,
+				BB000039 /* ViewModelSessionTests.swift */,
+				BB000038 /* ViewModelLifecycleSupplementTests.swift */,
 				BB000049 /* ArchitectureViewModelStateTests.swift */,
+				BB000048 /* ArchitectureWebViewStructureTests.swift */,
+				BB00003A /* WebViewCoordinatorTests.swift */,
+				BB000033 /* ProtocolsSupplementTests.swift */,
+			);
+			path = meta;
+			sourceTree = "<group>";
+		};
+		BB800002 /* data */ = {
+			isa = PBXGroup;
+			children = (
+				BB000047 /* TokenStoreTestHelpers.swift */,
+				BB000009 /* TokenStoreTests.swift */,
+				BB000035 /* TokenStoreSupplementTests.swift */,
+				BB00000A /* UsageStoreTests.swift */,
+				BB000037 /* UsageStoreSupplementTests.swift */,
+				BB000001 /* SettingsTests.swift */,
+				BB00000B /* SettingsStoreTests.swift */,
+				BB000034 /* SettingsSupplementTests.swift */,
+				BB00002A /* ProductionSettingsIntegrityTests.swift */,
+				BB000002 /* FetcherTests.swift */,
 				BB00004A /* UsageFetchErrorTests.swift */,
+				BB000036 /* UsageFetcherSupplementTests.swift */,
+				BB00002C /* AlertCheckerTests.swift */,
+				BB00002D /* AlertCheckerSupplementTests.swift */,
+				BB00002B /* NotificationManagerTests.swift */,
+			);
+			path = data;
+			sourceTree = "<group>";
+		};
+		BB800003 /* ui */ = {
+			isa = PBXGroup;
+			children = (
+				BB000031 /* MenuContentSupplementTests.swift */,
+				BB00002F /* AppWindowsSupplementTests.swift */,
+			);
+			path = ui;
+			sourceTree = "<group>";
+		};
+		BB800004 /* analysis */ = {
+			isa = PBXGroup;
+			children = (
+				BB000020 /* AnalysisTestHelpers.swift */,
+				BB000008 /* AnalysisExporterTests.swift */,
+				BB000021 /* AnalysisSchemeHandlerTests.swift */,
+				BB000043 /* AnalysisSchemeHandlerHelperTests.swift */,
+				BB000041 /* AnalysisSchemeHandlerMetaJSONTests.swift */,
+				BB000042 /* AnalysisSchemeHandlerQueryFilterTests.swift */,
 				BB00004B /* AnalysisSchemeHandlerSQLiteTests.swift */,
+				BB000025 /* AnalysisSQLQueryTests.swift */,
 				BB00003C /* AnalysisJSLogicTests.swift */,
 				BB00003D /* AnalysisJSExtendedTests.swift */,
 				BB00003E /* AnalysisTemplateJSTests.swift */,
 				BB00003F /* AnalysisTemplateRenderTests.swift */,
 				BB000040 /* AnalysisBugHuntingTests.swift */,
-				BB000041 /* AnalysisSchemeHandlerMetaJSONTests.swift */,
-				BB000042 /* AnalysisSchemeHandlerQueryFilterTests.swift */,
-				BB000043 /* AnalysisSchemeHandlerHelperTests.swift */,
+				BB000022 /* AnalysisWebViewIntegrationTests.swift */,
+			);
+			path = analysis;
+			sourceTree = "<group>";
+		};
+		BB800005 /* predict */ = {
+			isa = PBXGroup;
+			children = (
+				BB000005 /* CostEstimatorTests.swift */,
+				BB000023 /* CostEstimatorParityTests.swift */,
+				BB000004 /* JSONLParserTests.swift */,
+			);
+			path = predict;
+			sourceTree = "<group>";
+		};
+		BB800006 /* widget */ = {
+			isa = PBXGroup;
+			children = (
 				BB000044 /* WidgetMiniGraphCalcTests.swift */,
 				BB000045 /* WidgetDisplayFormatTests.swift */,
-				BB000021 /* AnalysisSchemeHandlerTests.swift */,
-				BB000022 /* AnalysisWebViewIntegrationTests.swift */,
-				BB000023 /* CostEstimatorParityTests.swift */,
-				BB000025 /* AnalysisSQLQueryTests.swift */,
-				BB00002D /* AlertCheckerSupplementTests.swift */,
-				BB00002F /* AppWindowsSupplementTests.swift */,
-				BB000031 /* MenuContentSupplementTests.swift */,
-				BB000033 /* ProtocolsSupplementTests.swift */,
-				BB000034 /* SettingsSupplementTests.swift */,
-				BB000035 /* TokenStoreSupplementTests.swift */,
-				BB000036 /* UsageFetcherSupplementTests.swift */,
-				BB000037 /* UsageStoreSupplementTests.swift */,
-				BB000038 /* ViewModelLifecycleSupplementTests.swift */,
-				BB000039 /* ViewModelSessionTests.swift */,
-				BB00003A /* WebViewCoordinatorTests.swift */,
 			);
-			path = ClaudeUsageTrackerTests;
+			path = widget;
+			sourceTree = "<group>";
+		};
+		BB800007 /* shared */ = {
+			isa = PBXGroup;
+			children = (
+				BB00000D /* AppGroupConfigTests.swift */,
+				BB000006 /* DisplayHelpersTests.swift */,
+				BB000007 /* SnapshotModelTests.swift */,
+				BB00000C /* SnapshotStoreTests.swift */,
+				BB00000E /* SQLiteBackupTests.swift */,
+			);
+			path = shared;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
