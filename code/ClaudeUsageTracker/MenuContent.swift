@@ -1,4 +1,4 @@
-// meta: created=2026-02-26 updated=2026-02-27 checked=2026-02-26
+// meta: created=2026-02-26 updated=2026-03-04 checked=2026-02-26
 import SwiftUI
 
 // MARK: - Menu Content
@@ -183,7 +183,7 @@ struct MenuContent: View {
             Divider()
 
             Button("Custom...") {
-                promptCustomInterval(current: current) { minutes in
+                Self.promptCustomInterval(current: current) { minutes in
                     viewModel.setRefreshInterval(minutes: minutes)
                 }
             }
@@ -208,25 +208,25 @@ struct MenuContent: View {
         }
         .keyboardShortcut("q")
     }
-}
 
-// MARK: - Custom Interval Prompt
+    // MARK: - Custom Interval Prompt
 
-private func promptCustomInterval(current: Int, onSet: @escaping (Int) -> Void) {
-    let alert = NSAlert()
-    alert.messageText = "Custom Refresh Interval"
-    alert.informativeText = "Enter interval in minutes (1 or more, 0 to disable):"
-    alert.addButton(withTitle: "OK")
-    alert.addButton(withTitle: "Cancel")
+    private static func promptCustomInterval(current: Int, onSet: @escaping (Int) -> Void) {
+        let alert = NSAlert()
+        alert.messageText = "Custom Refresh Interval"
+        alert.informativeText = "Enter interval in minutes (1 or more, 0 to disable):"
+        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: "Cancel")
 
-    let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 120, height: 24))
-    input.stringValue = current > 0 ? "\(current)" : ""
-    input.placeholderString = "minutes"
-    alert.accessoryView = input
+        let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 120, height: 24))
+        input.stringValue = current > 0 ? "\(current)" : ""
+        input.placeholderString = "minutes"
+        alert.accessoryView = input
 
-    NSApp.activate(ignoringOtherApps: true)
-    let response = alert.runModal()
-    if response == .alertFirstButtonReturn, let minutes = Int(input.stringValue), minutes >= 0 {
-        onSet(minutes)
+        NSApp.activate(ignoringOtherApps: true)
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn, let minutes = Int(input.stringValue), minutes >= 0 {
+            onSet(minutes)
+        }
     }
 }

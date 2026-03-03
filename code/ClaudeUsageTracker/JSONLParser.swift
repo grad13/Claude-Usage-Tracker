@@ -1,5 +1,6 @@
-// meta: created=2026-02-21 updated=2026-02-21 checked=2026-03-03
+// meta: created=2026-02-21 updated=2026-03-04 checked=2026-03-03
 import Foundation
+import os
 
 struct TokenRecord {
     let timestamp: Date
@@ -13,7 +14,14 @@ struct TokenRecord {
     let webSearchRequests: Int
 }
 
+/// Parse JSONL files from Claude API logs into `TokenRecord` structs.
+///
+/// - `parseFile(_:)` returns **raw** records (no deduplication) — caller must deduplicate if needed.
+/// - `parseDirectory(_:maxAge:)` and `parseLines(_:)` return **deduplicated** records
+///   (grouped by `requestId`, keeping the record with the highest `outputTokens`).
 enum JSONLParser {
+
+    private static let log = Logger(subsystem: "grad13.claudeusagetracker", category: "JSONLParser")
 
     private static let dateFormatter: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
@@ -86,8 +94,13 @@ enum JSONLParser {
     // MARK: - Line Parsing
 
     private static func parseLine(_ line: String) -> TokenRecord? {
-        guard let data = line.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        guard let data = line.data(using: .utf8) else { return nil }
+        let json: [String: Any]
+        do {
+            guard let parsed = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+            json = parsed
+        } catch {
+            log.debug("parseLine: JSON decode failed: \(error.localizedDescription) — line: \(line.prefix(80))")
             return nil
         }
 

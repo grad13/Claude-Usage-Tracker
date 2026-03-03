@@ -1,4 +1,4 @@
-// meta: created=2026-02-21 updated=2026-02-27 checked=2026-03-03
+// meta: created=2026-02-21 updated=2026-03-04 checked=2026-03-03
 import Foundation
 import SwiftUI
 import ClaudeUsageTrackerShared
@@ -49,21 +49,32 @@ enum DailyAlertDefinition: String, Codable, CaseIterable {
 // MARK: - App Settings
 
 struct AppSettings: Codable {
-    var refreshIntervalMinutes: Int = 5
+    // Default values
+    static let defaultRefreshInterval = 5
+    static let defaultChartWidth = 48
+    static let defaultWeeklyAlertThreshold = 20
+    static let defaultHourlyAlertThreshold = 20
+    static let defaultDailyAlertThreshold = 15
+
+    // Validation bounds
+    static let minChartWidth = 12
+    static let maxChartWidth = 120
+
+    var refreshIntervalMinutes: Int = defaultRefreshInterval
     var startAtLogin: Bool = false
     var showHourlyGraph: Bool = true
     var showWeeklyGraph: Bool = true
-    var chartWidth: Int = 48
+    var chartWidth: Int = defaultChartWidth
     var hourlyColorPreset: ChartColorPreset = .blue
     var weeklyColorPreset: ChartColorPreset = .pink
 
     // Alert settings
     var weeklyAlertEnabled: Bool = false
-    var weeklyAlertThreshold: Int = 20   // Notify when remaining % <= threshold
+    var weeklyAlertThreshold: Int = defaultWeeklyAlertThreshold
     var hourlyAlertEnabled: Bool = false
-    var hourlyAlertThreshold: Int = 20   // Notify when remaining % <= threshold
+    var hourlyAlertThreshold: Int = defaultHourlyAlertThreshold
     var dailyAlertEnabled: Bool = false
-    var dailyAlertThreshold: Int = 15    // Notify when daily usage % >= threshold
+    var dailyAlertThreshold: Int = defaultDailyAlertThreshold
     var dailyAlertDefinition: DailyAlertDefinition = .calendar
 
     static let presets = [1, 2, 3, 5, 10, 20, 60]
@@ -71,22 +82,22 @@ struct AppSettings: Codable {
 
     /// Handle missing keys gracefully (e.g., upgrading from older settings files)
     init(from decoder: Decoder) throws {
-        let defaults = AppSettings()
+        self.init()
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        refreshIntervalMinutes = try container.decodeIfPresent(Int.self, forKey: .refreshIntervalMinutes) ?? defaults.refreshIntervalMinutes
-        startAtLogin = try container.decodeIfPresent(Bool.self, forKey: .startAtLogin) ?? defaults.startAtLogin
-        showHourlyGraph = try container.decodeIfPresent(Bool.self, forKey: .showHourlyGraph) ?? defaults.showHourlyGraph
-        showWeeklyGraph = try container.decodeIfPresent(Bool.self, forKey: .showWeeklyGraph) ?? defaults.showWeeklyGraph
-        chartWidth = try container.decodeIfPresent(Int.self, forKey: .chartWidth) ?? defaults.chartWidth
-        hourlyColorPreset = try container.decodeIfPresent(ChartColorPreset.self, forKey: .hourlyColorPreset) ?? defaults.hourlyColorPreset
-        weeklyColorPreset = try container.decodeIfPresent(ChartColorPreset.self, forKey: .weeklyColorPreset) ?? defaults.weeklyColorPreset
-        weeklyAlertEnabled = try container.decodeIfPresent(Bool.self, forKey: .weeklyAlertEnabled) ?? defaults.weeklyAlertEnabled
-        weeklyAlertThreshold = try container.decodeIfPresent(Int.self, forKey: .weeklyAlertThreshold) ?? defaults.weeklyAlertThreshold
-        hourlyAlertEnabled = try container.decodeIfPresent(Bool.self, forKey: .hourlyAlertEnabled) ?? defaults.hourlyAlertEnabled
-        hourlyAlertThreshold = try container.decodeIfPresent(Int.self, forKey: .hourlyAlertThreshold) ?? defaults.hourlyAlertThreshold
-        dailyAlertEnabled = try container.decodeIfPresent(Bool.self, forKey: .dailyAlertEnabled) ?? defaults.dailyAlertEnabled
-        dailyAlertThreshold = try container.decodeIfPresent(Int.self, forKey: .dailyAlertThreshold) ?? defaults.dailyAlertThreshold
-        dailyAlertDefinition = try container.decodeIfPresent(DailyAlertDefinition.self, forKey: .dailyAlertDefinition) ?? defaults.dailyAlertDefinition
+        refreshIntervalMinutes = try container.decodeIfPresent(Int.self, forKey: .refreshIntervalMinutes) ?? Self.defaultRefreshInterval
+        startAtLogin = try container.decodeIfPresent(Bool.self, forKey: .startAtLogin) ?? false
+        showHourlyGraph = try container.decodeIfPresent(Bool.self, forKey: .showHourlyGraph) ?? true
+        showWeeklyGraph = try container.decodeIfPresent(Bool.self, forKey: .showWeeklyGraph) ?? true
+        chartWidth = try container.decodeIfPresent(Int.self, forKey: .chartWidth) ?? Self.defaultChartWidth
+        hourlyColorPreset = try container.decodeIfPresent(ChartColorPreset.self, forKey: .hourlyColorPreset) ?? .blue
+        weeklyColorPreset = try container.decodeIfPresent(ChartColorPreset.self, forKey: .weeklyColorPreset) ?? .pink
+        weeklyAlertEnabled = try container.decodeIfPresent(Bool.self, forKey: .weeklyAlertEnabled) ?? false
+        weeklyAlertThreshold = try container.decodeIfPresent(Int.self, forKey: .weeklyAlertThreshold) ?? Self.defaultWeeklyAlertThreshold
+        hourlyAlertEnabled = try container.decodeIfPresent(Bool.self, forKey: .hourlyAlertEnabled) ?? false
+        hourlyAlertThreshold = try container.decodeIfPresent(Int.self, forKey: .hourlyAlertThreshold) ?? Self.defaultHourlyAlertThreshold
+        dailyAlertEnabled = try container.decodeIfPresent(Bool.self, forKey: .dailyAlertEnabled) ?? false
+        dailyAlertThreshold = try container.decodeIfPresent(Int.self, forKey: .dailyAlertThreshold) ?? Self.defaultDailyAlertThreshold
+        dailyAlertDefinition = try container.decodeIfPresent(DailyAlertDefinition.self, forKey: .dailyAlertDefinition) ?? .calendar
     }
 
     init() {}
@@ -95,10 +106,10 @@ struct AppSettings: Codable {
     func validated() -> AppSettings {
         var copy = self
         if copy.refreshIntervalMinutes < 0 {
-            copy.refreshIntervalMinutes = AppSettings().refreshIntervalMinutes
+            copy.refreshIntervalMinutes = Self.defaultRefreshInterval
         }
-        if copy.chartWidth < 12 || copy.chartWidth > 120 {
-            copy.chartWidth = AppSettings().chartWidth
+        if copy.chartWidth < Self.minChartWidth || copy.chartWidth > Self.maxChartWidth {
+            copy.chartWidth = Self.defaultChartWidth
         }
         copy.weeklyAlertThreshold = max(1, min(100, copy.weeklyAlertThreshold))
         copy.hourlyAlertThreshold = max(1, min(100, copy.hourlyAlertThreshold))

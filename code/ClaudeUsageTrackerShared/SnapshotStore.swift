@@ -1,4 +1,4 @@
-// meta: created=2026-02-21 updated=2026-02-24 checked=2026-03-03
+// meta: created=2026-02-21 updated=2026-03-04 checked=2026-03-03
 import Foundation
 import SQLite3
 import os
@@ -35,45 +35,37 @@ public enum SnapshotStore {
         let dir = URL(fileURLWithPath: path).deletingLastPathComponent()
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
-        var db: OpaquePointer?
-        guard sqlite3_open(path, &db) == SQLITE_OK else {
-            log.error("ensureDB: failed to open \(path)")
-            return
+        SQLiteHelper.withDatabase(path: path, pragmas: SQLiteHelper.walPragmas) { db in
+            let createState = """
+                CREATE TABLE IF NOT EXISTS snapshot_state (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    timestamp TEXT NOT NULL,
+                    five_hour_percent REAL,
+                    seven_day_percent REAL,
+                    five_hour_resets_at TEXT,
+                    seven_day_resets_at TEXT,
+                    is_logged_in INTEGER NOT NULL DEFAULT 0,
+                    predict_five_hour_cost REAL,
+                    predict_seven_day_cost REAL
+                );
+                """
+            let createHistory = """
+                CREATE TABLE IF NOT EXISTS snapshot_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TEXT NOT NULL,
+                    five_hour_percent REAL,
+                    seven_day_percent REAL
+                );
+                """
+            sqlite3_exec(db, createState, nil, nil, nil)
+            sqlite3_exec(db, createHistory, nil, nil, nil)
+
+            sqlite3_exec(db, """
+                CREATE INDEX IF NOT EXISTS idx_history_timestamp ON snapshot_history(timestamp);
+                """, nil, nil, nil)
+
+            migrateFromJSON(db: db)
         }
-        defer { sqlite3_close(db) }
-
-        sqlite3_exec(db, "PRAGMA journal_mode=WAL;", nil, nil, nil)
-        sqlite3_exec(db, "PRAGMA busy_timeout=3000;", nil, nil, nil)
-
-        let createState = """
-            CREATE TABLE IF NOT EXISTS snapshot_state (
-                id INTEGER PRIMARY KEY CHECK (id = 1),
-                timestamp TEXT NOT NULL,
-                five_hour_percent REAL,
-                seven_day_percent REAL,
-                five_hour_resets_at TEXT,
-                seven_day_resets_at TEXT,
-                is_logged_in INTEGER NOT NULL DEFAULT 0,
-                predict_five_hour_cost REAL,
-                predict_seven_day_cost REAL
-            );
-            """
-        let createHistory = """
-            CREATE TABLE IF NOT EXISTS snapshot_history (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp TEXT NOT NULL,
-                five_hour_percent REAL,
-                seven_day_percent REAL
-            );
-            """
-        sqlite3_exec(db, createState, nil, nil, nil)
-        sqlite3_exec(db, createHistory, nil, nil, nil)
-
-        sqlite3_exec(db, """
-            CREATE INDEX IF NOT EXISTS idx_history_timestamp ON snapshot_history(timestamp);
-            """, nil, nil, nil)
-
-        migrateFromJSON(db: db!)
     }
 
     /// Called after a successful fetch: update state + append history.
@@ -84,56 +76,50 @@ public enum SnapshotStore {
         isLoggedIn: Bool
     ) {
         ensureDB()
-        var db: OpaquePointer?
-        guard sqlite3_open(dbPath, &db) == SQLITE_OK else { return }
-        defer { sqlite3_close(db) }
-        sqlite3_exec(db, "PRAGMA busy_timeout=3000;", nil, nil, nil)
+        SQLiteHelper.withDatabase(path: dbPath, pragmas: SQLiteHelper.walPragmas) { db in
+            // INSERT OR REPLACE snapshot_state (id=1 fixed).
+            // predict_* preserved via subquery (evaluated before DELETE in INSERT OR REPLACE).
+            // percent COALESCE: if nil (API didn't return a window), keep existing value.
+            let stateSQL = """
+                INSERT OR REPLACE INTO snapshot_state (
+                    id, timestamp, five_hour_percent, seven_day_percent,
+                    five_hour_resets_at, seven_day_resets_at, is_logged_in,
+                    predict_five_hour_cost, predict_seven_day_cost
+                ) VALUES (
+                    1, ?,
+                    COALESCE(?, (SELECT five_hour_percent FROM snapshot_state WHERE id=1)),
+                    COALESCE(?, (SELECT seven_day_percent FROM snapshot_state WHERE id=1)),
+                    ?, ?, ?,
+                    (SELECT predict_five_hour_cost FROM snapshot_state WHERE id=1),
+                    (SELECT predict_seven_day_cost FROM snapshot_state WHERE id=1)
+                );
+                """
+            SQLiteHelper.withStatement(db: db, sql: stateSQL) { stmt in
+                let ts = iso.string(from: timestamp)
+                SQLiteHelper.bindText(stmt, 1, ts)
+                SQLiteHelper.bindDouble(stmt, 2, fiveHourPercent)
+                SQLiteHelper.bindDouble(stmt, 3, sevenDayPercent)
+                SQLiteHelper.bindText(stmt, 4, fiveHourResetsAt.map { iso.string(from: $0) })
+                SQLiteHelper.bindText(stmt, 5, sevenDayResetsAt.map { iso.string(from: $0) })
+                sqlite3_bind_int(stmt, 6, isLoggedIn ? 1 : 0)
 
-        // INSERT OR REPLACE snapshot_state (id=1 fixed).
-        // predict_* preserved via subquery (evaluated before DELETE in INSERT OR REPLACE).
-        // percent COALESCE: if nil (API didn't return a window), keep existing value.
-        let stateSQL = """
-            INSERT OR REPLACE INTO snapshot_state (
-                id, timestamp, five_hour_percent, seven_day_percent,
-                five_hour_resets_at, seven_day_resets_at, is_logged_in,
-                predict_five_hour_cost, predict_seven_day_cost
-            ) VALUES (
-                1, ?,
-                COALESCE(?, (SELECT five_hour_percent FROM snapshot_state WHERE id=1)),
-                COALESCE(?, (SELECT seven_day_percent FROM snapshot_state WHERE id=1)),
-                ?, ?, ?,
-                (SELECT predict_five_hour_cost FROM snapshot_state WHERE id=1),
-                (SELECT predict_seven_day_cost FROM snapshot_state WHERE id=1)
-            );
-            """
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, stateSQL, -1, &stmt, nil) == SQLITE_OK else { return }
-        defer { sqlite3_finalize(stmt) }
+                if sqlite3_step(stmt) != SQLITE_DONE {
+                    log.error("saveAfterFetch: state INSERT failed")
+                }
+            }
 
-        let ts = iso.string(from: timestamp)
-        sqlite3_bind_text(stmt, 1, (ts as NSString).utf8String, -1, nil)
-        bindDouble(stmt, 2, fiveHourPercent)
-        bindDouble(stmt, 3, sevenDayPercent)
-        bindText(stmt, 4, fiveHourResetsAt.map { iso.string(from: $0) })
-        bindText(stmt, 5, sevenDayResetsAt.map { iso.string(from: $0) })
-        sqlite3_bind_int(stmt, 6, isLoggedIn ? 1 : 0)
+            // INSERT snapshot_history
+            let histSQL = "INSERT INTO snapshot_history (timestamp, five_hour_percent, seven_day_percent) VALUES (?, ?, ?);"
+            SQLiteHelper.withStatement(db: db, sql: histSQL) { stmt in
+                let ts = iso.string(from: timestamp)
+                SQLiteHelper.bindText(stmt, 1, ts)
+                SQLiteHelper.bindDouble(stmt, 2, fiveHourPercent)
+                SQLiteHelper.bindDouble(stmt, 3, sevenDayPercent)
 
-        if sqlite3_step(stmt) != SQLITE_DONE {
-            log.error("saveAfterFetch: state INSERT failed")
-        }
-
-        // INSERT snapshot_history
-        let histSQL = "INSERT INTO snapshot_history (timestamp, five_hour_percent, seven_day_percent) VALUES (?, ?, ?);"
-        var histStmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, histSQL, -1, &histStmt, nil) == SQLITE_OK else { return }
-        defer { sqlite3_finalize(histStmt) }
-
-        sqlite3_bind_text(histStmt, 1, (ts as NSString).utf8String, -1, nil)
-        bindDouble(histStmt, 2, fiveHourPercent)
-        bindDouble(histStmt, 3, sevenDayPercent)
-
-        if sqlite3_step(histStmt) != SQLITE_DONE {
-            log.error("saveAfterFetch: history INSERT failed")
+                if sqlite3_step(stmt) != SQLITE_DONE {
+                    log.error("saveAfterFetch: history INSERT failed")
+                }
+            }
         }
     }
 
@@ -143,49 +129,46 @@ public enum SnapshotStore {
         let path = dbPath
         guard !path.isEmpty else { return }
         guard FileManager.default.fileExists(atPath: path) else { return }
-        var db: OpaquePointer?
-        guard sqlite3_open(path, &db) == SQLITE_OK else { return }
-        defer { sqlite3_close(db) }
-        sqlite3_exec(db, "PRAGMA busy_timeout=3000;", nil, nil, nil)
 
-        let sql = "UPDATE snapshot_state SET predict_five_hour_cost = ?, predict_seven_day_cost = ? WHERE id = 1;"
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
-        defer { sqlite3_finalize(stmt) }
-
-        bindDouble(stmt, 1, fiveHourCost)
-        bindDouble(stmt, 2, sevenDayCost)
-        sqlite3_step(stmt)
+        SQLiteHelper.withDatabase(path: path, pragmas: SQLiteHelper.walPragmas) { db in
+            let sql = "UPDATE snapshot_state SET predict_five_hour_cost = ?, predict_seven_day_cost = ? WHERE id = 1;"
+            SQLiteHelper.withStatement(db: db, sql: sql) { stmt in
+                SQLiteHelper.bindDouble(stmt, 1, fiveHourCost)
+                SQLiteHelper.bindDouble(stmt, 2, sevenDayCost)
+                let rc = sqlite3_step(stmt)
+                if rc != SQLITE_DONE {
+                    log.error("updatePredict: step returned \(rc)")
+                }
+            }
+        }
     }
 
     /// Sign out: reset state to logged-out, keep history.
     public static func clearOnSignOut() {
         let path = dbPath
         guard !path.isEmpty else { return }
-        var db: OpaquePointer?
-        guard sqlite3_open(path, &db) == SQLITE_OK else { return }
-        defer { sqlite3_close(db) }
-        sqlite3_exec(db, "PRAGMA busy_timeout=3000;", nil, nil, nil)
 
-        let sql = """
-            UPDATE snapshot_state SET
-                timestamp = ?,
-                five_hour_percent = NULL,
-                seven_day_percent = NULL,
-                five_hour_resets_at = NULL,
-                seven_day_resets_at = NULL,
-                is_logged_in = 0,
-                predict_five_hour_cost = NULL,
-                predict_seven_day_cost = NULL
-            WHERE id = 1;
-            """
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
-        defer { sqlite3_finalize(stmt) }
-
-        let ts = iso.string(from: Date())
-        sqlite3_bind_text(stmt, 1, (ts as NSString).utf8String, -1, nil)
-        sqlite3_step(stmt)
+        SQLiteHelper.withDatabase(path: path, pragmas: SQLiteHelper.walPragmas) { db in
+            let sql = """
+                UPDATE snapshot_state SET
+                    timestamp = ?,
+                    five_hour_percent = NULL,
+                    seven_day_percent = NULL,
+                    five_hour_resets_at = NULL,
+                    seven_day_resets_at = NULL,
+                    is_logged_in = 0,
+                    predict_five_hour_cost = NULL,
+                    predict_seven_day_cost = NULL
+                WHERE id = 1;
+                """
+            SQLiteHelper.withStatement(db: db, sql: sql) { stmt in
+                SQLiteHelper.bindText(stmt, 1, iso.string(from: Date()))
+                let rc = sqlite3_step(stmt)
+                if rc != SQLITE_DONE {
+                    log.error("clearOnSignOut: step returned \(rc)")
+                }
+            }
+        }
     }
 
     /// Load snapshot for widget display.
@@ -200,69 +183,58 @@ public enum SnapshotStore {
             return nil
         }
 
-        var db: OpaquePointer?
-        guard sqlite3_open_v2(path, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else {
-            log.error("load: sqlite3_open_v2 failed for \(path)")
-            return nil
-        }
-        defer { sqlite3_close(db) }
-        sqlite3_exec(db, "PRAGMA busy_timeout=3000;", nil, nil, nil)
+        return (SQLiteHelper.withDatabase(path: path, flags: SQLITE_OPEN_READONLY, pragmas: ["PRAGMA busy_timeout=3000;"]) { db -> UsageSnapshot? in
+            // 1. Read current state
+            let stateSQL = """
+                SELECT timestamp, five_hour_percent, seven_day_percent,
+                       five_hour_resets_at, seven_day_resets_at, is_logged_in,
+                       predict_five_hour_cost, predict_seven_day_cost
+                FROM snapshot_state WHERE id = 1;
+                """
+            var stateStmt: OpaquePointer?
+            guard sqlite3_prepare_v2(db, stateSQL, -1, &stateStmt, nil) == SQLITE_OK else {
+                log.error("load: prepare state query failed")
+                return nil
+            }
+            defer { sqlite3_finalize(stateStmt) }
 
-        // 1. Read current state
-        let stateSQL = """
-            SELECT timestamp, five_hour_percent, seven_day_percent,
-                   five_hour_resets_at, seven_day_resets_at, is_logged_in,
-                   predict_five_hour_cost, predict_seven_day_cost
-            FROM snapshot_state WHERE id = 1;
-            """
-        var stateStmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, stateSQL, -1, &stateStmt, nil) == SQLITE_OK else {
-            log.error("load: prepare state query failed")
-            return nil
-        }
-        defer { sqlite3_finalize(stateStmt) }
+            guard sqlite3_step(stateStmt) == SQLITE_ROW else {
+                log.warning("load: no state row found")
+                return nil
+            }
 
-        guard sqlite3_step(stateStmt) == SQLITE_ROW else {
-            log.warning("load: no state row found")
-            return nil
-        }
+            guard let timestamp = SQLiteHelper.columnDate(stateStmt!, 0, formatter: iso) else {
+                log.error("load: failed to parse timestamp")
+                return nil
+            }
 
-        guard let tsRaw = sqlite3_column_text(stateStmt, 0),
-              let timestamp = iso.date(from: String(cString: tsRaw)) else {
-            log.error("load: failed to parse timestamp")
-            return nil
-        }
+            let fiveHourPercent = SQLiteHelper.columnDouble(stateStmt!, 1)
+            let sevenDayPercent = SQLiteHelper.columnDouble(stateStmt!, 2)
+            let fiveHourResetsAt = SQLiteHelper.columnDate(stateStmt!, 3, formatter: iso)
+            let sevenDayResetsAt = SQLiteHelper.columnDate(stateStmt!, 4, formatter: iso)
+            let isLoggedIn = sqlite3_column_int(stateStmt, 5) != 0
+            let predictFiveH = SQLiteHelper.columnDouble(stateStmt!, 6)
+            let predictSevenD = SQLiteHelper.columnDouble(stateStmt!, 7)
 
-        let fiveHourPercent: Double? = sqlite3_column_type(stateStmt, 1) != SQLITE_NULL
-            ? sqlite3_column_double(stateStmt, 1) : nil
-        let sevenDayPercent: Double? = sqlite3_column_type(stateStmt, 2) != SQLITE_NULL
-            ? sqlite3_column_double(stateStmt, 2) : nil
-        let fiveHourResetsAt: Date? = readDate(stateStmt, column: 3)
-        let sevenDayResetsAt: Date? = readDate(stateStmt, column: 4)
-        let isLoggedIn = sqlite3_column_int(stateStmt, 5) != 0
-        let predictFiveH: Double? = sqlite3_column_type(stateStmt, 6) != SQLITE_NULL
-            ? sqlite3_column_double(stateStmt, 6) : nil
-        let predictSevenD: Double? = sqlite3_column_type(stateStmt, 7) != SQLITE_NULL
-            ? sqlite3_column_double(stateStmt, 7) : nil
+            // 2. Load history for 5h and 7d windows
+            let fiveHourHistory = loadHistory(db: db, windowSeconds: 5 * 3600)
+            let sevenDayHistory = loadHistory(db: db, windowSeconds: 7 * 24 * 3600)
 
-        // 2. Load history for 5h and 7d windows
-        let fiveHourHistory = loadHistory(db: db!, windowSeconds: 5 * 3600)
-        let sevenDayHistory = loadHistory(db: db!, windowSeconds: 7 * 24 * 3600)
+            log.info("load: success — 5h=\(fiveHourPercent ?? -1) 7d=\(sevenDayPercent ?? -1) 5hHist=\(fiveHourHistory.count) 7dHist=\(sevenDayHistory.count)")
 
-        log.info("load: success — 5h=\(fiveHourPercent ?? -1) 7d=\(sevenDayPercent ?? -1) 5hHist=\(fiveHourHistory.count) 7dHist=\(sevenDayHistory.count)")
-
-        return UsageSnapshot(
-            timestamp: timestamp,
-            fiveHourPercent: fiveHourPercent,
-            sevenDayPercent: sevenDayPercent,
-            fiveHourResetsAt: fiveHourResetsAt,
-            sevenDayResetsAt: sevenDayResetsAt,
-            fiveHourHistory: fiveHourHistory,
-            sevenDayHistory: sevenDayHistory,
-            isLoggedIn: isLoggedIn,
-            predictFiveHourCost: predictFiveH,
-            predictSevenDayCost: predictSevenD
-        )
+            return UsageSnapshot(
+                timestamp: timestamp,
+                fiveHourPercent: fiveHourPercent,
+                sevenDayPercent: sevenDayPercent,
+                fiveHourResetsAt: fiveHourResetsAt,
+                sevenDayResetsAt: sevenDayResetsAt,
+                fiveHourHistory: fiveHourHistory,
+                sevenDayHistory: sevenDayHistory,
+                isLoggedIn: isLoggedIn,
+                predictFiveHourCost: predictFiveH,
+                predictSevenDayCost: predictSevenD
+            )
+        }) ?? nil
     }
 
     // MARK: - Private Helpers
@@ -275,42 +247,22 @@ public enum SnapshotStore {
             WHERE timestamp >= ?
             ORDER BY timestamp ASC;
             """
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
-        defer { sqlite3_finalize(stmt) }
-        sqlite3_bind_text(stmt, 1, (cutoff as NSString).utf8String, -1, nil)
-
         // 5h window (18000s) → five_hour_percent (column 1)
         // 7d window (604800s) → seven_day_percent (column 2)
         let fiveHourWindow: TimeInterval = 5 * 3600
         let columnIndex: Int32 = windowSeconds <= fiveHourWindow ? 1 : 2
 
-        var results: [HistoryPoint] = []
-        while sqlite3_step(stmt) == SQLITE_ROW {
-            guard let tsRaw = sqlite3_column_text(stmt, 0),
-                  let ts = iso.date(from: String(cString: tsRaw)) else { continue }
-            let percent: Double? = sqlite3_column_type(stmt, columnIndex) != SQLITE_NULL
-                ? sqlite3_column_double(stmt, columnIndex) : nil
-            guard let p = percent else { continue }
-            results.append(HistoryPoint(timestamp: ts, percent: p))
-        }
-        return results
-    }
+        return SQLiteHelper.withStatement(db: db, sql: sql) { stmt in
+            SQLiteHelper.bindText(stmt, 1, cutoff)
 
-    private static func bindDouble(_ stmt: OpaquePointer?, _ index: Int32, _ value: Double?) {
-        if let v = value { sqlite3_bind_double(stmt, index, v) }
-        else { sqlite3_bind_null(stmt, index) }
-    }
-
-    private static func bindText(_ stmt: OpaquePointer?, _ index: Int32, _ value: String?) {
-        if let v = value { sqlite3_bind_text(stmt, index, (v as NSString).utf8String, -1, nil) }
-        else { sqlite3_bind_null(stmt, index) }
-    }
-
-    private static func readDate(_ stmt: OpaquePointer?, column: Int32) -> Date? {
-        guard sqlite3_column_type(stmt, column) != SQLITE_NULL,
-              let raw = sqlite3_column_text(stmt, column) else { return nil }
-        return iso.date(from: String(cString: raw))
+            var results: [HistoryPoint] = []
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                guard let ts = SQLiteHelper.columnDate(stmt, 0, formatter: iso) else { continue }
+                guard let p = SQLiteHelper.columnDouble(stmt, columnIndex) else { continue }
+                results.append(HistoryPoint(timestamp: ts, percent: p))
+            }
+            return results
+        } ?? []
     }
 
     // MARK: - JSON → SQLite Migration
@@ -337,24 +289,23 @@ public enum SnapshotStore {
                 predict_five_hour_cost, predict_seven_day_cost
             ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?);
             """
-        var stateStmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, stateSQL, -1, &stateStmt, nil) == SQLITE_OK else {
+        guard let stateOK: Bool = SQLiteHelper.withStatement(db: db, sql: stateSQL, body: { stmt in
+            SQLiteHelper.bindText(stmt, 1, ts)
+            SQLiteHelper.bindDouble(stmt, 2, snapshot.fiveHourPercent)
+            SQLiteHelper.bindDouble(stmt, 3, snapshot.sevenDayPercent)
+            SQLiteHelper.bindText(stmt, 4, snapshot.fiveHourResetsAt.map { iso.string(from: $0) })
+            SQLiteHelper.bindText(stmt, 5, snapshot.sevenDayResetsAt.map { iso.string(from: $0) })
+            sqlite3_bind_int(stmt, 6, snapshot.isLoggedIn ? 1 : 0)
+            SQLiteHelper.bindDouble(stmt, 7, snapshot.predictFiveHourCost)
+            SQLiteHelper.bindDouble(stmt, 8, snapshot.predictSevenDayCost)
+
+            if sqlite3_step(stmt) != SQLITE_DONE {
+                log.error("migrateFromJSON: state INSERT failed")
+                return false
+            }
+            return true
+        }), stateOK else {
             log.error("migrateFromJSON: state prepare failed")
-            return
-        }
-        defer { sqlite3_finalize(stateStmt) }
-
-        sqlite3_bind_text(stateStmt, 1, (ts as NSString).utf8String, -1, nil)
-        bindDouble(stateStmt, 2, snapshot.fiveHourPercent)
-        bindDouble(stateStmt, 3, snapshot.sevenDayPercent)
-        bindText(stateStmt, 4, snapshot.fiveHourResetsAt.map { iso.string(from: $0) })
-        bindText(stateStmt, 5, snapshot.sevenDayResetsAt.map { iso.string(from: $0) })
-        sqlite3_bind_int(stateStmt, 6, snapshot.isLoggedIn ? 1 : 0)
-        bindDouble(stateStmt, 7, snapshot.predictFiveHourCost)
-        bindDouble(stateStmt, 8, snapshot.predictSevenDayCost)
-
-        if sqlite3_step(stateStmt) != SQLITE_DONE {
-            log.error("migrateFromJSON: state INSERT failed")
             return
         }
 
@@ -371,23 +322,21 @@ public enum SnapshotStore {
 
         let sorted = historyMap.sorted { $0.key < $1.key }
         let histSQL = "INSERT INTO snapshot_history (timestamp, five_hour_percent, seven_day_percent) VALUES (?, ?, ?);"
-        var histStmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, histSQL, -1, &histStmt, nil) == SQLITE_OK else {
+        guard let _: Void = SQLiteHelper.withStatement(db: db, sql: histSQL, body: { stmt in
+            sqlite3_exec(db, "BEGIN TRANSACTION;", nil, nil, nil)
+            for (epoch, percents) in sorted {
+                let histTS = iso.string(from: Date(timeIntervalSince1970: epoch))
+                sqlite3_reset(stmt)
+                SQLiteHelper.bindText(stmt, 1, histTS)
+                SQLiteHelper.bindDouble(stmt, 2, percents.fiveH)
+                SQLiteHelper.bindDouble(stmt, 3, percents.sevenD)
+                sqlite3_step(stmt)
+            }
+            sqlite3_exec(db, "COMMIT;", nil, nil, nil)
+        }) else {
             log.error("migrateFromJSON: history prepare failed")
             return
         }
-        defer { sqlite3_finalize(histStmt) }
-
-        sqlite3_exec(db, "BEGIN TRANSACTION;", nil, nil, nil)
-        for (epoch, percents) in sorted {
-            let histTS = iso.string(from: Date(timeIntervalSince1970: epoch))
-            sqlite3_reset(histStmt)
-            sqlite3_bind_text(histStmt, 1, (histTS as NSString).utf8String, -1, nil)
-            bindDouble(histStmt, 2, percents.fiveH)
-            bindDouble(histStmt, 3, percents.sevenD)
-            sqlite3_step(histStmt)
-        }
-        sqlite3_exec(db, "COMMIT;", nil, nil, nil)
 
         // 3. Rename JSON to .bak
         let bakURL = legacyURL.deletingLastPathComponent().appendingPathComponent("snapshot.json.bak")

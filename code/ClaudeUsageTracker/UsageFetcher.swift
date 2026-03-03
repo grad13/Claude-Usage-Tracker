@@ -1,4 +1,4 @@
-// meta: created=2026-02-21 updated=2026-02-23 checked=2026-02-21
+// meta: created=2026-02-21 updated=2026-03-04 checked=2026-02-21
 import Foundation
 import WebKit
 
@@ -75,15 +75,8 @@ enum UsageFetcher {
             throw UsageFetchError.decodingFailed
         }
 
-        // Log response to both NSLog and file for diagnostics
+        // Log response (file logging is handled by UsageViewModel.debug)
         NSLog("[ClaudeUsageTracker] API response: %@", jsonString)
-        let logLine = "\(ISO8601DateFormatter().string(from: Date())) API response: \(jsonString)\n"
-        let logURL = FileManager.default.temporaryDirectory.appendingPathComponent("ClaudeUsageTracker-debug.log")
-        if let handle = try? FileHandle(forWritingTo: logURL) {
-            handle.seekToEndOfFile()
-            handle.write(logLine.data(using: .utf8)!)
-            handle.closeFile()
-        }
         return try parse(jsonString: jsonString)
     }
 

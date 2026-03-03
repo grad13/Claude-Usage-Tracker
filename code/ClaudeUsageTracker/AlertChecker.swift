@@ -1,4 +1,4 @@
-// meta: created=2026-02-27 updated=2026-02-27 checked=2026-03-03
+// meta: created=2026-02-27 updated=2026-03-04 checked=2026-03-03
 import Foundation
 
 final class AlertChecker {
@@ -35,44 +35,44 @@ final class AlertChecker {
         checkDailyAlert(result: result, settings: settings)
     }
 
-    // MARK: - Weekly Alert
+    // MARK: - Weekly & Hourly Alerts
 
     private func checkWeeklyAlert(result: UsageResult, settings: AppSettings) {
-        guard settings.weeklyAlertEnabled else { return }
-        guard let percent = result.sevenDayPercent else { return }
-        guard let resetsAt = result.sevenDayResetsAt else { return }
-
-        let remaining = 100.0 - percent
-        guard remaining <= Double(settings.weeklyAlertThreshold) else { return }
-
-        let normalized = normalizeResetsAt(resetsAt)
-        guard lastNotifiedResetsAt[.weekly] != normalized else { return }
-
-        lastNotifiedResetsAt[.weekly] = normalized
-
-        let title = "ClaudeUsageTracker: Weekly Alert"
-        let body = String(format: "Weekly usage at %.0f%% — %.0f%% remaining", percent, remaining)
-        Task { await notificationSender.send(title: title, body: body, identifier: "claudeusagetracker-weekly") }
+        checkThresholdAlert(
+            kind: .weekly, isEnabled: settings.weeklyAlertEnabled,
+            percent: result.sevenDayPercent, resetsAt: result.sevenDayResetsAt,
+            threshold: settings.weeklyAlertThreshold, titleLabel: "Weekly"
+        )
     }
 
-    // MARK: - Hourly Alert
-
     private func checkHourlyAlert(result: UsageResult, settings: AppSettings) {
-        guard settings.hourlyAlertEnabled else { return }
-        guard let percent = result.fiveHourPercent else { return }
-        guard let resetsAt = result.fiveHourResetsAt else { return }
+        checkThresholdAlert(
+            kind: .hourly, isEnabled: settings.hourlyAlertEnabled,
+            percent: result.fiveHourPercent, resetsAt: result.fiveHourResetsAt,
+            threshold: settings.hourlyAlertThreshold, titleLabel: "Hourly"
+        )
+    }
+
+    private func checkThresholdAlert(
+        kind: AlertKind, isEnabled: Bool,
+        percent: Double?, resetsAt: Date?,
+        threshold: Int, titleLabel: String
+    ) {
+        guard isEnabled else { return }
+        guard let percent, let resetsAt else { return }
 
         let remaining = 100.0 - percent
-        guard remaining <= Double(settings.hourlyAlertThreshold) else { return }
+        guard remaining <= Double(threshold) else { return }
 
         let normalized = normalizeResetsAt(resetsAt)
-        guard lastNotifiedResetsAt[.hourly] != normalized else { return }
+        guard lastNotifiedResetsAt[kind] != normalized else { return }
 
-        lastNotifiedResetsAt[.hourly] = normalized
+        lastNotifiedResetsAt[kind] = normalized
 
-        let title = "ClaudeUsageTracker: Hourly Alert"
-        let body = String(format: "Hourly usage at %.0f%% — %.0f%% remaining", percent, remaining)
-        Task { await notificationSender.send(title: title, body: body, identifier: "claudeusagetracker-hourly") }
+        let title = "ClaudeUsageTracker: \(titleLabel) Alert"
+        let body = String(format: "\(titleLabel) usage at %.0f%% — %.0f%% remaining", percent, remaining)
+        let identifier = "claudeusagetracker-\(kind.rawValue)"
+        Task { await notificationSender.send(title: title, body: body, identifier: identifier) }
     }
 
     // MARK: - Daily Alert

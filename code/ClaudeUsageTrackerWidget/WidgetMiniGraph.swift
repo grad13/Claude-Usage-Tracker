@@ -1,4 +1,4 @@
-// meta: created=2026-02-21 updated=2026-03-03 checked=2026-03-03
+// meta: created=2026-02-21 updated=2026-03-04 checked=2026-03-03
 import SwiftUI
 import ClaudeUsageTrackerShared
 
@@ -11,11 +11,37 @@ struct WidgetMiniGraph: View {
     let areaOpacity: Double
     let isLoggedIn: Bool
 
-    private static let bgColor = Color(red: 0x12/255, green: 0x12/255, blue: 0x12/255)
-    private static let bgColorSignedOut = Color(red: 0x3A/255, green: 0x10/255, blue: 0x10/255)
-    private static let tickColor = Color.white.opacity(0.07)
-    private static let usageLineColor = Color.white.opacity(0.3)
-    private static let noDataFill = Color.white.opacity(0.06)
+    private enum Layout {
+        static let bgColor = Color(red: 0x12/255, green: 0x12/255, blue: 0x12/255)
+        static let bgColorSignedOut = Color(red: 0x3A/255, green: 0x10/255, blue: 0x10/255)
+        static let tickColor = Color.white.opacity(0.07)
+        static let usageLineColor = Color.white.opacity(0.3)
+        static let noDataFill = Color.white.opacity(0.06)
+        static let labelFontSize: CGFloat = 9
+        static let labelOrigin = CGPoint(x: 4, y: 4)
+        static let labelOpacity: Double = 0.5
+        static let tickLineWidth: CGFloat = 0.5
+        static let usageDash: [CGFloat] = [2, 2]
+        static let usageLineWidth: CGFloat = 0.5
+        static let markerInnerRadius: CGFloat = 2.5 * 2 / 3
+        static let markerOuterRadius: CGFloat = 5
+        static let markerRingWidth: CGFloat = 1
+        static let markerRingOpacity: Double = 0.6
+        static let percentFontSize: CGFloat = 9
+        static let percentOpacity: Double = 0.8
+        static let percentBelowOffset: CGFloat = 14
+        static let percentAboveOffset: CGFloat = 10
+        static let futureOpacityMultiplier: Double = 0.35
+        static let stripeSpacing: CGFloat = 4
+        static let stripeOpacityMultiplier: Double = 0.5
+        static let stripeLineWidth: CGFloat = 0.5
+        static let fiveHourWindowThreshold: TimeInterval = 5 * 3600 + 1
+    }
+
+    private struct GraphPoints {
+        let points: [(x: CGFloat, y: CGFloat)]
+        let lastPercent: Double
+    }
 
     var body: some View {
         Canvas { context, size in
@@ -29,9 +55,9 @@ struct WidgetMiniGraph: View {
 
             drawTicks(&context, w: w, h: h)
 
-            guard let built = buildPoints(windowStart: windowStart, w: w, h: h) else { return }
-            let points = built.points
-            let lastPercent = built.lastPercent
+            guard let graph = buildPoints(windowStart: windowStart, w: w, h: h) else { return }
+            let points = graph.points
+            let lastPercent = graph.lastPercent
 
             drawNoDataRegion(&context, firstX: points[0].x, h: h)
 
@@ -50,17 +76,17 @@ struct WidgetMiniGraph: View {
     // MARK: - Drawing Phases
 
     private func drawBackground(_ context: inout GraphicsContext, size: CGSize) {
-        let bg = isLoggedIn ? Self.bgColor : Self.bgColorSignedOut
+        let bg = isLoggedIn ? Layout.bgColor : Layout.bgColorSignedOut
         context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(bg))
     }
 
     private func drawLabel(_ context: inout GraphicsContext) {
         let labelText = context.resolve(
             Text(label)
-                .font(.system(size: 9, weight: .medium))
-                .foregroundStyle(.white.opacity(0.5))
+                .font(.system(size: Layout.labelFontSize, weight: .medium))
+                .foregroundStyle(.white.opacity(Layout.labelOpacity))
         )
-        context.draw(labelText, at: CGPoint(x: 4, y: 4), anchor: .topLeading)
+        context.draw(labelText, at: Layout.labelOrigin, anchor: .topLeading)
     }
 
     private func resolveWindowStart() -> Date? {
@@ -73,17 +99,17 @@ struct WidgetMiniGraph: View {
     }
 
     private func drawTicks(_ context: inout GraphicsContext, w: CGFloat, h: CGFloat) {
-        let divisions = windowSeconds <= 5 * 3600 + 1 ? 5 : 7
+        let divisions = windowSeconds <= Layout.fiveHourWindowThreshold ? 5 : 7
         for i in 1..<divisions {
             let x = CGFloat(i) / CGFloat(divisions) * w
             var tickPath = Path()
             tickPath.move(to: CGPoint(x: x, y: 0))
             tickPath.addLine(to: CGPoint(x: x, y: h))
-            context.stroke(tickPath, with: .color(Self.tickColor), lineWidth: 0.5)
+            context.stroke(tickPath, with: .color(Layout.tickColor), lineWidth: Layout.tickLineWidth)
         }
     }
 
-    private func buildPoints(windowStart: Date, w: CGFloat, h: CGFloat) -> (points: [(x: CGFloat, y: CGFloat)], lastPercent: Double)? {
+    private func buildPoints(windowStart: Date, w: CGFloat, h: CGFloat) -> GraphPoints? {
         var points: [(x: CGFloat, y: CGFloat)] = []
         var lastPercent: Double = 0
         for dp in history {
@@ -95,14 +121,14 @@ struct WidgetMiniGraph: View {
             lastPercent = dp.percent
         }
         guard !points.isEmpty else { return nil }
-        return (points, lastPercent)
+        return GraphPoints(points: points, lastPercent: lastPercent)
     }
 
     private func drawNoDataRegion(_ context: inout GraphicsContext, firstX: CGFloat, h: CGFloat) {
         if firstX > 1 {
             context.fill(
                 Path(CGRect(x: 0, y: 0, width: firstX, height: h)),
-                with: .color(Self.noDataFill)
+                with: .color(Layout.noDataFill)
             )
         }
     }
@@ -143,18 +169,17 @@ struct WidgetMiniGraph: View {
         guard fillEndX > effectiveNowX + 1 else { return }
         var futurePath = Path()
         futurePath.addRect(CGRect(x: effectiveNowX, y: lastY, width: fillEndX - effectiveNowX, height: h - lastY))
-        context.fill(futurePath, with: .color(areaColor.opacity(areaOpacity * 0.35)))
+        context.fill(futurePath, with: .color(areaColor.opacity(areaOpacity * Layout.futureOpacityMultiplier)))
         context.drawLayer { layerCtx in
             layerCtx.clip(to: futurePath)
-            let spacing: CGFloat = 4
             let totalSpan = (fillEndX - effectiveNowX) + (h - lastY)
             var offset: CGFloat = -totalSpan
             while offset < totalSpan {
                 var stripe = Path()
                 stripe.move(to: CGPoint(x: effectiveNowX + offset, y: lastY + (h - lastY)))
                 stripe.addLine(to: CGPoint(x: effectiveNowX + offset + (h - lastY), y: lastY))
-                layerCtx.stroke(stripe, with: .color(areaColor.opacity(areaOpacity * 0.5)), lineWidth: 0.5)
-                offset += spacing
+                layerCtx.stroke(stripe, with: .color(areaColor.opacity(areaOpacity * Layout.stripeOpacityMultiplier)), lineWidth: Layout.stripeLineWidth)
+                offset += Layout.stripeSpacing
             }
         }
     }
@@ -165,29 +190,29 @@ struct WidgetMiniGraph: View {
         usageLine.addLine(to: CGPoint(x: w, y: y))
         context.stroke(
             usageLine,
-            with: .color(Self.usageLineColor),
-            style: StrokeStyle(lineWidth: 0.5, dash: [2, 2])
+            with: .color(Layout.usageLineColor),
+            style: StrokeStyle(lineWidth: Layout.usageLineWidth, dash: Layout.usageDash)
         )
     }
 
     private func drawMarker(_ context: inout GraphicsContext, x: CGFloat, y: CGFloat) {
         var innerCircle = Path()
-        innerCircle.addArc(center: CGPoint(x: x, y: y), radius: 2.5 * 2 / 3, startAngle: .zero, endAngle: .degrees(360), clockwise: false)
+        innerCircle.addArc(center: CGPoint(x: x, y: y), radius: Layout.markerInnerRadius, startAngle: .zero, endAngle: .degrees(360), clockwise: false)
         context.fill(innerCircle, with: .color(.white))
 
         var outerCircle = Path()
-        outerCircle.addArc(center: CGPoint(x: x, y: y), radius: 5, startAngle: .zero, endAngle: .degrees(360), clockwise: false)
-        context.stroke(outerCircle, with: .color(.white.opacity(0.6)), lineWidth: 1)
+        outerCircle.addArc(center: CGPoint(x: x, y: y), radius: Layout.markerOuterRadius, startAngle: .zero, endAngle: .degrees(360), clockwise: false)
+        context.stroke(outerCircle, with: .color(.white.opacity(Layout.markerRingOpacity)), lineWidth: Layout.markerRingWidth)
     }
 
     private func drawPercentText(_ context: inout GraphicsContext, markerX: CGFloat, markerY: CGFloat, lastPercent: Double, h: CGFloat, w: CGFloat) {
         let percentText = context.resolve(
             Text(String(format: "%.0f%%", lastPercent))
-                .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.8))
+                .font(.system(size: Layout.percentFontSize, weight: .semibold))
+                .foregroundStyle(.white.opacity(Layout.percentOpacity))
         )
         let showBelow = DisplayHelpers.percentTextShowsBelow(markerY: markerY, graphHeight: h)
-        let percentY = showBelow ? markerY + 14 : markerY - 10
+        let percentY = showBelow ? markerY + Layout.percentBelowOffset : markerY - Layout.percentAboveOffset
         let percentAnchorX = DisplayHelpers.percentTextAnchorX(markerX: markerX, graphWidth: w)
         context.draw(percentText, at: CGPoint(x: markerX, y: percentY), anchor: UnitPoint(x: percentAnchorX, y: 0.5))
     }

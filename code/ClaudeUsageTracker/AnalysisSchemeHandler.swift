@@ -1,8 +1,9 @@
-// meta: created=2026-02-24 updated=2026-03-03 checked=2026-03-03
+// meta: created=2026-02-24 updated=2026-03-04 checked=2026-03-03
 // changed: 2026-02-27 JOIN query for normalized sessions, epoch timestamps, new JSON key names
 import Foundation
 import SQLite3
 import WebKit
+import ClaudeUsageTrackerShared
 
 /// Serves data to the Analysis WKWebView via a custom URL scheme (cut://).
 /// Queries SQLite databases on the Swift side and serves JSON to JavaScript.
@@ -51,119 +52,110 @@ final class AnalysisSchemeHandler: NSObject, WKURLSchemeHandler {
     // MARK: - SQLite Queries
 
     private func queryUsageJSON(from: String?, to: String?) -> Data? {
-        var db: OpaquePointer?
-        guard sqlite3_open_v2(usageDbPath, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else { return "[]".data(using: .utf8) }
-        defer { sqlite3_close(db) }
+        let fallback = "[]".data(using: .utf8)
+        return SQLiteHelper.withDatabase(path: usageDbPath, flags: SQLITE_OPEN_READONLY) { db in
+            var sql = """
+                SELECT u.timestamp, u.hourly_percent, u.weekly_percent,
+                       hs.resets_at AS hourly_resets_at,
+                       ws.resets_at AS weekly_resets_at
+                FROM usage_log u
+                LEFT JOIN hourly_sessions hs ON u.hourly_session_id = hs.id
+                LEFT JOIN weekly_sessions ws ON u.weekly_session_id = ws.id
+                """
+            var bindings: [Int64] = []
+            if let from = from, let to = to,
+               let fromEpoch = Int64(from), let toEpoch = Int64(to) {
+                sql += " WHERE u.timestamp >= ? AND u.timestamp <= ?"
+                bindings = [fromEpoch, toEpoch]
+            }
+            sql += " ORDER BY u.timestamp ASC"
 
-        var sql = """
-            SELECT u.timestamp, u.hourly_percent, u.weekly_percent,
-                   hs.resets_at AS hourly_resets_at,
-                   ws.resets_at AS weekly_resets_at
-            FROM usage_log u
-            LEFT JOIN hourly_sessions hs ON u.hourly_session_id = hs.id
-            LEFT JOIN weekly_sessions ws ON u.weekly_session_id = ws.id
-            """
-        var bindings: [Int64] = []
-        if let from = from, let to = to,
-           let fromEpoch = Int64(from), let toEpoch = Int64(to) {
-            sql += " WHERE u.timestamp >= ? AND u.timestamp <= ?"
-            bindings = [fromEpoch, toEpoch]
-        }
-        sql += " ORDER BY u.timestamp ASC"
+            return SQLiteHelper.withStatement(db: db, sql: sql) { stmt in
+                for (i, value) in bindings.enumerated() {
+                    sqlite3_bind_int64(stmt, Int32(i + 1), value)
+                }
 
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return "[]".data(using: .utf8) }
-        defer { sqlite3_finalize(stmt) }
-
-        for (i, value) in bindings.enumerated() {
-            sqlite3_bind_int64(stmt, Int32(i + 1), value)
-        }
-
-        var rows: [[String: Any?]] = []
-        while sqlite3_step(stmt) == SQLITE_ROW {
-            rows.append([
-                "timestamp": columnInt(stmt, 0),
-                "hourly_percent": columnDouble(stmt, 1),
-                "weekly_percent": columnDouble(stmt, 2),
-                "hourly_resets_at": columnInt(stmt, 3),
-                "weekly_resets_at": columnInt(stmt, 4),
-            ])
-        }
-        return serializeJSON(rows)
+                var rows: [[String: Any?]] = []
+                while sqlite3_step(stmt) == SQLITE_ROW {
+                    rows.append([
+                        "timestamp": SQLiteHelper.columnInt(stmt, 0),
+                        "hourly_percent": SQLiteHelper.columnDouble(stmt, 1),
+                        "weekly_percent": SQLiteHelper.columnDouble(stmt, 2),
+                        "hourly_resets_at": SQLiteHelper.columnInt(stmt, 3),
+                        "weekly_resets_at": SQLiteHelper.columnInt(stmt, 4),
+                    ])
+                }
+                return serializeJSON(rows)
+            } ?? fallback
+        } ?? fallback
     }
 
     private func queryTokensJSON(from: String?, to: String?) -> Data? {
-        var db: OpaquePointer?
-        guard sqlite3_open_v2(tokensDbPath, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else { return "[]".data(using: .utf8) }
-        defer { sqlite3_close(db) }
+        let fallback = "[]".data(using: .utf8)
+        return SQLiteHelper.withDatabase(path: tokensDbPath, flags: SQLITE_OPEN_READONLY) { db in
+            var sql = """
+                SELECT timestamp, model, input_tokens, output_tokens,
+                       cache_read_tokens, cache_creation_tokens,
+                       speed, web_search_requests
+                FROM token_records
+                """
+            var bindings: [String] = []
+            if let from = from, let to = to {
+                sql += " WHERE timestamp >= ? AND timestamp <= ?"
+                bindings = [from, to]
+            }
+            sql += " ORDER BY timestamp ASC"
 
-        var sql = """
-            SELECT timestamp, model, input_tokens, output_tokens,
-                   cache_read_tokens, cache_creation_tokens,
-                   speed, web_search_requests
-            FROM token_records
-            """
-        var bindings: [String] = []
-        if let from = from, let to = to {
-            sql += " WHERE timestamp >= ? AND timestamp <= ?"
-            bindings = [from, to]
-        }
-        sql += " ORDER BY timestamp ASC"
+            return SQLiteHelper.withStatement(db: db, sql: sql) { stmt in
+                for (i, value) in bindings.enumerated() {
+                    SQLiteHelper.bindText(stmt, Int32(i + 1), value)
+                }
 
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return "[]".data(using: .utf8) }
-        defer { sqlite3_finalize(stmt) }
-
-        for (i, value) in bindings.enumerated() {
-            sqlite3_bind_text(stmt, Int32(i + 1), (value as NSString).utf8String, -1, nil)
-        }
-
-        var rows: [[String: Any?]] = []
-        while sqlite3_step(stmt) == SQLITE_ROW {
-            rows.append([
-                "timestamp": columnText(stmt, 0),
-                "model": columnText(stmt, 1),
-                "input_tokens": Int(sqlite3_column_int64(stmt, 2)),
-                "output_tokens": Int(sqlite3_column_int64(stmt, 3)),
-                "cache_read_tokens": Int(sqlite3_column_int64(stmt, 4)),
-                "cache_creation_tokens": Int(sqlite3_column_int64(stmt, 5)),
-                "speed": columnText(stmt, 6),
-                "web_search_requests": Int(sqlite3_column_int64(stmt, 7)),
-            ])
-        }
-        return serializeJSON(rows)
+                var rows: [[String: Any?]] = []
+                while sqlite3_step(stmt) == SQLITE_ROW {
+                    rows.append([
+                        "timestamp": SQLiteHelper.columnText(stmt, 0),
+                        "model": SQLiteHelper.columnText(stmt, 1),
+                        "input_tokens": SQLiteHelper.columnInt(stmt, 2),
+                        "output_tokens": SQLiteHelper.columnInt(stmt, 3),
+                        "cache_read_tokens": SQLiteHelper.columnInt(stmt, 4),
+                        "cache_creation_tokens": SQLiteHelper.columnInt(stmt, 5),
+                        "speed": SQLiteHelper.columnText(stmt, 6),
+                        "web_search_requests": SQLiteHelper.columnInt(stmt, 7),
+                    ])
+                }
+                return serializeJSON(rows)
+            } ?? fallback
+        } ?? fallback
     }
 
     private func queryMetaJSON() -> Data? {
-        var db: OpaquePointer?
-        guard sqlite3_open_v2(usageDbPath, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else { return "{}".data(using: .utf8) }
-        defer { sqlite3_close(db) }
+        let fallback = "{}".data(using: .utf8)
+        return SQLiteHelper.withDatabase(path: usageDbPath, flags: SQLITE_OPEN_READONLY) { db in
+            let sql = """
+                SELECT MAX(ws.resets_at), MAX(u.timestamp), MIN(u.timestamp)
+                FROM usage_log u
+                LEFT JOIN weekly_sessions ws ON u.weekly_session_id = ws.id
+                """
+            return SQLiteHelper.withStatement(db: db, sql: sql) { stmt -> Data? in
+                guard sqlite3_step(stmt) == SQLITE_ROW else { return fallback }
 
-        let sql = """
-            SELECT MAX(ws.resets_at), MAX(u.timestamp), MIN(u.timestamp)
-            FROM usage_log u
-            LEFT JOIN weekly_sessions ws ON u.weekly_session_id = ws.id
-            """
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return "{}".data(using: .utf8) }
-        defer { sqlite3_finalize(stmt) }
+                // Aggregate functions (MAX/MIN) always return one row, even on empty tables.
+                // All columns will be NULL when usage_log is empty.
+                guard SQLiteHelper.columnInt(stmt, 1) != nil ||
+                      SQLiteHelper.columnInt(stmt, 2) != nil else {
+                    return fallback
+                }
 
-        guard sqlite3_step(stmt) == SQLITE_ROW else { return "{}".data(using: .utf8) }
-
-        // Aggregate functions (MAX/MIN) always return one row, even on empty tables.
-        // All columns will be NULL when usage_log is empty.
-        guard sqlite3_column_type(stmt, 1) != SQLITE_NULL ||
-              sqlite3_column_type(stmt, 2) != SQLITE_NULL else {
-            return "{}".data(using: .utf8)
-        }
-
-        let result: [String: Any?] = [
-            "latestSevenDayResetsAt": columnInt(stmt, 0),
-            "latestTimestamp": columnInt(stmt, 1),
-            "oldestTimestamp": columnInt(stmt, 2),
-        ]
-        let cleaned = result.mapValues { $0 ?? NSNull() }
-        return try? JSONSerialization.data(withJSONObject: cleaned)
+                let result: [String: Any?] = [
+                    "latestSevenDayResetsAt": SQLiteHelper.columnInt(stmt, 0),
+                    "latestTimestamp": SQLiteHelper.columnInt(stmt, 1),
+                    "oldestTimestamp": SQLiteHelper.columnInt(stmt, 2),
+                ]
+                let cleaned = result.mapValues { $0 ?? NSNull() }
+                return try? JSONSerialization.data(withJSONObject: cleaned)
+            } ?? fallback
+        } ?? fallback
     }
 
     // MARK: - Helpers
@@ -178,21 +170,6 @@ final class AnalysisSchemeHandler: NSObject, WKURLSchemeHandler {
             }
         }
         return params
-    }
-
-    private func columnText(_ stmt: OpaquePointer?, _ idx: Int32) -> String? {
-        guard sqlite3_column_type(stmt, idx) != SQLITE_NULL else { return nil }
-        return String(cString: sqlite3_column_text(stmt, idx))
-    }
-
-    private func columnDouble(_ stmt: OpaquePointer?, _ idx: Int32) -> Double? {
-        guard sqlite3_column_type(stmt, idx) != SQLITE_NULL else { return nil }
-        return sqlite3_column_double(stmt, idx)
-    }
-
-    private func columnInt(_ stmt: OpaquePointer?, _ idx: Int32) -> Int? {
-        guard sqlite3_column_type(stmt, idx) != SQLITE_NULL else { return nil }
-        return Int(sqlite3_column_int64(stmt, idx))
     }
 
     private func serializeJSON(_ rows: [[String: Any?]]) -> Data? {

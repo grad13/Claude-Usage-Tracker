@@ -1,4 +1,4 @@
-// meta: created=2026-02-21 updated=2026-02-27 checked=2026-02-26
+// meta: created=2026-02-21 updated=2026-03-04 checked=2026-02-26
 import Foundation
 import WebKit
 import Combine
@@ -250,14 +250,20 @@ final class UsageViewModel: ObservableObject, WebViewCoordinatorDelegate {
     }
 
     func applyResult(_ result: UsageResult) {
+        // Phase 1: Update @Published state
         fiveHourPercent = result.fiveHourPercent
         sevenDayPercent = result.sevenDayPercent
         fiveHourResetsAt = result.fiveHourResetsAt
         sevenDayResetsAt = result.sevenDayResetsAt
+
+        // Phase 2: Persist to DB + reload history
         usageStore.save(result)
-        alertChecker.checkAlerts(result: result, settings: settings)
         reloadHistory()
 
+        // Phase 3: Evaluate alert thresholds
+        alertChecker.checkAlerts(result: result, settings: settings)
+
+        // Phase 4: Sync widget snapshot
         snapshotWriter.saveAfterFetch(
             timestamp: Date(),
             fiveHourPercent: result.fiveHourPercent,
@@ -268,6 +274,7 @@ final class UsageViewModel: ObservableObject, WebViewCoordinatorDelegate {
         )
         widgetReloader.reloadAllTimelines()
 
+        // Phase 5: Update predict cost estimation
         fetchPredict()
     }
 

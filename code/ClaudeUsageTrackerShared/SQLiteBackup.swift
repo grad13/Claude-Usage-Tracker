@@ -1,4 +1,4 @@
-// meta: created=2026-02-24 updated=2026-02-24 checked=2026-03-03
+// meta: created=2026-02-24 updated=2026-03-04 checked=2026-03-03
 import Foundation
 import SQLite3
 import os
@@ -31,10 +31,12 @@ public enum SQLiteBackup {
         }
 
         // 2. WAL checkpoint (flush WAL into main DB file)
-        var db: OpaquePointer?
-        if sqlite3_open(dbPath, &db) == SQLITE_OK {
-            sqlite3_exec(db, "PRAGMA wal_checkpoint(TRUNCATE);", nil, nil, nil)
-            sqlite3_close(db)
+        SQLiteHelper.withDatabase(path: dbPath) { db in
+            var pnLog: Int32 = 0, pnCkpt: Int32 = 0
+            let rc = sqlite3_wal_checkpoint_v2(db, nil, SQLITE_CHECKPOINT_TRUNCATE, &pnLog, &pnCkpt)
+            if rc != SQLITE_OK {
+                log.warning("perform: WAL checkpoint returned \(rc)")
+            }
         }
 
         // 3. Copy
@@ -52,11 +54,15 @@ public enum SQLiteBackup {
 
     // MARK: - Private
 
-    private static func dateStamp(from date: Date = Date()) -> String {
+    private static let dateStampFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
         f.timeZone = .current
-        return f.string(from: date)
+        return f
+    }()
+
+    private static func dateStamp(from date: Date = Date()) -> String {
+        dateStampFormatter.string(from: date)
     }
 
     /// Delete "{dbName}-YYYY-MM-DD.bak" files older than retentionDays.
@@ -67,16 +73,15 @@ public enum SQLiteBackup {
         let prefix = "\(dbName)-"
         let suffix = ".bak"
         let calendar = Calendar.current
-        let cutoff = calendar.date(byAdding: .day, value: -retentionDays, to: calendar.startOfDay(for: Date()))!
-
-        let dateParser = DateFormatter()
-        dateParser.dateFormat = "yyyy-MM-dd"
-        dateParser.timeZone = .current
+        guard let cutoff = calendar.date(byAdding: .day, value: -retentionDays, to: calendar.startOfDay(for: Date())) else {
+            log.error("purge: failed to compute cutoff date")
+            return
+        }
 
         for file in files {
             guard file.hasPrefix(prefix), file.hasSuffix(suffix) else { continue }
             let dateStr = String(file.dropFirst(prefix.count).dropLast(suffix.count))
-            guard let fileDate = dateParser.date(from: dateStr) else { continue }
+            guard let fileDate = dateStampFormatter.date(from: dateStr) else { continue }
             if fileDate < cutoff {
                 let url = directory.appendingPathComponent(file)
                 try? fm.removeItem(at: url)

@@ -1,4 +1,4 @@
-// meta: created=2026-02-22 updated=2026-03-03 checked=2026-03-03
+// meta: created=2026-02-22 updated=2026-03-04 checked=2026-03-03
 import Foundation
 import SQLite3
 import ClaudeUsageTrackerShared
@@ -55,70 +55,61 @@ final class TokenStore {
             return
         }
 
-        var db: OpaquePointer?
-        guard sqlite3_open(dbPath, &db) == SQLITE_OK else {
-            NSLog("[TokenStore] Failed to open DB")
-            return
-        }
-        defer { sqlite3_close(db) }
+        SQLiteHelper.withDatabase(path: dbPath) { db in
+            createTables(db)
 
-        createTables(db)
+            let known = loadKnownFiles(db)
+            let filesToProcess = findFilesToProcess(directories: directories, known: known)
 
-        let known = loadKnownFiles(db)
-        let filesToProcess = findFilesToProcess(directories: directories, known: known)
+            guard !filesToProcess.isEmpty else { return }
 
-        guard !filesToProcess.isEmpty else { return }
+            NSLog("[TokenStore] Syncing %d files", filesToProcess.count)
 
-        NSLog("[TokenStore] Syncing %d files", filesToProcess.count)
+            sqlite3_exec(db, "BEGIN TRANSACTION", nil, nil, nil)
 
-        sqlite3_exec(db, "BEGIN TRANSACTION", nil, nil, nil)
-
-        for file in filesToProcess {
-            let records = JSONLParser.parseFile(file.url)
-            for record in records {
-                upsertRecord(db, record)
+            for file in filesToProcess {
+                let records = JSONLParser.parseFile(file.url)
+                for record in records {
+                    upsertRecord(db, record)
+                }
+                markFileProcessed(db, path: file.url.path, modDate: file.modDate, recordCount: records.count)
             }
-            markFileProcessed(db, path: file.url.path, modDate: file.modDate, recordCount: records.count)
-        }
 
-        sqlite3_exec(db, "COMMIT", nil, nil, nil)
-        NSLog("[TokenStore] Sync complete: %d files processed", filesToProcess.count)
+            sqlite3_exec(db, "COMMIT", nil, nil, nil)
+            NSLog("[TokenStore] Sync complete: %d files processed", filesToProcess.count)
+        }
     }
 
     // MARK: - Query
 
     /// Load all token records (for Analysis).
     func loadAll() -> [TokenRecord] {
-        var db: OpaquePointer?
-        guard sqlite3_open_v2(dbPath, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else { return [] }
-        defer { sqlite3_close(db) }
-
-        let sql = """
-            SELECT request_id, timestamp, model, input_tokens, output_tokens,
-                   cache_read_tokens, cache_creation_tokens, speed, web_search_requests
-            FROM token_records ORDER BY timestamp ASC;
-            """
-        return queryRecords(db, sql: sql)
+        SQLiteHelper.withDatabase(path: dbPath, flags: SQLITE_OPEN_READONLY) { db in
+            let sql = """
+                SELECT request_id, timestamp, model, input_tokens, output_tokens,
+                       cache_read_tokens, cache_creation_tokens, speed, web_search_requests
+                FROM token_records ORDER BY timestamp ASC;
+                """
+            return queryRecords(db, sql: sql)
+        } ?? []
     }
 
     /// Load token records since a cutoff date (for fetchPredict).
     func loadRecords(since cutoff: Date) -> [TokenRecord] {
-        var db: OpaquePointer?
-        guard sqlite3_open_v2(dbPath, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else { return [] }
-        defer { sqlite3_close(db) }
-
-        let cutoffStr = iso.string(from: cutoff)
-        let sql = """
-            SELECT request_id, timestamp, model, input_tokens, output_tokens,
-                   cache_read_tokens, cache_creation_tokens, speed, web_search_requests
-            FROM token_records WHERE timestamp >= ? ORDER BY timestamp ASC;
-            """
-        return queryRecords(db, sql: sql, bindTimestamp: cutoffStr)
+        SQLiteHelper.withDatabase(path: dbPath, flags: SQLITE_OPEN_READONLY) { db in
+            let cutoffStr = iso.string(from: cutoff)
+            let sql = """
+                SELECT request_id, timestamp, model, input_tokens, output_tokens,
+                       cache_read_tokens, cache_creation_tokens, speed, web_search_requests
+                FROM token_records WHERE timestamp >= ? ORDER BY timestamp ASC;
+                """
+            return queryRecords(db, sql: sql, bindTimestamp: cutoffStr)
+        } ?? []
     }
 
     // MARK: - Private: Table Creation
 
-    private func createTables(_ db: OpaquePointer?) {
+    private func createTables(_ db: OpaquePointer) {
         let sql = """
             CREATE TABLE IF NOT EXISTS jsonl_files (
                 path TEXT PRIMARY KEY,
@@ -147,7 +138,7 @@ final class TokenStore {
 
     // MARK: - Private: Known Files
 
-    private func loadKnownFiles(_ db: OpaquePointer?) -> [String: Double] {
+    private func loadKnownFiles(_ db: OpaquePointer) -> [String: Double] {
         let sql = "SELECT path, mod_date FROM jsonl_files;"
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [:] }
@@ -194,7 +185,7 @@ final class TokenStore {
 
     // MARK: - Private: Upsert Record
 
-    private func upsertRecord(_ db: OpaquePointer?, _ record: TokenRecord) {
+    private func upsertRecord(_ db: OpaquePointer, _ record: TokenRecord) {
         let sql = """
             INSERT INTO token_records (
                 request_id, timestamp, model,
@@ -226,37 +217,39 @@ final class TokenStore {
                     WHEN excluded.output_tokens >= token_records.output_tokens
                     THEN excluded.web_search_requests ELSE token_records.web_search_requests END;
             """
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
-        defer { sqlite3_finalize(stmt) }
+        SQLiteHelper.withStatement(db: db, sql: sql) { stmt in
+            let ts = iso.string(from: record.timestamp)
+            SQLiteHelper.bindText(stmt, 1, record.requestId)
+            SQLiteHelper.bindText(stmt, 2, ts)
+            SQLiteHelper.bindText(stmt, 3, record.model)
+            sqlite3_bind_int(stmt, 4, Int32(record.inputTokens))
+            sqlite3_bind_int(stmt, 5, Int32(record.outputTokens))
+            sqlite3_bind_int(stmt, 6, Int32(record.cacheReadTokens))
+            sqlite3_bind_int(stmt, 7, Int32(record.cacheCreationTokens))
+            SQLiteHelper.bindText(stmt, 8, record.speed)
+            sqlite3_bind_int(stmt, 9, Int32(record.webSearchRequests))
 
-        let ts = iso.string(from: record.timestamp)
-        sqlite3_bind_text(stmt, 1, (record.requestId as NSString).utf8String, -1, nil)
-        sqlite3_bind_text(stmt, 2, (ts as NSString).utf8String, -1, nil)
-        sqlite3_bind_text(stmt, 3, (record.model as NSString).utf8String, -1, nil)
-        sqlite3_bind_int(stmt, 4, Int32(record.inputTokens))
-        sqlite3_bind_int(stmt, 5, Int32(record.outputTokens))
-        sqlite3_bind_int(stmt, 6, Int32(record.cacheReadTokens))
-        sqlite3_bind_int(stmt, 7, Int32(record.cacheCreationTokens))
-        sqlite3_bind_text(stmt, 8, (record.speed as NSString).utf8String, -1, nil)
-        sqlite3_bind_int(stmt, 9, Int32(record.webSearchRequests))
-
-        sqlite3_step(stmt)
+            let rc = sqlite3_step(stmt)
+            if rc != SQLITE_DONE {
+                NSLog("[TokenStore] upsertRecord: step returned %d", rc)
+            }
+        }
     }
 
     // MARK: - Private: Mark File Processed
 
-    private func markFileProcessed(_ db: OpaquePointer?, path: String, modDate: Double, recordCount: Int) {
+    private func markFileProcessed(_ db: OpaquePointer, path: String, modDate: Double, recordCount: Int) {
         let sql = "INSERT OR REPLACE INTO jsonl_files (path, mod_date, record_count) VALUES (?, ?, ?);"
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
-        defer { sqlite3_finalize(stmt) }
+        SQLiteHelper.withStatement(db: db, sql: sql) { stmt in
+            SQLiteHelper.bindText(stmt, 1, path)
+            sqlite3_bind_double(stmt, 2, modDate)
+            sqlite3_bind_int(stmt, 3, Int32(recordCount))
 
-        sqlite3_bind_text(stmt, 1, (path as NSString).utf8String, -1, nil)
-        sqlite3_bind_double(stmt, 2, modDate)
-        sqlite3_bind_int(stmt, 3, Int32(recordCount))
-
-        sqlite3_step(stmt)
+            let rc = sqlite3_step(stmt)
+            if rc != SQLITE_DONE {
+                NSLog("[TokenStore] markFileProcessed: step returned %d", rc)
+            }
+        }
     }
 
     // MARK: - Private: Query Helper
@@ -264,7 +257,7 @@ final class TokenStore {
     /// Read token records from a prepared statement with 9 columns:
     /// request_id, timestamp, model, input_tokens, output_tokens,
     /// cache_read_tokens, cache_creation_tokens, speed, web_search_requests
-    private func queryRecords(_ db: OpaquePointer?, sql: String, bindTimestamp: String? = nil) -> [TokenRecord] {
+    private func queryRecords(_ db: OpaquePointer, sql: String, bindTimestamp: String? = nil) -> [TokenRecord] {
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
         defer { sqlite3_finalize(stmt) }
