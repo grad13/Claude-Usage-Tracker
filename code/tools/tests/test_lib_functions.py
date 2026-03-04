@@ -1,25 +1,26 @@
-"""Tests for shared lib functions extracted in Step 8.
+"""Tests for shared lib modules.
 
 Covers:
-  - lib/version.sh: get_app_version
-  - lib/launchservices.sh: deregister_stale_apps (smoke test)
+  - lib/version.py: get_app_version (using plistlib, no PlistBuddy dependency)
+  - lib/launchservices.py: deregister_stale_apps input validation
 """
 
-import shutil
-import subprocess
+import plistlib
+import sys
+from pathlib import Path
 
 import pytest
 
+sys.path.insert(0, str(Path(__file__).parent.parent / "lib"))
+
+from version import get_app_version
+from launchservices import deregister_stale_apps
+
 
 # ---------------------------------------------------------------------------
-# lib/version.sh: get_app_version
+# lib/version.py: get_app_version
 # ---------------------------------------------------------------------------
 
-def _has_plistbuddy():
-    return shutil.which("/usr/libexec/PlistBuddy") is not None
-
-
-@pytest.mark.skipif(not _has_plistbuddy(), reason="PlistBuddy not available")
 @pytest.mark.parametrize(
     "version,expected",
     [
@@ -28,49 +29,34 @@ def _has_plistbuddy():
     ],
     ids=["with_version", "no_plist"],
 )
-def test_get_app_version(tmp_path, script_dir, version, expected):
+def test_get_app_version(tmp_path, version, expected):
     app_dir = tmp_path / "TestApp.app" / "Contents"
     app_dir.mkdir(parents=True)
 
     if version is not None:
-        subprocess.run(
-            [
-                "/usr/libexec/PlistBuddy",
-                "-c",
-                f"Add :CFBundleShortVersionString string {version}",
-                str(app_dir / "Info.plist"),
-            ],
-            check=True,
-        )
+        plist_path = app_dir / "Info.plist"
+        with open(plist_path, "wb") as f:
+            plistlib.dump({"CFBundleShortVersionString": version}, f)
 
-    lib_path = script_dir / "lib" / "version.sh"
-    result = subprocess.run(
-        [
-            "bash",
-            "-c",
-            f'source "{lib_path}" && get_app_version "{tmp_path / "TestApp.app"}"',
-        ],
-        capture_output=True,
-        text=True,
-    )
-    assert result.stdout.strip() == expected
+    assert get_app_version(tmp_path / "TestApp.app") == expected
 
 
 # ---------------------------------------------------------------------------
-# lib/launchservices.sh: deregister_stale_apps (smoke test)
+# lib/launchservices.py: deregister_stale_apps validation
 # ---------------------------------------------------------------------------
 
-def test_deregister_stale_apps_no_crash(tmp_path, script_dir):
-    """deregister_stale_apps should not crash even with empty DERIVED_DATA."""
-    lib_path = script_dir / "lib" / "launchservices.sh"
-    result = subprocess.run(
-        [
-            "bash",
-            "-c",
-            f'source "{lib_path}" && '
-            f'APP_NAME=TestApp DERIVED_DATA="{tmp_path}" deregister_stale_apps',
-        ],
-        capture_output=True,
-        text=True,
-    )
-    assert result.returncode == 0
+def test_deregister_stale_apps_empty_app_name(tmp_path):
+    """Empty APP_NAME → ValueError."""
+    with pytest.raises(ValueError, match="app_name"):
+        deregister_stale_apps("", str(tmp_path))
+
+
+def test_deregister_stale_apps_empty_derived_data(tmp_path):
+    """Empty DERIVED_DATA → ValueError."""
+    with pytest.raises(ValueError, match="derived_data"):
+        deregister_stale_apps("TestApp", "")
+
+
+def test_deregister_stale_apps_no_crash(tmp_path):
+    """deregister_stale_apps should not crash with empty DerivedData."""
+    deregister_stale_apps("TestApp", str(tmp_path))

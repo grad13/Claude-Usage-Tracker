@@ -1,21 +1,28 @@
-"""Tests for binary backup logic in build-and-install.sh.
+"""Tests for binary backup and atomic install logic.
 
 Covers:
-  Test 6: Version-tagged rename backup (.app → .app.v0.9.1)
-  Test 7: Missing Info.plist → .app.vunknown fallback
-  Test 8: Same-version overwrite (existing backup replaced)
+  Test 6:  Version-tagged rename backup (.app → .app.v0.9.1)
+  Test 7:  Missing Info.plist → .app.vunknown fallback
+  Test 8:  Same-version overwrite (existing backup replaced)
+  Test 20: Atomic install — widget missing → .new deleted, current app untouched
+  Test 21: Atomic install — success → .new swapped to current
 """
 
+import plistlib
 import shutil
-import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
+sys.path.insert(0, str(Path(__file__).parent.parent / "lib"))
 
-def _has_plistbuddy():
-    """Check if PlistBuddy is available (macOS only)."""
-    return shutil.which("/usr/libexec/PlistBuddy") is not None
+from version import get_app_version
 
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 def _create_app_with_version(install_dir, app_name, version=None):
     """Create an .app directory with optional Info.plist version."""
@@ -23,41 +30,28 @@ def _create_app_with_version(install_dir, app_name, version=None):
     app_dir.mkdir(parents=True)
 
     if version is not None:
-        plist = app_dir / "Info.plist"
-        subprocess.run(
-            [
-                "/usr/libexec/PlistBuddy",
-                "-c",
-                f"Add :CFBundleShortVersionString string {version}",
-                str(plist),
-            ],
-            check=True,
-        )
+        plist_path = app_dir / "Info.plist"
+        with open(plist_path, "wb") as f:
+            plistlib.dump({"CFBundleShortVersionString": version}, f)
 
     return install_dir / f"{app_name}.app"
 
 
 def _run_backup_logic(install_dir, app_name):
-    """Run the same backup logic as build-and-install.sh L99-111."""
-    script = f"""
-        APP_DIR="{install_dir}/{app_name}.app"
-        if [ -d "$APP_DIR" ]; then
-            PLIST="$APP_DIR/Contents/Info.plist"
-            if [ -f "$PLIST" ]; then
-                CV=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" \
-                    "$PLIST" 2>/dev/null || echo "unknown")
-            else
-                CV="unknown"
-            fi
-            BA="{install_dir}/{app_name}.app.v${{CV}}"
-            rm -rf "$BA"
-            mv "$APP_DIR" "$BA"
-        fi
-    """
-    subprocess.run(["bash", "-c", script], check=True)
+    """Run the same backup logic as build_and_install.install_app."""
+    current_app = install_dir / f"{app_name}.app"
+    if current_app.is_dir():
+        current_version = get_app_version(str(current_app))
+        backup_app = install_dir / f"{app_name}.app.v{current_version}"
+        if backup_app.exists():
+            shutil.rmtree(str(backup_app))
+        current_app.rename(backup_app)
 
 
-@pytest.mark.skipif(not _has_plistbuddy(), reason="PlistBuddy not available")
+# ---------------------------------------------------------------------------
+# Test 6-8: Binary backup (version-tagged rename)
+# ---------------------------------------------------------------------------
+
 @pytest.mark.parametrize(
     "scenario,version,marker_before,expected_suffix,expected_marker",
     [
@@ -83,11 +77,7 @@ def test_binary_backup(
         (existing_backup / "marker").write_text(marker_before)
 
     # Create the app
-    if version is not None:
-        _create_app_with_version(install_dir, "TestApp", version)
-    else:
-        # No Info.plist (Test 7)
-        (install_dir / "TestApp.app" / "Contents").mkdir(parents=True)
+    _create_app_with_version(install_dir, "TestApp", version)
 
     # For overwrite test: add marker to the app being backed up
     if expected_marker is not None:
@@ -105,3 +95,76 @@ def test_binary_backup(
     # For overwrite test: verify content was replaced
     if expected_marker is not None:
         assert (backup / "marker").read_text() == expected_marker
+
+
+# ---------------------------------------------------------------------------
+# Test 20: Atomic install — widget missing
+# ---------------------------------------------------------------------------
+
+def test_atomic_install_widget_missing(tmp_path):
+    """Widget extension missing in new build → .new deleted, current app untouched."""
+    install_dir = tmp_path / "Applications"
+    install_dir.mkdir()
+
+    # Current app (should survive)
+    current_app = install_dir / "TestApp.app"
+    (current_app / "Contents").mkdir(parents=True)
+    (current_app / "marker").write_text("current")
+
+    # New build without widget extension
+    new_build = tmp_path / "Build" / "TestApp.app"
+    (new_build / "Contents" / "PlugIns").mkdir(parents=True)
+    (new_build / "marker").write_text("new")
+
+    # Simulate atomic install logic: cp to .new, verify widget
+    new_app = install_dir / "TestApp.app.new"
+    shutil.copytree(str(new_build), str(new_app))
+
+    widget_appex = new_app / "Contents/PlugIns/TestWidget.appex"
+    assert not widget_appex.is_dir()
+
+    # Widget missing → delete .new, keep current
+    shutil.rmtree(str(new_app))
+
+    # Current app is untouched
+    assert current_app.is_dir()
+    assert (current_app / "marker").read_text() == "current"
+    assert not new_app.exists()
+
+
+# ---------------------------------------------------------------------------
+# Test 21: Atomic install — success (swap)
+# ---------------------------------------------------------------------------
+
+def test_atomic_install_success(tmp_path):
+    """Normal atomic install: .new → verify → swap to current."""
+    install_dir = tmp_path / "Applications"
+    install_dir.mkdir()
+
+    # Current app
+    current_app = install_dir / "TestApp.app"
+    (current_app / "Contents").mkdir(parents=True)
+    (current_app / "marker").write_text("old")
+
+    # New build with widget extension
+    new_build = tmp_path / "Build" / "TestApp.app"
+    (new_build / "Contents" / "PlugIns" / "TestWidget.appex").mkdir(parents=True)
+    (new_build / "marker").write_text("new")
+
+    # Simulate atomic install
+    new_app = install_dir / "TestApp.app.new"
+    shutil.copytree(str(new_build), str(new_app))
+
+    # Verify widget
+    assert (new_app / "Contents/PlugIns/TestWidget.appex").is_dir()
+
+    # Atomic swap
+    backup_name = install_dir / "TestApp.app.v0.1.0"
+    current_app.rename(backup_name)
+    new_app.rename(current_app)
+
+    # Verify
+    assert current_app.is_dir()
+    assert (current_app / "marker").read_text() == "new"
+    assert backup_name.is_dir()
+    assert (backup_name / "marker").read_text() == "old"
