@@ -754,7 +754,7 @@ final class AnalysisBugHuntingTests: AnalysisJSTestCase {
                      stepped0: ds?.[0]?.stepped, stepped1: ds?.[1]?.stepped };
         """) as? [String: Any]
         XCTAssertTrue(result?["fill0"] as? Bool ?? false, "Hourly dataset should have fill: true")
-        XCTAssertFalse(result?["fill1"] as? Bool ?? true, "Weekly dataset should have fill: false")
+        XCTAssertTrue(result?["fill1"] as? Bool ?? false, "Weekly dataset should have fill: true (session-split with area)")
         XCTAssertEqual(result?["tension0"] as? Int, 0, "Hourly dataset tension should be 0")
         XCTAssertEqual(result?["tension1"] as? Int, 0, "Weekly dataset tension should be 0")
         XCTAssertEqual(result?["stepped0"] as? String, "before", "Hourly dataset should use stepped: before")

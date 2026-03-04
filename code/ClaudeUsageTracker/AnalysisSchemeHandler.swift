@@ -131,30 +131,43 @@ final class AnalysisSchemeHandler: NSObject, WKURLSchemeHandler {
 
     private func queryMetaJSON() -> Data? {
         let fallback = "{}".data(using: .utf8)
-        return SQLiteHelper.withDatabase(path: usageDbPath, flags: SQLITE_OPEN_READONLY) { db in
-            let sql = """
+        return SQLiteHelper.withDatabase(path: usageDbPath, flags: SQLITE_OPEN_READONLY) { db -> Data? in
+            var result: [String: Any] = [:]
+            var hasUsageData = false
+
+            // Aggregate meta (timestamps)
+            SQLiteHelper.withStatement(db: db, sql: """
                 SELECT MAX(ws.resets_at), MAX(u.timestamp), MIN(u.timestamp)
                 FROM usage_log u
                 LEFT JOIN weekly_sessions ws ON u.weekly_session_id = ws.id
-                """
-            return SQLiteHelper.withStatement(db: db, sql: sql) { stmt -> Data? in
-                guard sqlite3_step(stmt) == SQLITE_ROW else { return fallback }
-
-                // Aggregate functions (MAX/MIN) always return one row, even on empty tables.
-                // All columns will be NULL when usage_log is empty.
+                """) { stmt in
+                guard sqlite3_step(stmt) == SQLITE_ROW else { return }
                 guard SQLiteHelper.columnInt(stmt, 1) != nil ||
-                      SQLiteHelper.columnInt(stmt, 2) != nil else {
-                    return fallback
-                }
+                      SQLiteHelper.columnInt(stmt, 2) != nil else { return }
+                hasUsageData = true
+                result["latestSevenDayResetsAt"] = SQLiteHelper.columnInt(stmt, 0) ?? NSNull()
+                result["latestTimestamp"] = SQLiteHelper.columnInt(stmt, 1) ?? NSNull()
+                result["oldestTimestamp"] = SQLiteHelper.columnInt(stmt, 2) ?? NSNull()
+            }
 
-                let result: [String: Any?] = [
-                    "latestSevenDayResetsAt": SQLiteHelper.columnInt(stmt, 0),
-                    "latestTimestamp": SQLiteHelper.columnInt(stmt, 1),
-                    "oldestTimestamp": SQLiteHelper.columnInt(stmt, 2),
-                ]
-                let cleaned = result.mapValues { $0 ?? NSNull() }
-                return try? JSONSerialization.data(withJSONObject: cleaned)
-            } ?? fallback
+            // Weekly sessions list for session-based navigation
+            SQLiteHelper.withStatement(db: db, sql:
+                "SELECT id, resets_at FROM weekly_sessions ORDER BY resets_at ASC"
+            ) { stmt in
+                var sessions: [[String: Any]] = []
+                while sqlite3_step(stmt) == SQLITE_ROW {
+                    var session: [String: Any] = [:]
+                    if let id = SQLiteHelper.columnInt(stmt, 0) { session["id"] = id }
+                    if let ra = SQLiteHelper.columnInt(stmt, 1) { session["resets_at"] = ra }
+                    sessions.append(session)
+                }
+                if hasUsageData || !sessions.isEmpty {
+                    result["weeklySessions"] = sessions
+                }
+            }
+
+            if result.isEmpty { return fallback }
+            return try? JSONSerialization.data(withJSONObject: result)
         } ?? fallback
     }
 

@@ -156,11 +156,13 @@ final class AnalysisExporterTests: XCTestCase {
         XCTAssertTrue(html.contains("id=\"heatmap\""))
     }
 
-    func testHtmlTemplate_hasDateRangeInputs() {
+    func testHtmlTemplate_hasSessionNavControls() {
         let html = AnalysisExporter.htmlTemplate
-        XCTAssertTrue(html.contains("id=\"globalFrom\""))
-        XCTAssertTrue(html.contains("id=\"globalTo\""))
-        XCTAssertTrue(html.contains("id=\"applyGlobal\""))
+        XCTAssertTrue(html.contains("id=\"modeWeekly\""))
+        XCTAssertTrue(html.contains("id=\"modeDaily\""))
+        XCTAssertTrue(html.contains("id=\"navPrev\""))
+        XCTAssertTrue(html.contains("id=\"navNext\""))
+        XCTAssertTrue(html.contains("id=\"sessionSelect\""))
     }
 
     func testHtmlTemplate_hasStatsContainer() {

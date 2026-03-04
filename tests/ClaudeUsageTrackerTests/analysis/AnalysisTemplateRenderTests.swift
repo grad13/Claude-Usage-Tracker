@@ -307,61 +307,42 @@ final class AnalysisTemplateRenderTests: AnalysisJSTestCase {
 
 
     // =========================================================
-    // MARK: - localDateStr tests (real template)
+    // MARK: - Session navigation helpers (real template)
     // =========================================================
 
-    func testRealTemplate_localDateStr_usesLocalTime() {
-        // localDateStr should produce local date string, not UTC.
+    func testRealTemplate_formatDateShort_producesExpectedFormat() {
         let result = evalJS("""
-            const now = new Date();
-            const result = localDateStr(now);
-            // Verify format is YYYY-MM-DD
-            return { result: result, matchesFormat: /^\\d{4}-\\d{2}-\\d{2}$/.test(result) };
-        """) as? [String: Any]
-        XCTAssertNotNil(result)
-        XCTAssertTrue(result?["matchesFormat"] as? Bool ?? false,
-                      "localDateStr must produce YYYY-MM-DD format")
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.timeZone = TimeZone.current
-        let expectedTo = formatter.string(from: Date())
-        XCTAssertEqual(result?["result"] as? String, expectedTo,
-                       "localDateStr should return today's LOCAL date, not UTC")
+            return formatDateShort(new Date(2026, 1, 24));
+        """) as? String
+        XCTAssertEqual(result, "2/24", "formatDateShort should produce M/DD")
     }
 
-    func testRealTemplate_localDateStr_UTC_midnight_localDate_shouldDiffer() {
-        // Mock Date to simulate UTC 23:30 on Feb 23.
-        // In any timezone ahead of UTC (e.g. JST), local date = Feb 24.
+    func testRealTemplate_formatDateFull_includesDayName() {
         let result = evalJS("""
-            const OrigDate = Date;
-            const fixedUTC = new OrigDate('2026-02-23T23:30:00Z').getTime();
-            const localDate = new OrigDate(fixedUTC);
-            const result = localDateStr(localDate);
-            const expectedLocal = localDate.getFullYear() + '-'
-                + String(localDate.getMonth() + 1).padStart(2, '0') + '-'
-                + String(localDate.getDate()).padStart(2, '0');
-
-            return { result: result, expectedLocal: expectedLocal,
-                     utcSlice: new OrigDate(fixedUTC).toISOString().slice(0, 10) };
-        """) as? [String: String]
-        XCTAssertNotNil(result)
-        let localResult = result?["result"] ?? ""
-        let expectedLocal = result?["expectedLocal"] ?? ""
-        let utcSlice = result?["utcSlice"] ?? ""
-        XCTAssertEqual(localResult, expectedLocal,
-                       "localDateStr should return local date '\(expectedLocal)', not UTC '\(utcSlice)'")
+            return formatDateFull(new Date(2026, 1, 24));
+        """) as? String
+        XCTAssertEqual(result, "Tue 2/24", "formatDateFull should produce Day M/DD")
     }
 
-    func testRealTemplate_dateInputToEpoch_generatesCorrectValues() {
+    func testRealTemplate_buildWeeklySlots_computesStartAndEnd() {
         let result = evalJS("""
-            return {
-                startOfDay: dateInputToEpoch('2026-02-24', false),
-                endOfDay: dateInputToEpoch('2026-02-24', true),
-            };
+            const meta = { weeklySessions: [{ id: 1, resets_at: 1772161200 }] };
+            const slots = buildWeeklySlots(meta);
+            return { count: slots.length, start: slots[0].start, end: slots[0].end };
         """) as? [String: Any]
-        // 2026-02-24T00:00:00Z = epoch 1771891200
-        XCTAssertEqual(result?["startOfDay"] as? Int, 1771891200)
-        // 2026-02-24T23:59:59Z = epoch 1771977599
-        XCTAssertEqual(result?["endOfDay"] as? Int, 1771977599)
+        XCTAssertEqual(result?["count"] as? Int, 1)
+        XCTAssertEqual(result?["start"] as? Int, 1772161200 - 7 * 86400)
+        XCTAssertEqual(result?["end"] as? Int, 1772161200)
+    }
+
+    func testRealTemplate_buildDailySlots_coversDateRange() {
+        let result = evalJS("""
+            const meta = { oldestTimestamp: 1771891200, latestTimestamp: 1771977600 };
+            const slots = buildDailySlots(meta);
+            return { count: slots.length };
+        """) as? [String: Any]
+        // 1771891200 to 1771977600 spans 2 calendar days
+        let count = result?["count"] as? Int ?? 0
+        XCTAssertGreaterThanOrEqual(count, 1, "buildDailySlots should produce at least 1 day")
     }
 }

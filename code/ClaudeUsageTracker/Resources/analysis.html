@@ -124,45 +124,66 @@ h2 {
 }
 .tab-content { display: none; }
 .tab-content.active { display: block; }
-.date-range {
+.nav-controls {
   display: flex;
   gap: 12px;
   align-items: center;
-  flex-wrap: wrap;
 }
-.date-range label {
-  color: #8b949e;
-  font-size: 12px;
-}
-.date-range input[type="date"] {
+.mode-toggle {
+  display: flex;
   background: #21262d;
   border: 1px solid #30363d;
-  border-radius: 4px;
-  color: #c9d1d9;
-  padding: 4px 8px;
-  font-size: 12px;
+  border-radius: 6px;
+  overflow: hidden;
 }
-.date-range button {
-  background: #238636;
+.mode-btn {
+  background: none;
   border: none;
-  border-radius: 4px;
-  color: #fff;
-  padding: 5px 14px;
+  color: #8b949e;
+  padding: 6px 16px;
   font-size: 12px;
   cursor: pointer;
+  transition: all 0.15s;
 }
-.date-range button:hover { background: #2ea043; }
-.date-range .preset-btn {
+.mode-btn:hover { color: #c9d1d9; }
+.mode-btn.active {
+  background: #1f6feb;
+  color: #fff;
+}
+.session-nav {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.nav-btn {
   background: #21262d;
   border: 1px solid #30363d;
+  border-radius: 4px;
   color: #c9d1d9;
-  padding: 4px 12px;
+  padding: 5px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
 }
-.date-range .preset-btn:hover { background: #30363d; }
-.date-range .preset-btn.active {
-  background: #1f6feb;
-  border-color: #1f6feb;
-  color: #fff;
+.nav-btn:hover { background: #30363d; }
+.nav-btn:disabled { opacity: 0.3; cursor: default; }
+.nav-btn:disabled:hover { background: #21262d; }
+.session-label {
+  color: #e6edf3;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 0 8px;
+  min-width: 200px;
+  text-align: center;
+}
+.session-dropdown {
+  background: #21262d;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  color: #c9d1d9;
+  padding: 5px 8px;
+  font-size: 12px;
+  cursor: pointer;
 }
 #loading {
   text-align: center;
@@ -175,13 +196,17 @@ h2 {
 <body>
 <div class="header-row">
   <h1>ClaudeUsageTracker — Usage Analysis</h1>
-  <div class="date-range" id="globalRange">
-    <label>From <input type="date" id="globalFrom"></label>
-    <label>To <input type="date" id="globalTo"></label>
-    <button class="preset-btn" data-days="7">7d</button>
-    <button class="preset-btn" data-days="30">30d</button>
-    <button class="preset-btn" data-days="0">All</button>
-    <button id="applyGlobal">Apply</button>
+  <div class="nav-controls">
+    <div class="mode-toggle">
+      <button class="mode-btn active" id="modeWeekly">Weekly Session</button>
+      <button class="mode-btn" id="modeDaily">Daily</button>
+    </div>
+    <div class="session-nav">
+      <button class="nav-btn" id="navPrev">&#9664;</button>
+      <span class="session-label" id="navLabel">Loading...</span>
+      <button class="nav-btn" id="navNext">&#9654;</button>
+    </div>
+    <select class="session-dropdown" id="sessionSelect"></select>
   </div>
 </div>
 <div id="loading">Loading data...</div>
@@ -317,6 +342,13 @@ let _xMin = null, _xMax = null;
 const _charts = {};
 const _rendered = {};
 
+// Session navigation state
+let _navMode = 'weekly';    // 'weekly' | 'daily'
+let _navIndex = 0;          // Current index in _navSlots
+let _navSlots = [];          // [{start, end, label}] for current mode
+let _weeklySlots = [];       // Weekly session slots from meta
+let _dailySlots = [];        // Daily slots computed from meta
+
 Chart.register({
   id: 'dayBoundary',
   beforeDatasetsDraw(chart) {
@@ -346,7 +378,7 @@ Chart.register({
       if (x >= left && x <= right) {
         ctx.beginPath();
         ctx.moveTo(x, top);
-        ctx.lineTo(x, bottom);
+        ctx.lineTo(x, xScale.bottom);
         ctx.stroke();
       }
     }
@@ -516,7 +548,41 @@ function buildScatterChart(canvasId, deltas) {
   });
 }
 
-// Weekly: single continuous dataset
+// Weekly: split into sessions when weekly_resets_at changes
+function buildWeeklySessions(data) {
+  const sessions = [];
+  let current = [];
+  let currentResetsAt = null;
+
+  function pushSession() {
+    if (current.length === 0) return;
+    const resetsAtMs = currentResetsAt ? currentResetsAt * 1000 : null;
+    if (resetsAtMs) {
+      current.push({ x: resetsAtMs, y: 0 });
+    }
+    sessions.push({
+      data: current,
+      start: resetsAtMs ? resetsAtMs - 7 * 86400000 : current[0].x,
+      end: resetsAtMs || current[current.length - 1].x,
+    });
+    current = [];
+    currentResetsAt = null;
+  }
+
+  for (const d of data) {
+    if (d.weekly_percent == null) continue;
+    if (!d.weekly_resets_at) continue;
+    if (currentResetsAt && d.weekly_resets_at !== currentResetsAt) {
+      pushSession();
+    }
+    current.push({ x: d.timestamp * 1000, y: d.weekly_percent });
+    currentResetsAt = d.weekly_resets_at;
+  }
+  pushSession();
+  return sessions;
+}
+
+// Backward compat: single continuous dataset (used by efficiency analysis)
 function buildWeeklyData(data) {
   const result = [];
   for (const d of data) {
@@ -599,18 +665,27 @@ function findNearest(sortedData, targetX) {
 }
 
 function renderUsageTab() {
-  const weeklyData = buildWeeklyData(_usageData);
-  const sessions = buildHourlySessions(_usageData);
-  const allHourlyData = sessions.flatMap(s => s.data).sort((a, b) => a.x - b.x);
+  const hourlySessions = buildHourlySessions(_usageData);
+  const weeklySessions = buildWeeklySessions(_usageData);
+  const allHourlyData = hourlySessions.flatMap(s => s.data).sort((a, b) => a.x - b.x);
+  const allWeeklyData = weeklySessions.flatMap(s => s.data).sort((a, b) => a.x - b.x);
 
-  const hourlyDatasets = sessions.map((sess, i) => ({
+  const hourlyDatasets = hourlySessions.map((sess, i) => ({
     label: i === 0 ? 'Hourly Usage' : '',
     data: sess.data,
     borderColor: '#64b4ff', backgroundColor: 'rgba(100,180,255,0.6)',
     fill: true, borderWidth: 0.75, pointRadius: 1, tension: 0, stepped: 'before',
   }));
 
-  // Pattern C: even=stripes, odd=translucent
+  const weeklyDatasets = weeklySessions.map((sess, i) => ({
+    label: i === 0 ? 'Weekly Usage' : '',
+    data: sess.data,
+    borderColor: '#ff82b4', backgroundColor: 'rgba(255,130,180,0.15)',
+    fill: true, borderWidth: 1.5, pointRadius: 1, tension: 0, stepped: 'before',
+    order: -1,
+  }));
+
+  // Hourly session bands: alternating stripes/translucent
   const sessionBandPlugin = {
     id: 'sessionBands',
     beforeDraw(chart) {
@@ -618,9 +693,9 @@ function renderUsageTab() {
       const ctx = chart.ctx;
       const { top, bottom, left, right } = chart.chartArea;
       const stripePattern = createStripePattern(ctx, 'rgba(255,255,255,0.07)', 1, 8);
-      for (let i = 0; i < sessions.length; i++) {
-        const x0 = Math.max(xScale.getPixelForValue(sessions[i].start), left);
-        const x1 = Math.min(xScale.getPixelForValue(sessions[i].end), right);
+      for (let i = 0; i < hourlySessions.length; i++) {
+        const x0 = Math.max(xScale.getPixelForValue(hourlySessions[i].start), left);
+        const x1 = Math.min(xScale.getPixelForValue(hourlySessions[i].end), right);
         if (x1 <= x0) continue;
         if (i % 2 === 0) {
           ctx.fillStyle = stripePattern;
@@ -629,6 +704,31 @@ function renderUsageTab() {
         }
         ctx.fillRect(x0, top, x1 - x0, bottom - top);
       }
+    },
+  };
+
+  // Weekly session boundary markers (vertical dashed pink lines)
+  const weeklyBoundaryPlugin = {
+    id: 'weeklyBoundaries',
+    beforeDatasetsDraw(chart) {
+      const xScale = chart.scales.x;
+      const ctx = chart.ctx;
+      const { top, bottom, left, right } = chart.chartArea;
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,130,180,0.5)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      for (const sess of weeklySessions) {
+        const x = xScale.getPixelForValue(sess.start);
+        if (x >= left && x <= right) {
+          ctx.beginPath();
+          ctx.moveTo(x, top);
+          ctx.lineTo(x, bottom);
+          ctx.stroke();
+        }
+      }
+      ctx.setLineDash([]);
+      ctx.restore();
     },
   };
 
@@ -654,7 +754,7 @@ function renderUsageTab() {
       ctx.restore();
 
       const hourly = findNearest(allHourlyData, tsMs);
-      const weekly = findNearest(weeklyData, tsMs);
+      const weekly = findNearest(allWeeklyData, tsMs);
       if (!hourly && !weekly) return;
 
       ctx.save();
@@ -721,13 +821,7 @@ function renderUsageTab() {
     data: {
       datasets: [
         ...hourlyDatasets,
-        {
-          label: 'Weekly Usage',
-          data: weeklyData,
-          borderColor: '#ff82b4',
-          fill: false, borderWidth: 1.5, pointRadius: 1, tension: 0, stepped: 'before',
-          order: -1,
-        },
+        ...weeklyDatasets,
       ],
     },
     options: {
@@ -755,7 +849,7 @@ function renderUsageTab() {
         y: { min: 0, max: 100, ticks: { color: '#484f58', font: { size: 10 }, stepSize: 20 }, grid: { color: '#21262d' }, title: { display: true, text: '%', color: '#484f58' } },
       },
     },
-    plugins: [sessionBandPlugin, crosshairPlugin],
+    plugins: [sessionBandPlugin, weeklyBoundaryPlugin, crosshairPlugin],
   });
 
 }
@@ -874,15 +968,13 @@ function destroyAllCharts() {
   for (const key of Object.keys(_rendered)) { delete _rendered[key]; }
 }
 
-function localDateStr(d) {
-  return d.getFullYear() + '-'
-    + String(d.getMonth() + 1).padStart(2, '0') + '-'
-    + String(d.getDate()).padStart(2, '0');
+function formatDateShort(d) {
+  return (d.getMonth() + 1) + '/' + String(d.getDate()).padStart(2, '0');
 }
 
-function dateInputToEpoch(dateStr, end) {
-  const d = new Date(dateStr + (end ? 'T23:59:59Z' : 'T00:00:00Z'));
-  return Math.floor(d.getTime() / 1000);
+function formatDateFull(d) {
+  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  return days[d.getDay()] + ' ' + (d.getMonth() + 1) + '/' + String(d.getDate()).padStart(2, '0');
 }
 
 function initTabs() {
@@ -906,44 +998,112 @@ function initTabs() {
 
 let _meta = {};
 
-function initGlobalRange() {
-  const fromInput = document.getElementById('globalFrom');
-  const toInput = document.getElementById('globalTo');
-  const applyBtn = document.getElementById('applyGlobal');
-  const presetBtns = document.querySelectorAll('.preset-btn');
+// ============================================================
+// Session navigation
+// ============================================================
 
-  async function applyRange() {
-    const fromEpoch = dateInputToEpoch(fromInput.value, false);
-    const toEpoch = dateInputToEpoch(toInput.value, true);
-    destroyAllCharts();
-    const { usageData, tokenData } = await loadData(fromEpoch, toEpoch);
-    renderMain(usageData, tokenData);
-  }
+function buildWeeklySlots(meta) {
+  const sessions = meta.weeklySessions || [];
+  return sessions.map(s => {
+    const start = s.resets_at - 7 * 86400;
+    const end = s.resets_at;
+    const startDate = new Date(start * 1000);
+    const endDate = new Date(end * 1000);
+    return {
+      start,
+      end,
+      label: formatDateShort(startDate) + ' \u2014 ' + formatDateShort(endDate),
+    };
+  });
+}
 
-  applyBtn.addEventListener('click', applyRange);
+function buildDailySlots(meta) {
+  if (!meta.oldestTimestamp || !meta.latestTimestamp) return [];
+  const firstDay = new Date(meta.oldestTimestamp * 1000);
+  firstDay.setHours(0, 0, 0, 0);
+  const lastDay = new Date(meta.latestTimestamp * 1000);
+  lastDay.setHours(23, 59, 59, 999);
 
-  presetBtns.forEach(btn => {
-    btn.addEventListener('click', async () => {
-      presetBtns.forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      const days = parseInt(btn.dataset.days);
-      if (days === 0) {
-        // All: clear range, fetch everything
-        if (_meta.oldestTimestamp) {
-          fromInput.value = localDateStr(new Date(_meta.oldestTimestamp * 1000));
-        }
-        toInput.value = localDateStr(new Date());
-        destroyAllCharts();
-        const { usageData, tokenData } = await loadData();
-        renderMain(usageData, tokenData);
-      } else {
-        const to = new Date();
-        const from = new Date(Date.now() - days * 86400000);
-        fromInput.value = localDateStr(from);
-        toInput.value = localDateStr(to);
-        await applyRange();
-      }
+  const slots = [];
+  const d = new Date(firstDay);
+  while (d <= lastDay) {
+    const dayStart = Math.floor(d.getTime() / 1000);
+    const dayEnd = dayStart + 86400;
+    slots.push({
+      start: dayStart,
+      end: dayEnd,
+      label: formatDateFull(d),
     });
+    d.setDate(d.getDate() + 1);
+  }
+  return slots;
+}
+
+function updateNavUI() {
+  const slots = _navSlots;
+  const slot = slots[_navIndex];
+
+  document.getElementById('navLabel').textContent = slot ? slot.label : 'No data';
+  document.getElementById('navPrev').disabled = _navIndex <= 0;
+  document.getElementById('navNext').disabled = _navIndex >= slots.length - 1;
+
+  const select = document.getElementById('sessionSelect');
+  select.innerHTML = '';
+  for (let i = 0; i < slots.length; i++) {
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = slots[i].label;
+    if (i === _navIndex) opt.selected = true;
+    select.appendChild(opt);
+  }
+}
+
+async function navigateTo(index) {
+  if (index < 0 || index >= _navSlots.length) return;
+  _navIndex = index;
+  const slot = _navSlots[_navIndex];
+
+  destroyAllCharts();
+  const { usageData, tokenData } = await loadData(slot.start, slot.end);
+  renderMain(usageData, tokenData);
+  updateNavUI();
+}
+
+function initNavigation() {
+  // Mode toggle
+  document.getElementById('modeWeekly').addEventListener('click', () => {
+    if (_navMode === 'weekly') return;
+    _navMode = 'weekly';
+    document.getElementById('modeWeekly').classList.add('active');
+    document.getElementById('modeDaily').classList.remove('active');
+    _navSlots = _weeklySlots;
+    _navIndex = _navSlots.length - 1;
+    navigateTo(_navIndex);
+  });
+
+  document.getElementById('modeDaily').addEventListener('click', () => {
+    if (_navMode === 'daily') return;
+    _navMode = 'daily';
+    document.getElementById('modeDaily').classList.add('active');
+    document.getElementById('modeWeekly').classList.remove('active');
+    _navSlots = _dailySlots;
+    _navIndex = _navSlots.length - 1;
+    navigateTo(_navIndex);
+  });
+
+  // Nav buttons
+  document.getElementById('navPrev').addEventListener('click', () => navigateTo(_navIndex - 1));
+  document.getElementById('navNext').addEventListener('click', () => navigateTo(_navIndex + 1));
+
+  // Dropdown
+  document.getElementById('sessionSelect').addEventListener('change', (e) => {
+    navigateTo(parseInt(e.target.value));
+  });
+
+  // Keyboard shortcuts
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowLeft') navigateTo(_navIndex - 1);
+    if (e.key === 'ArrowRight') navigateTo(_navIndex + 1);
   });
 }
 
@@ -964,11 +1124,18 @@ function renderMain(usageData, tokenData) {
   const hourlyDisplay = latestHourly != null ? latestHourly + '%' : '-';
   const weeklyDisplay = latestWeekly != null ? latestWeekly + '%' : '-';
 
+  // Count hourly sessions in this range
+  const hourlySessionIds = new Set();
+  for (const d of usageData) {
+    if (d.hourly_resets_at != null) hourlySessionIds.add(d.hourly_resets_at);
+  }
+
   document.getElementById('stats').innerHTML = `
     <div class="stat"><div class="stat-value">${usageData.length}</div><div class="stat-label">Usage Records</div></div>
+    <div class="stat"><div class="stat-value">${hourlySessionIds.size}</div><div class="stat-label">5h Sessions</div></div>
     <div class="stat"><div class="stat-value">${tokenData.length.toLocaleString()}</div><div class="stat-label">Token Records</div></div>
     <div class="stat"><div class="stat-value">$${totalCost.toFixed(2)}</div><div class="stat-label">Total Est. Cost</div></div>
-    <div class="stat"><div class="stat-value">${usageSpan}h</div><div class="stat-label">Usage Span</div></div>
+    <div class="stat"><div class="stat-value">${usageSpan}h</div><div class="stat-label">Span</div></div>
     <div class="stat"><div class="stat-value">${hourlyDisplay}</div><div class="stat-label">Latest 5h</div></div>
     <div class="stat"><div class="stat-value">${weeklyDisplay}</div><div class="stat-label">Latest 7d</div></div>
   `;
@@ -984,42 +1151,29 @@ function renderMain(usageData, tokenData) {
 const main = renderMain;
 
 // ============================================================
-// Entry point: fetch meta → compute initial range → load data
+// Entry point: fetch meta → build session slots → load initial session
 // ============================================================
 (async () => {
   try {
-    // Fetch metadata for initial range calculation (values are epoch seconds)
     const metaRes = await fetch('cut://meta.json');
     _meta = metaRes.ok ? await metaRes.json() : {};
 
-    // Compute weekly session range from latestSevenDayResetsAt
-    let fromEpoch, toEpoch;
-    const now = new Date();
-    const nowEpoch = Math.floor(now.getTime() / 1000);
-    if (_meta.latestSevenDayResetsAt) {
-      const resetsAtEpoch = Math.min(_meta.latestSevenDayResetsAt, nowEpoch);
-      fromEpoch = resetsAtEpoch - 7 * 86400;
-      toEpoch = nowEpoch;
-    } else if (_meta.oldestTimestamp) {
-      // Fallback: last 7 days
-      fromEpoch = nowEpoch - 7 * 86400;
-      toEpoch = nowEpoch;
-    }
-
-    // Set date inputs
-    const fromInput = document.getElementById('globalFrom');
-    const toInput = document.getElementById('globalTo');
-    if (fromEpoch) fromInput.value = localDateStr(new Date(fromEpoch * 1000));
-    toInput.value = localDateStr(now);
-
-    // Highlight 7d preset as default
-    document.querySelector('.preset-btn[data-days="7"]')?.classList.add('active');
+    _weeklySlots = buildWeeklySlots(_meta);
+    _dailySlots = buildDailySlots(_meta);
+    _navSlots = _weeklySlots;
+    _navIndex = _navSlots.length - 1;
 
     initTabs();
-    initGlobalRange();
+    initNavigation();
 
-    const { usageData, tokenData } = await loadData(fromEpoch, toEpoch);
-    renderMain(usageData, tokenData);
+    if (_navSlots.length === 0) {
+      // Fallback: load last 7 days
+      const nowEpoch = Math.floor(Date.now() / 1000);
+      const { usageData, tokenData } = await loadData(nowEpoch - 7 * 86400, nowEpoch);
+      renderMain(usageData, tokenData);
+    } else {
+      await navigateTo(_navIndex);
+    }
   } catch (err) {
     document.getElementById('loading').textContent = 'Error: ' + err.message;
     console.error(err);
