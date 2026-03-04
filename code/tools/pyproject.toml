@@ -1,0 +1,13 @@
+[project]
+name = "tools-tests"
+version = "0.1.0"
+requires-python = ">=3.12"
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0",
+    "pytest-subprocess>=1.5",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

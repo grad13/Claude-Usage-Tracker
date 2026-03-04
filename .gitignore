@@ -22,6 +22,11 @@ Configurations/DevelopmentTeam.local.xcconfig
 .build/
 .swiftpm/xcode/package.xcworkspace/
 
+# Python
+.venv/
+__pycache__/
+*.egg-info/
+
 # IDEs
 .vscode/
 .idea/
