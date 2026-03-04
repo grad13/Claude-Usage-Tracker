@@ -4,11 +4,12 @@ set -euo pipefail
 PROJECT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/lib/data-protection.sh"
+source "$SCRIPT_DIR/lib/launchservices.sh"
+source "$SCRIPT_DIR/lib/version.sh"
 APP_NAME="ClaudeUsageTracker"
 SCHEME="ClaudeUsageTracker"
 DERIVED_DATA="$HOME/Library/Developer/Xcode/DerivedData"
 INSTALL_DIR="/Applications"
-LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Versions/Current/Frameworks/LaunchServices.framework/Versions/Current/Support/lsregister"
 APPGROUP_DIR="$HOME/Library/Group Containers/group.grad13.claudeusagetracker/Library/Application Support/ClaudeUsageTracker"
 APPGROUP_DB="$APPGROUP_DIR/usage.db"
 
@@ -59,20 +60,6 @@ run_test_gate() {
     restore_file_if_changed "$COOKIE_FILE" || true
 }
 
-deregister_stale_apps() {
-    # Deregister DerivedData and Trash copies so chronod only sees /Applications
-    for dd in "$DERIVED_DATA"/${APP_NAME}-*/Build/Products/*/${APP_NAME}.app; do
-        [ -d "$dd" ] && "$LSREGISTER" -u "$dd" 2>/dev/null || true
-    done
-    # 旧名の DerivedData もクリーンアップ
-    for dd in "$DERIVED_DATA"/WeatherCC-*/Build/Products/*/WeatherCC.app; do
-        [ -d "$dd" ] && "$LSREGISTER" -u "$dd" 2>/dev/null || true
-    done
-    for trash in "$HOME/.Trash/${APP_NAME}"*.app "$HOME/.Trash/WeatherCC"*.app; do
-        [ -d "$trash" ] && "$LSREGISTER" -u "$trash" 2>/dev/null || true
-    done
-}
-
 build_app() {
     echo "==> Building $SCHEME..."
     xcodebuild -project "$PROJECT_DIR/code/ClaudeUsageTracker.xcodeproj" \
@@ -104,14 +91,8 @@ install_app() {
     # Backup current app with version number
     echo "==> Installing to $INSTALL_DIR..."
     if [ -d "$INSTALL_DIR/${APP_NAME}.app" ]; then
-        local plist="$INSTALL_DIR/${APP_NAME}.app/Contents/Info.plist"
         local current_version
-        if [ -f "$plist" ]; then
-            current_version=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" \
-                "$plist" 2>/dev/null || echo "unknown")
-        else
-            current_version="unknown"
-        fi
+        current_version=$(get_app_version "$INSTALL_DIR/${APP_NAME}.app")
         local backup_app="$INSTALL_DIR/${APP_NAME}.app.v${current_version}"
         echo "==> Backing up current app as ${APP_NAME}.app.v${current_version}..."
         rm -rf "$backup_app"

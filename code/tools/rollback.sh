@@ -1,9 +1,10 @@
 #!/bin/bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/lib/launchservices.sh"
 APP_NAME="${APP_NAME:-ClaudeUsageTracker}"
 INSTALL_DIR="${INSTALL_DIR:-/Applications}"
-LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Versions/Current/Frameworks/LaunchServices.framework/Versions/Current/Support/lsregister"
 
 VERSION="${1:-}"
 if [ -z "$VERSION" ]; then
