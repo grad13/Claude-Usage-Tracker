@@ -48,3 +48,31 @@
 | 15 | ClaudeUsageTracker/LoginWebView.swift |
 | 10 | ClaudeUsageTrackerWidget/ClaudeUsageTrackerWidgetBundle.swift |
 | 9 | ClaudeUsageTrackerShared/ClaudeUsageTrackerShared.swift |
+
+---
+
+# Refactor Analysis — code/tools/ (Python)
+
+**Date**: 2026-03-04
+**Target**: code/tools/ (全10ファイル、.venv除外)
+**Result**: must: 0 / should: 1 / clean: 9
+
+## should (1 file)
+
+| Lines | File | Issues |
+|------:|------|--------|
+| 290 | tools/tests/test_data_protection.py | 責務混在 — build_and_install.py のロジックテスト(Test 1-5)と data_protection モジュールのテスト(Test 12-19)が同居 |
+
+## clean (9 files)
+
+| Lines | File |
+|------:|------|
+| 311 | tools/build_and_install.py |
+| 125 | tools/rollback.py |
+| 124 | tools/lib/data_protection.py |
+| 69 | tools/lib/launchservices.py |
+| 19 | tools/lib/version.py |
+| 47 | tools/tests/conftest.py |
+| 171 | tools/tests/test_binary_backup.py |
+| 63 | tools/tests/test_lib_functions.py |
+| 114 | tools/tests/test_rollback.py |

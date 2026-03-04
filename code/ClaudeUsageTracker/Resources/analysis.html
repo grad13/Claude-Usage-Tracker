@@ -282,24 +282,13 @@ async function loadData(fromEpoch, toEpoch) {
   document.getElementById('loading').style.display = '';
 
   let usageUrl = 'cut://usage.json';
-  let tokensUrl = 'cut://tokens.json';
   if (fromEpoch != null && toEpoch != null) {
     usageUrl += `?from=${fromEpoch}&to=${toEpoch}`;
-    // Token DB uses ISO text timestamps
-    const fromISO = new Date(fromEpoch * 1000).toISOString();
-    const toISO = new Date(toEpoch * 1000).toISOString();
-    tokensUrl += `?from=${encodeURIComponent(fromISO)}&to=${encodeURIComponent(toISO)}`;
   }
 
-  const [usageData, rawTokenData] = await Promise.all([
-    fetchJSON(usageUrl),
-    fetchJSON(tokensUrl),
-  ]);
-
-  const tokenData = rawTokenData.map(r => ({
-    timestamp: r.timestamp,
-    costUSD: costForRecord(r),
-  }));
+  const usageData = await fetchJSON(usageUrl);
+  // Token loading disabled for performance (TODO: re-enable when needed)
+  const tokenData = [];
 
   return { usageData, tokenData };
 }

@@ -43,12 +43,6 @@ final class AnalysisExporterTests: XCTestCase {
                       "JS must fetch usage JSON from cut:// scheme handler")
     }
 
-    func testHtmlTemplate_fetchesTokensJson() {
-        let html = AnalysisExporter.htmlTemplate
-        XCTAssertTrue(html.contains("cut://tokens.json"),
-                      "JS must fetch tokens JSON from cut:// scheme handler")
-    }
-
     func testHtmlTemplate_containsFetchJSONFunction() {
         let html = AnalysisExporter.htmlTemplate
         XCTAssertTrue(html.contains("fetchJSON"),
