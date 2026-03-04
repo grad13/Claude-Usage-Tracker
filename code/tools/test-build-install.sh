@@ -8,7 +8,7 @@
 #   9-11.  rollback.sh: 復元 / 存在しないバージョン / 引数なし一覧
 #   12-15. data-protection.sh: 上書きリストア / 削除リストア / 未存在スキップ / 未変更
 #
-# 使い方: ./tools/test-build-install.sh
+# 使い方: ./code/tools/test-build-install.sh
 
 set -euo pipefail
 
