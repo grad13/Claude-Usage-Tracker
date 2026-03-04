@@ -3,7 +3,7 @@ import Foundation
 import SQLite3
 import os
 
-/// Centralizes repetitive SQLite3 C API patterns used across UsageStore, SnapshotStore,
+/// Centralizes repetitive SQLite3 C API patterns used across UsageStore, UsageReader,
 /// TokenStore, AnalysisSchemeHandler, and SQLiteBackup.
 public enum SQLiteHelper {
 

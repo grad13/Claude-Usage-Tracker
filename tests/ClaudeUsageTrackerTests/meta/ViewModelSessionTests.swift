@@ -21,7 +21,6 @@ final class ViewModelSessionTests: XCTestCase {
     var stubFetcher: StubUsageFetcher!
     var settingsStore: InMemorySettingsStore!
     var usageStore: InMemoryUsageStore!
-    var snapshotWriter: InMemorySnapshotWriter!
     var widgetReloader: InMemoryWidgetReloader!
     var tokenSync: InMemoryTokenSync!
     var loginItemManager: InMemoryLoginItemManager!
@@ -32,7 +31,6 @@ final class ViewModelSessionTests: XCTestCase {
         stubFetcher = StubUsageFetcher()
         settingsStore = InMemorySettingsStore()
         usageStore = InMemoryUsageStore()
-        snapshotWriter = InMemorySnapshotWriter()
         widgetReloader = InMemoryWidgetReloader()
         tokenSync = InMemoryTokenSync()
         loginItemManager = InMemoryLoginItemManager()
@@ -44,7 +42,6 @@ final class ViewModelSessionTests: XCTestCase {
             fetcher: stubFetcher,
             settingsStore: settingsStore,
             usageStore: usageStore,
-            snapshotWriter: snapshotWriter,
             widgetReloader: widgetReloader,
             tokenSync: tokenSync,
             loginItemManager: loginItemManager,
@@ -386,17 +383,6 @@ final class ViewModelSessionTests: XCTestCase {
 
     // MARK: - signOut: Widget 連携
 
-    /// signOut() は snapshotWriter.clearOnSignOut() を呼ぶ。
-    func testSignOut_callsClearOnSignOut() {
-        let vm = makeVM()
-        XCTAssertEqual(snapshotWriter.signOutCount, 0)
-
-        vm.signOut()
-
-        XCTAssertEqual(snapshotWriter.signOutCount, 1,
-            "signOut should call snapshotWriter.clearOnSignOut() to remove widget shared data")
-    }
-
     /// signOut() は widgetReloader.reloadAllTimelines() を呼ぶ。
     func testSignOut_callsReloadAllTimelines() {
         let vm = makeVM()
@@ -408,17 +394,12 @@ final class ViewModelSessionTests: XCTestCase {
             "signOut should call widgetReloader.reloadAllTimelines() to update widget immediately")
     }
 
-    /// signOut() では clearOnSignOut() が reloadAllTimelines() より前に呼ばれる。
-    /// 逆順だとリロード時に古いデータが残る可能性がある（仕様の実行順序保証）。
-    /// InMemorySnapshotWriter と InMemoryWidgetReloader に呼び出し順序記録を追加できないため、
-    /// 両方が1回ずつ呼ばれることで間接的に確認する。
-    func testSignOut_widgetIntegration_bothCalledOnce() {
+    /// signOut() は reloadAllTimelines() を1回呼ぶ。
+    func testSignOut_widgetIntegration_reloadCalledOnce() {
         let vm = makeVM()
 
         vm.signOut()
 
-        XCTAssertEqual(snapshotWriter.signOutCount, 1,
-            "clearOnSignOut should be called exactly once")
         XCTAssertEqual(widgetReloader.reloadCount, 1,
             "reloadAllTimelines should be called exactly once")
     }
@@ -430,8 +411,6 @@ final class ViewModelSessionTests: XCTestCase {
         vm.signOut()
         vm.signOut()
 
-        XCTAssertEqual(snapshotWriter.signOutCount, 2,
-            "Each signOut call should invoke clearOnSignOut")
         XCTAssertEqual(widgetReloader.reloadCount, 2,
             "Each signOut call should invoke reloadAllTimelines")
     }

@@ -26,48 +26,6 @@ protocol UsageStoring {
 
 extension UsageStore: UsageStoring {}
 
-// MARK: - Widget Snapshot
-
-protocol SnapshotWriting {
-    /// Fetch success: update state + append history.
-    func saveAfterFetch(
-        timestamp: Date,
-        fiveHourPercent: Double?, sevenDayPercent: Double?,
-        fiveHourResetsAt: Date?, sevenDayResetsAt: Date?,
-        isLoggedIn: Bool
-    )
-    /// Update predict values only (other state fields untouched).
-    func updatePredict(fiveHourCost: Double?, sevenDayCost: Double?)
-    /// Sign out: reset state to logged-out (history preserved).
-    func clearOnSignOut()
-}
-
-struct DefaultSnapshotWriter: SnapshotWriting {
-    func saveAfterFetch(
-        timestamp: Date,
-        fiveHourPercent: Double?, sevenDayPercent: Double?,
-        fiveHourResetsAt: Date?, sevenDayResetsAt: Date?,
-        isLoggedIn: Bool
-    ) {
-        SnapshotStore.saveAfterFetch(
-            timestamp: timestamp,
-            fiveHourPercent: fiveHourPercent,
-            sevenDayPercent: sevenDayPercent,
-            fiveHourResetsAt: fiveHourResetsAt,
-            sevenDayResetsAt: sevenDayResetsAt,
-            isLoggedIn: isLoggedIn
-        )
-    }
-
-    func updatePredict(fiveHourCost: Double?, sevenDayCost: Double?) {
-        SnapshotStore.updatePredict(fiveHourCost: fiveHourCost, sevenDayCost: sevenDayCost)
-    }
-
-    func clearOnSignOut() {
-        SnapshotStore.clearOnSignOut()
-    }
-}
-
 // MARK: - Usage Fetching
 
 protocol UsageFetching {

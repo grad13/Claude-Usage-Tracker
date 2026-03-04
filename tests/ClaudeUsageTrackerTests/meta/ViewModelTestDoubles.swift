@@ -20,50 +20,6 @@ final class InMemoryUsageStore: UsageStoring {
     func loadDailyUsage(since: Date) -> Double? { dailyUsageToReturn }
 }
 
-final class InMemorySnapshotWriter: SnapshotWriting {
-    struct FetchRecord {
-        let timestamp: Date
-        let fiveHourPercent: Double?
-        let sevenDayPercent: Double?
-        let fiveHourResetsAt: Date?
-        let sevenDayResetsAt: Date?
-        let isLoggedIn: Bool
-    }
-    struct PredictRecord {
-        let fiveHourCost: Double?
-        let sevenDayCost: Double?
-    }
-
-    var savedFetches: [FetchRecord] = []
-    var savedPredicts: [PredictRecord] = []
-    var signOutCount = 0
-
-    func saveAfterFetch(
-        timestamp: Date,
-        fiveHourPercent: Double?, sevenDayPercent: Double?,
-        fiveHourResetsAt: Date?, sevenDayResetsAt: Date?,
-        isLoggedIn: Bool
-    ) {
-        savedFetches.append(FetchRecord(
-            timestamp: timestamp,
-            fiveHourPercent: fiveHourPercent,
-            sevenDayPercent: sevenDayPercent,
-            fiveHourResetsAt: fiveHourResetsAt,
-            sevenDayResetsAt: sevenDayResetsAt,
-            isLoggedIn: isLoggedIn
-        ))
-    }
-
-    func updatePredict(fiveHourCost: Double?, sevenDayCost: Double?) {
-        savedPredicts.append(PredictRecord(
-            fiveHourCost: fiveHourCost,
-            sevenDayCost: sevenDayCost
-        ))
-    }
-
-    func clearOnSignOut() { signOutCount += 1 }
-}
-
 final class InMemoryWidgetReloader: WidgetReloading {
     var reloadCount = 0
     func reloadAllTimelines() { reloadCount += 1 }
@@ -160,7 +116,6 @@ enum ViewModelTestFactory {
         fetcher: StubUsageFetcher = StubUsageFetcher(),
         settingsStore: InMemorySettingsStore = InMemorySettingsStore(),
         usageStore: InMemoryUsageStore = InMemoryUsageStore(),
-        snapshotWriter: InMemorySnapshotWriter = InMemorySnapshotWriter(),
         widgetReloader: InMemoryWidgetReloader = InMemoryWidgetReloader(),
         tokenSync: InMemoryTokenSync = InMemoryTokenSync(),
         loginItemManager: InMemoryLoginItemManager = InMemoryLoginItemManager(),
@@ -170,7 +125,6 @@ enum ViewModelTestFactory {
             fetcher: fetcher,
             settingsStore: settingsStore,
             usageStore: usageStore,
-            snapshotWriter: snapshotWriter,
             widgetReloader: widgetReloader,
             tokenSync: tokenSync,
             loginItemManager: loginItemManager,

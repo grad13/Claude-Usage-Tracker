@@ -177,7 +177,6 @@ extension UsageViewModel {
         predictSevenDayCost = nil
         error = nil
 
-        snapshotWriter.clearOnSignOut()
         widgetReloader.reloadAllTimelines()
 
         let dataStore = webView.configuration.websiteDataStore

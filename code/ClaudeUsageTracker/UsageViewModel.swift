@@ -27,7 +27,6 @@ final class UsageViewModel: ObservableObject, WebViewCoordinatorDelegate {
     let fetcher: any UsageFetching
     let settingsStore: any SettingsStoring
     let usageStore: any UsageStoring
-    let snapshotWriter: any SnapshotWriting
     let widgetReloader: any WidgetReloading
     let tokenSync: any TokenSyncing
     let loginItemManager: any LoginItemManaging
@@ -105,7 +104,6 @@ final class UsageViewModel: ObservableObject, WebViewCoordinatorDelegate {
         fetcher: any UsageFetching = DefaultUsageFetcher(),
         settingsStore: any SettingsStoring = SettingsStore.shared,
         usageStore: any UsageStoring = UsageStore.shared,
-        snapshotWriter: any SnapshotWriting = DefaultSnapshotWriter(),
         widgetReloader: any WidgetReloading = DefaultWidgetReloader(),
         tokenSync: any TokenSyncing = TokenStore.shared,
         loginItemManager: any LoginItemManaging = DefaultLoginItemManager(),
@@ -114,7 +112,6 @@ final class UsageViewModel: ObservableObject, WebViewCoordinatorDelegate {
         self.fetcher = fetcher
         self.settingsStore = settingsStore
         self.usageStore = usageStore
-        self.snapshotWriter = snapshotWriter
         self.widgetReloader = widgetReloader
         self.tokenSync = tokenSync
         self.loginItemManager = loginItemManager
@@ -140,9 +137,6 @@ final class UsageViewModel: ObservableObject, WebViewCoordinatorDelegate {
 
         // Daily backups (3-day retention) for SQLite databases
         SQLiteBackup.perform(dbPath: (usageStore as? UsageStore)?.dbPath ?? "")
-        if let snapshotPath = AppGroupConfig.snapshotDBPath {
-            SQLiteBackup.perform(dbPath: snapshotPath)
-        }
 
         fetchPredict()
         syncLoginItem()
@@ -263,15 +257,7 @@ final class UsageViewModel: ObservableObject, WebViewCoordinatorDelegate {
         // Phase 3: Evaluate alert thresholds
         alertChecker.checkAlerts(result: result, settings: settings)
 
-        // Phase 4: Sync widget snapshot
-        snapshotWriter.saveAfterFetch(
-            timestamp: Date(),
-            fiveHourPercent: result.fiveHourPercent,
-            sevenDayPercent: result.sevenDayPercent,
-            fiveHourResetsAt: result.fiveHourResetsAt,
-            sevenDayResetsAt: result.sevenDayResetsAt,
-            isLoggedIn: true
-        )
+        // Phase 4: Notify widget to reload (reads from same usage.db)
         widgetReloader.reloadAllTimelines()
 
         // Phase 5: Update predict cost estimation

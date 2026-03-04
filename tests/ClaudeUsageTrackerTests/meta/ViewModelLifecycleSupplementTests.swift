@@ -15,7 +15,6 @@ final class ViewModelLifecycleSupplementTests: XCTestCase {
     var stubFetcher: StubUsageFetcher!
     var settingsStore: InMemorySettingsStore!
     var usageStore: InMemoryUsageStore!
-    var snapshotWriter: InMemorySnapshotWriter!
     var widgetReloader: InMemoryWidgetReloader!
     var tokenSync: InMemoryTokenSync!
     var loginItemManager: InMemoryLoginItemManager!
@@ -26,7 +25,6 @@ final class ViewModelLifecycleSupplementTests: XCTestCase {
         stubFetcher = StubUsageFetcher()
         settingsStore = InMemorySettingsStore()
         usageStore = InMemoryUsageStore()
-        snapshotWriter = InMemorySnapshotWriter()
         widgetReloader = InMemoryWidgetReloader()
         tokenSync = InMemoryTokenSync()
         loginItemManager = InMemoryLoginItemManager()
@@ -38,7 +36,6 @@ final class ViewModelLifecycleSupplementTests: XCTestCase {
             fetcher: stubFetcher,
             settingsStore: settingsStore,
             usageStore: usageStore,
-            snapshotWriter: snapshotWriter,
             widgetReloader: widgetReloader,
             tokenSync: tokenSync,
             loginItemManager: loginItemManager,

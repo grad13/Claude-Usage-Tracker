@@ -3,7 +3,6 @@
 // Generated: 2026-03-04
 //
 // Covers:
-//   - DI-03: DefaultSnapshotWriter conforms to SnapshotWriting
 //   - DI-04: DefaultUsageFetcher conforms to UsageFetching
 //   - DI-05: DefaultWidgetReloader conforms to WidgetReloading
 //   - DI-06: DefaultLoginItemManager conforms to LoginItemManaging
@@ -13,21 +12,6 @@
 
 import XCTest
 @testable import ClaudeUsageTracker
-
-// MARK: - DI-03: DefaultSnapshotWriter conforms to SnapshotWriting
-
-final class SnapshotWritingConformanceTests: XCTestCase {
-
-    func test_defaultSnapshotWriter_isAssignableToSnapshotWriting() {
-        let writer = DefaultSnapshotWriter()
-        let _: any SnapshotWriting = writer
-    }
-
-    func test_defaultSnapshotWriter_conformsToSnapshotWriting() {
-        let writer = DefaultSnapshotWriter()
-        XCTAssertTrue(writer is SnapshotWriting)
-    }
-}
 
 // MARK: - DI-04: DefaultUsageFetcher conforms to UsageFetching
 

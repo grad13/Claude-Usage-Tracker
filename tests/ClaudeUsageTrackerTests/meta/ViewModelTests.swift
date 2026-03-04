@@ -11,7 +11,6 @@ final class ViewModelTests: XCTestCase {
     var stubFetcher: StubUsageFetcher!
     var settingsStore: InMemorySettingsStore!
     var usageStore: InMemoryUsageStore!
-    var snapshotWriter: InMemorySnapshotWriter!
     var widgetReloader: InMemoryWidgetReloader!
     var tokenSync: InMemoryTokenSync!
     var loginItemManager: InMemoryLoginItemManager!
@@ -22,7 +21,6 @@ final class ViewModelTests: XCTestCase {
         stubFetcher = StubUsageFetcher()
         settingsStore = InMemorySettingsStore()
         usageStore = InMemoryUsageStore()
-        snapshotWriter = InMemorySnapshotWriter()
         widgetReloader = InMemoryWidgetReloader()
         tokenSync = InMemoryTokenSync()
         loginItemManager = InMemoryLoginItemManager()
@@ -34,7 +32,6 @@ final class ViewModelTests: XCTestCase {
             fetcher: stubFetcher,
             settingsStore: settingsStore,
             usageStore: usageStore,
-            snapshotWriter: snapshotWriter,
             widgetReloader: widgetReloader,
             tokenSync: tokenSync,
             loginItemManager: loginItemManager,
@@ -224,38 +221,6 @@ final class ViewModelTests: XCTestCase {
         let vm = makeVM()
         XCTAssertTrue(vm.fiveHourHistory.isEmpty)
         XCTAssertTrue(vm.sevenDayHistory.isEmpty)
-    }
-
-    // MARK: - Snapshot: init behavior (SQLite-based)
-
-    /// init does NOT call saveAfterFetch — state row is only created on first successful fetch.
-    func testInit_doesNotCallSaveAfterFetch() {
-        usageStore.historyToReturn = []
-        let vm = makeVM()
-
-        let done = expectation(description: "init completes")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { done.fulfill() }
-        wait(for: [done], timeout: 2.0)
-
-        XCTAssertTrue(snapshotWriter.savedFetches.isEmpty,
-            "init must NOT call saveAfterFetch — data is not yet available")
-        _ = vm
-    }
-
-    /// init → fetchPredict → updatePredict(nil, nil) is called.
-    func testInit_callsUpdatePredict() {
-        let vm = makeVM()
-
-        let done = expectation(description: "init completes")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { done.fulfill() }
-        wait(for: [done], timeout: 2.0)
-
-        XCTAssertFalse(snapshotWriter.savedPredicts.isEmpty,
-            "init → fetchPredict should call updatePredict")
-        let predict = snapshotWriter.savedPredicts.last!
-        XCTAssertNil(predict.fiveHourCost, "No JSONL data → predict should be nil")
-        XCTAssertNil(predict.sevenDayCost)
-        _ = vm
     }
 
     // MARK: - Alert Integration

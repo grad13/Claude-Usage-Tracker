@@ -45,26 +45,6 @@ extension ViewModelTests {
         XCTAssertNil(vm.predictSevenDayCost, "signOut should clear predictSevenDayCost")
     }
 
-    // MARK: - signOut calls clearOnSignOut
-
-    func testSignOut_callsClearOnSignOut() {
-        let vm = makeVM()
-        vm.isLoggedIn = true
-        vm.fiveHourPercent = 42.0
-        vm.sevenDayPercent = 18.0
-
-        let initDone = expectation(description: "init done")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { initDone.fulfill() }
-        wait(for: [initDone], timeout: 2.0)
-
-        let countBefore = snapshotWriter.signOutCount
-        vm.signOut()
-
-        XCTAssertEqual(snapshotWriter.signOutCount, countBefore + 1,
-            "signOut must call clearOnSignOut exactly once")
-        _ = vm
-    }
-
     // MARK: - remainingTimeText
 
     func testRemainingTimeText_nilReturnsNil() {
@@ -199,24 +179,6 @@ extension ViewModelTests {
             "signOut must call reloadAllTimelines to notify widget of logged-out state")
     }
 
-    /// Every snapshot write (saveAfterFetch, updatePredict, clearOnSignOut) triggers reloadAllTimelines.
-    func testReloadCount_matchesSnapshotWriteCount() {
-        let vm = makeVM()
-        let done = expectation(description: "init done")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { done.fulfill() }
-        wait(for: [done], timeout: 2.0)
-
-        // After init: fetchPredict → updatePredict + reload
-        let totalWrites = snapshotWriter.savedFetches.count
-            + snapshotWriter.savedPredicts.count
-            + snapshotWriter.signOutCount
-        XCTAssertEqual(widgetReloader.reloadCount, totalWrites,
-            "Each snapshot write must trigger exactly one reloadAllTimelines")
-        _ = vm
-    }
-
-    // (writeSnapshot_afterFetch / init overwrite tests removed — SQLite handles this internally)
-
     // MARK: - UsageFetching injection tests
 
     /// fetch() が注入された fetcher を使うことを検証。
@@ -335,48 +297,6 @@ extension ViewModelTests {
         XCTAssertFalse(usageStore.savedResults.isEmpty,
             "Successful fetch must save result to usageStore")
         XCTAssertEqual(usageStore.savedResults.last?.fiveHourPercent, 25.0)
-        _ = vm
-    }
-
-    /// fetch() 成功後に saveAfterFetch + updatePredict が呼ばれることを検証。
-    func testFetch_success_callsSaveAfterFetchThenUpdatePredict() {
-        let now = Date()
-        usageStore.historyToReturn = [
-            UsageStore.DataPoint(timestamp: now, fiveHourPercent: 25.0, sevenDayPercent: 10.0)
-        ]
-        stubFetcher.fetchResult = .success(UsageResult(
-            fiveHourPercent: 25.0,
-            sevenDayPercent: 10.0,
-            fiveHourResetsAt: now.addingTimeInterval(2 * 3600),
-            sevenDayResetsAt: now.addingTimeInterval(5 * 24 * 3600)
-        ))
-
-        let vm = makeVM()
-        let initDone = expectation(description: "init")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { initDone.fulfill() }
-        wait(for: [initDone], timeout: 2.0)
-
-        let fetchCountBefore = snapshotWriter.savedFetches.count
-        let predictCountBefore = snapshotWriter.savedPredicts.count
-        vm.fetch()
-
-        let fetchDone = expectation(description: "fetch")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { fetchDone.fulfill() }
-        wait(for: [fetchDone], timeout: 2.0)
-
-        // applyResult → saveAfterFetch
-        XCTAssertGreaterThan(snapshotWriter.savedFetches.count, fetchCountBefore,
-            "Successful fetch must call saveAfterFetch")
-        let fetch = snapshotWriter.savedFetches.last!
-        XCTAssertEqual(fetch.fiveHourPercent, 25.0)
-        XCTAssertEqual(fetch.sevenDayPercent, 10.0)
-        XCTAssertTrue(fetch.isLoggedIn)
-        XCTAssertNotNil(fetch.fiveHourResetsAt)
-        XCTAssertNotNil(fetch.sevenDayResetsAt)
-
-        // fetchPredict → updatePredict
-        XCTAssertGreaterThan(snapshotWriter.savedPredicts.count, predictCountBefore,
-            "Successful fetch must also call updatePredict (via fetchPredict)")
         _ = vm
     }
 }

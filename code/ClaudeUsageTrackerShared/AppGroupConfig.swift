@@ -9,23 +9,14 @@ public enum AppGroupConfig {
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupId)
     }
 
-    /// SQLite DB path for SnapshotStore (new).
+    /// SQLite DB path for UsageStore (shared between app and widget).
     /// Returns String (not URL) because SQLite3 C API requires a path string.
-    public static var snapshotDBPath: String? {
+    public static var usageDBPath: String? {
         guard let container = containerURL else { return nil }
         let dir = container
             .appendingPathComponent("Library/Application Support", isDirectory: true)
             .appendingPathComponent(appName, isDirectory: true)
-        return dir.appendingPathComponent("snapshot.db").path
+        return dir.appendingPathComponent("usage.db").path
     }
 
-    /// Legacy JSON file URL — used only for migration.
-    /// After migration, the file is renamed to snapshot.json.bak.
-    public static var legacySnapshotURL: URL? {
-        guard let container = containerURL else { return nil }
-        let dir = container
-            .appendingPathComponent("Library/Application Support", isDirectory: true)
-            .appendingPathComponent(appName, isDirectory: true)
-        return dir.appendingPathComponent("snapshot.json")
-    }
 }

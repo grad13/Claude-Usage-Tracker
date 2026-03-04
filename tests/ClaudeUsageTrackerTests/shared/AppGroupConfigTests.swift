@@ -21,29 +21,17 @@ final class AppGroupConfigTests: XCTestCase {
         _ = url
     }
 
-    func testSnapshotDBPath_nilWhenContainerIsNil() {
+    func testUsageDBPath_nilWhenContainerIsNil() {
         if AppGroupConfig.containerURL == nil {
-            XCTAssertNil(AppGroupConfig.snapshotDBPath,
-                         "snapshotDBPath should be nil when containerURL is nil")
+            XCTAssertNil(AppGroupConfig.usageDBPath,
+                         "usageDBPath should be nil when containerURL is nil")
         } else {
-            let path = AppGroupConfig.snapshotDBPath
+            let path = AppGroupConfig.usageDBPath
             XCTAssertNotNil(path)
             XCTAssertTrue(path!.contains("ClaudeUsageTracker"),
-                          "snapshotDBPath should contain app name in path")
-            XCTAssertTrue(path!.hasSuffix("snapshot.db"),
-                          "snapshotDBPath should end with snapshot.db")
-        }
-    }
-
-    func testLegacySnapshotURL_nilWhenContainerIsNil() {
-        if AppGroupConfig.containerURL == nil {
-            XCTAssertNil(AppGroupConfig.legacySnapshotURL,
-                         "legacySnapshotURL should be nil when containerURL is nil")
-        } else {
-            let url = AppGroupConfig.legacySnapshotURL
-            XCTAssertNotNil(url)
-            XCTAssertTrue(url!.path.hasSuffix("snapshot.json"),
-                          "legacySnapshotURL should end with snapshot.json")
+                          "usageDBPath should contain app name in path")
+            XCTAssertTrue(path!.hasSuffix("usage.db"),
+                          "usageDBPath should end with usage.db")
         }
     }
 }

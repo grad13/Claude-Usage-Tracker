@@ -20,12 +20,12 @@ struct UsageTimelineProvider: TimelineProvider {
             completion(UsageEntry(date: Date(), snapshot: .placeholder))
             return
         }
-        let snapshot = SnapshotStore.load()
+        let snapshot = UsageReader.load()
         completion(UsageEntry(date: Date(), snapshot: snapshot))
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<UsageEntry>) -> Void) {
-        let snapshot = SnapshotStore.load()
+        let snapshot = UsageReader.load()
         let entry = UsageEntry(date: Date(), snapshot: snapshot)
         let nextUpdate = Date().addingTimeInterval(5 * 60)
         completion(Timeline(entries: [entry], policy: .after(nextUpdate)))

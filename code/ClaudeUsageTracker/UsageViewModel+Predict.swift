@@ -13,7 +13,6 @@ extension UsageViewModel {
                 await MainActor.run {
                     self?.predictFiveHourCost = nil
                     self?.predictSevenDayCost = nil
-                    self?.snapshotWriter.updatePredict(fiveHourCost: nil, sevenDayCost: nil)
                     self?.widgetReloader.reloadAllTimelines()
                 }
                 return
@@ -29,10 +28,6 @@ extension UsageViewModel {
             await MainActor.run {
                 self?.predictFiveHourCost = fiveH.totalCost > 0 ? fiveH.totalCost : nil
                 self?.predictSevenDayCost = sevenD.totalCost > 0 ? sevenD.totalCost : nil
-                self?.snapshotWriter.updatePredict(
-                    fiveHourCost: self?.predictFiveHourCost,
-                    sevenDayCost: self?.predictSevenDayCost
-                )
                 self?.widgetReloader.reloadAllTimelines()
             }
         }

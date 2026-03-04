@@ -49,7 +49,6 @@
 		BB100009 /* TokenStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000009 /* TokenStoreTests.swift */; };
 		BB10000A /* UsageStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00000A /* UsageStoreTests.swift */; };
 		BB10000B /* SettingsStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00000B /* SettingsStoreTests.swift */; };
-		BB10000C /* SnapshotStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00000C /* SnapshotStoreTests.swift */; };
 		BB10000D /* AppGroupConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00000D /* AppGroupConfigTests.swift */; };
 		BB10000E /* SQLiteBackupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00000E /* SQLiteBackupTests.swift */; };
 		BB100020 /* AnalysisTestHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000020 /* AnalysisTestHelpers.swift */; };
@@ -204,7 +203,6 @@
 		BB000009 /* TokenStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenStoreTests.swift; sourceTree = "<group>"; };
 		BB00000A /* UsageStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageStoreTests.swift; sourceTree = "<group>"; };
 		BB00000B /* SettingsStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStoreTests.swift; sourceTree = "<group>"; };
-		BB00000C /* SnapshotStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapshotStoreTests.swift; sourceTree = "<group>"; };
 		BB00000D /* AppGroupConfigTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGroupConfigTests.swift; sourceTree = "<group>"; };
 		BB00000E /* SQLiteBackupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLiteBackupTests.swift; sourceTree = "<group>"; };
 		BB000020 /* AnalysisTestHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisTestHelpers.swift; sourceTree = "<group>"; };
@@ -479,7 +477,6 @@
 				BB00000D /* AppGroupConfigTests.swift */,
 				BB000006 /* DisplayHelpersTests.swift */,
 				BB000007 /* SnapshotModelTests.swift */,
-				BB00000C /* SnapshotStoreTests.swift */,
 				BB00000E /* SQLiteBackupTests.swift */,
 			);
 			path = shared;
@@ -722,7 +719,6 @@
 				BB10002A /* ProductionSettingsIntegrityTests.swift in Sources */,
 				BB10002B /* NotificationManagerTests.swift in Sources */,
 				BB10002C /* AlertCheckerTests.swift in Sources */,
-				BB10000C /* SnapshotStoreTests.swift in Sources */,
 				BB10000D /* AppGroupConfigTests.swift in Sources */,
 				BB10000E /* SQLiteBackupTests.swift in Sources */,
 				BB100020 /* AnalysisTestHelpers.swift in Sources */,
