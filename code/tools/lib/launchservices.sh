@@ -9,11 +9,7 @@ deregister_stale_apps() {
     for dd in "$DERIVED_DATA"/${APP_NAME}-*/Build/Products/*/${APP_NAME}.app; do
         [ -d "$dd" ] && "$LSREGISTER" -u "$dd" 2>/dev/null || true
     done
-    # 旧名の DerivedData もクリーンアップ
-    for dd in "$DERIVED_DATA"/WeatherCC-*/Build/Products/*/WeatherCC.app; do
-        [ -d "$dd" ] && "$LSREGISTER" -u "$dd" 2>/dev/null || true
-    done
-    for trash in "$HOME/.Trash/${APP_NAME}"*.app "$HOME/.Trash/WeatherCC"*.app; do
+    for trash in "$HOME/.Trash/${APP_NAME}"*.app; do
         [ -d "$trash" ] && "$LSREGISTER" -u "$trash" 2>/dev/null || true
     done
 }
