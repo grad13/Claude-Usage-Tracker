@@ -27,7 +27,8 @@ def test_rollback_restore(tmp_path, monkeypatch):
     """Test 9: rollback restores from backup, backup is preserved."""
     install_dir = tmp_path / "Applications"
     app = install_dir / "ClaudeUsageTracker.app"
-    backup = install_dir / "ClaudeUsageTracker.app.v0.9.1"
+    backup_dir = tmp_path / "app-backups"
+    backup = backup_dir / "ClaudeUsageTracker.app.v0.9.1"
 
     app.mkdir(parents=True)
     (app / "marker").write_text("current")
@@ -35,6 +36,7 @@ def test_rollback_restore(tmp_path, monkeypatch):
     (backup / "marker").write_text("backup")
 
     monkeypatch.setattr(rollback_mod, "INSTALL_DIR", install_dir)
+    monkeypatch.setattr(rollback_mod, "APP_BACKUP_DIR", backup_dir)
     rollback_mod.rollback("v0.9.1", test_mode=True)
 
     assert (app / "marker").read_text() == "backup"
@@ -50,8 +52,11 @@ def test_rollback_nonexistent_version(tmp_path, monkeypatch):
     """Test 10: Non-existent version → RuntimeError."""
     install_dir = tmp_path / "Applications"
     install_dir.mkdir()
+    backup_dir = tmp_path / "app-backups"
+    backup_dir.mkdir()
 
     monkeypatch.setattr(rollback_mod, "INSTALL_DIR", install_dir)
+    monkeypatch.setattr(rollback_mod, "APP_BACKUP_DIR", backup_dir)
 
     with pytest.raises(RuntimeError, match="not found"):
         rollback_mod.rollback("v9.9.9", test_mode=True)
@@ -63,11 +68,11 @@ def test_rollback_nonexistent_version(tmp_path, monkeypatch):
 
 def test_list_versions(tmp_path, monkeypatch):
     """Test 11: list_versions returns available versions."""
-    install_dir = tmp_path / "Applications"
-    (install_dir / "ClaudeUsageTracker.app.v0.9.1").mkdir(parents=True)
-    (install_dir / "ClaudeUsageTracker.app.v0.9.2").mkdir(parents=True)
+    backup_dir = tmp_path / "app-backups"
+    (backup_dir / "ClaudeUsageTracker.app.v0.9.1").mkdir(parents=True)
+    (backup_dir / "ClaudeUsageTracker.app.v0.9.2").mkdir(parents=True)
 
-    monkeypatch.setattr(rollback_mod, "INSTALL_DIR", install_dir)
+    monkeypatch.setattr(rollback_mod, "APP_BACKUP_DIR", backup_dir)
     versions = rollback_mod.list_versions()
 
     assert "v0.9.1" in versions
@@ -82,7 +87,7 @@ def test_rollback_atomic_leaves_removing_on_crash(tmp_path):
     """If rollback is interrupted after mv to .removing, .removing is recoverable."""
     install_dir = tmp_path / "Applications"
     current = install_dir / "TestApp.app"
-    backup = install_dir / "TestApp.app.v1.0.0"
+    backup = tmp_path / "app-backups" / "TestApp.app.v1.0.0"
     removing = install_dir / "TestApp.app.removing"
 
     current.mkdir(parents=True)

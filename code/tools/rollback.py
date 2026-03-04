@@ -18,16 +18,29 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent / "lib"))
 
-from launchservices import LSREGISTER, register_app
+from launchservices import register_app
 
 APP_NAME = os.environ.get("APP_NAME", "ClaudeUsageTracker")
 INSTALL_DIR = Path(os.environ.get("INSTALL_DIR", "/Applications"))
+APPGROUP_DIR = Path(
+    os.environ.get(
+        "APPGROUP_DIR",
+        str(
+            Path.home()
+            / "Library/Group Containers/group.grad13.claudeusagetracker"
+            / "Library/Application Support/ClaudeUsageTracker"
+        ),
+    )
+)
+APP_BACKUP_DIR = APPGROUP_DIR / "app-backups"
 
 
 def list_versions() -> list[str]:
     """List available backup versions."""
+    if not APP_BACKUP_DIR.exists():
+        return []
     versions = []
-    for d in sorted(INSTALL_DIR.glob(f"{APP_NAME}.app.v*")):
+    for d in sorted(APP_BACKUP_DIR.glob(f"{APP_NAME}.app.v*")):
         if d.is_dir():
             versions.append(d.name.removeprefix(f"{APP_NAME}.app."))
     return versions
@@ -35,7 +48,7 @@ def list_versions() -> list[str]:
 
 def rollback(version: str, *, test_mode: bool = False) -> None:
     """Rollback to a specific version using atomic swap."""
-    backup_app = INSTALL_DIR / f"{APP_NAME}.app.{version}"
+    backup_app = APP_BACKUP_DIR / f"{APP_NAME}.app.{version}"
     if not backup_app.is_dir():
         raise RuntimeError(f"{backup_app} not found")
 

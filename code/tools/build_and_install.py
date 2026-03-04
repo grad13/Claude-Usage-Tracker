@@ -204,11 +204,14 @@ def install_app(build_app_path: Path) -> None:
     current_app = INSTALL_DIR / f"{APP_NAME}.app"
     if current_app.is_dir():
         current_version = get_app_version(str(current_app))
-        backup_app = INSTALL_DIR / f"{APP_NAME}.app.v{current_version}"
-        print(f"==> Backing up current app as {APP_NAME}.app.v{current_version}...")
+        app_backup_dir = APPGROUP_DIR / "app-backups"
+        app_backup_dir.mkdir(parents=True, exist_ok=True)
+        backup_app = app_backup_dir / f"{APP_NAME}.app.v{current_version}"
+        print(f"==> Backing up current app to {backup_app}...")
         if backup_app.exists():
             shutil.rmtree(str(backup_app))
-        current_app.rename(backup_app)
+        # mv across filesystems falls back to copy+delete
+        shutil.move(str(current_app), str(backup_app))
 
     new_app.rename(current_app)
 
