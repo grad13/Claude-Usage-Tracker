@@ -9,4 +9,4 @@ test = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["../../tests/tools"]
