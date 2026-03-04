@@ -44,7 +44,3 @@ def app_dir(tmp_path):
     return tmp_path / "TestApp.app"
 
 
-@pytest.fixture
-def script_dir():
-    """Return the absolute path to code/tools/."""
-    return Path(__file__).parent.parent
