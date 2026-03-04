@@ -1,16 +1,21 @@
 """Tests for build_and_install.py logic.
 
 Covers:
-  Test 1-4: Lost row detection SQL (backup_database equivalent)
-  Test 5:   DB backup rotation (keep newest 10)
+  Test 1-4: Lost row detection (check_lost_rows)
+  Test 5:   DB backup rotation (rotate_backups)
 """
 
 import os
 import sqlite3
+import sys
 import time
 from pathlib import Path
 
 import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "code" / "tools"))
+
+from build_and_install import check_lost_rows, rotate_backups
 
 
 # ---------------------------------------------------------------------------
@@ -56,20 +61,8 @@ def _insert_rows(db_path, percentages):
     conn.close()
 
 
-def _run_lost_check(current_db, backup_db):
-    """Run the same lost-row detection SQL as build_and_install.py."""
-    conn = sqlite3.connect(str(current_db))
-    conn.execute(f"ATTACH '{backup_db}' AS backup")
-    lost = conn.execute(
-        "SELECT COUNT(*) FROM backup.usage_log "
-        "WHERE rowid NOT IN (SELECT rowid FROM main.usage_log)"
-    ).fetchone()[0]
-    conn.close()
-    return lost
-
-
 # ---------------------------------------------------------------------------
-# Test 1-4: Lost row detection SQL
+# Test 1-4: Lost row detection (check_lost_rows)
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize(
@@ -91,11 +84,11 @@ def test_lost_row_detection(tmp_path, backup_rows, current_rows, expected_lost):
     _insert_rows(backup_db, backup_rows)
     _insert_rows(current_db, current_rows)
 
-    assert _run_lost_check(current_db, backup_db) == expected_lost
+    assert check_lost_rows(str(current_db), str(backup_db)) == expected_lost
 
 
 # ---------------------------------------------------------------------------
-# Test 5: DB backup rotation (keep newest 10)
+# Test 5: DB backup rotation (rotate_backups)
 # ---------------------------------------------------------------------------
 
 def test_backup_rotation(tmp_path):
@@ -111,10 +104,7 @@ def test_backup_rotation(tmp_path):
         mtime = time.time() - (13 - i) * 60
         os.utime(f, (mtime, mtime))
 
-    # Same rotation logic as build_and_install.py
-    backups = sorted(backup_dir.glob("usage_*.db"), key=lambda p: p.stat().st_mtime, reverse=True)
-    for old in backups[10:]:
-        old.unlink()
+    rotate_backups(backup_dir)
 
     remaining = sorted(backup_dir.glob("usage_*.db"))
     assert len(remaining) == 10

@@ -63,6 +63,13 @@ def find_derived_data_dir() -> Path | None:
     return None
 
 
+def rotate_backups(backup_dir: Path, keep: int = 10) -> None:
+    """Rotate backup files, keeping the newest `keep` files."""
+    backups = sorted(backup_dir.glob("usage_*.db"), key=lambda p: p.stat().st_mtime, reverse=True)
+    for old in backups[keep:]:
+        old.unlink()
+
+
 def backup_database() -> tuple[int, Path | None]:
     """Backup usage.db and rotate old backups (keep newest 10).
 
@@ -87,10 +94,7 @@ def backup_database() -> tuple[int, Path | None]:
     shutil.copy2(str(APPGROUP_DB), str(backup_file))
     print(f"==> DB backup: {pre_count} rows → {backup_file}")
 
-    # Rotate: keep newest 10
-    backups = sorted(backup_dir.glob("usage_*.db"), key=lambda p: p.stat().st_mtime, reverse=True)
-    for old in backups[10:]:
-        old.unlink()
+    rotate_backups(backup_dir)
 
     return pre_count, backup_file
 
@@ -216,6 +220,18 @@ def install_app(build_app_path: Path) -> None:
     new_app.rename(current_app)
 
 
+def check_lost_rows(current_db: str, backup_db: str) -> int:
+    """Count rows in backup that are missing from current DB."""
+    conn = sqlite3.connect(current_db)
+    conn.execute(f"ATTACH '{backup_db}' AS backup")
+    lost = conn.execute(
+        "SELECT COUNT(*) FROM backup.usage_log "
+        "WHERE rowid NOT IN (SELECT rowid FROM main.usage_log)"
+    ).fetchone()[0]
+    conn.close()
+    return lost
+
+
 def register_and_verify(backup_file: Path | None) -> None:
     """Register with LaunchServices, verify widget, check data integrity, launch."""
     # Deregister stale copies
@@ -247,13 +263,7 @@ def register_and_verify(backup_file: Path | None) -> None:
     # Data integrity check
     if backup_file and backup_file.exists() and APPGROUP_DB.exists():
         try:
-            conn = sqlite3.connect(str(APPGROUP_DB))
-            conn.execute(f"ATTACH '{backup_file}' AS backup")
-            lost = conn.execute(
-                "SELECT COUNT(*) FROM backup.usage_log "
-                "WHERE rowid NOT IN (SELECT rowid FROM main.usage_log)"
-            ).fetchone()[0]
-            conn.close()
+            lost = check_lost_rows(str(APPGROUP_DB), str(backup_file))
         except sqlite3.Error as e:
             print(f"WARNING: Data integrity check failed: {e}")
             lost = -1
