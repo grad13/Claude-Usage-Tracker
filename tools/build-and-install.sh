@@ -3,6 +3,7 @@ set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/lib/data-protection.sh"
 APP_NAME="ClaudeUsageTracker"
 SCHEME="ClaudeUsageTracker"
 DERIVED_DATA="$HOME/Library/Developer/Xcode/DerivedData"
@@ -30,17 +31,11 @@ if [ -f "$APPGROUP_DB" ]; then
     ls -t "$BACKUP_DIR"/usage_*.db 2>/dev/null | tail -n +11 | xargs rm -f 2>/dev/null || true
 fi
 
-# Migrate data BEFORE tests (test host process can pollute App Group)
-echo "==> Pre-test migration..."
-"$SCRIPT_DIR/migrate-to-appgroup.sh"
-
-# Snapshot settings BEFORE tests
+# Snapshot settings and session cookies BEFORE tests
 APPGROUP_SETTINGS="$APPGROUP_DIR/settings.json"
-SETTINGS_HASH_BEFORE=""
-if [ -f "$APPGROUP_SETTINGS" ]; then
-    SETTINGS_HASH_BEFORE=$(shasum -a 256 "$APPGROUP_SETTINGS" | cut -d' ' -f1)
-    cp "$APPGROUP_SETTINGS" "${APPGROUP_SETTINGS}.backup"
-fi
+COOKIE_FILE="$APPGROUP_DIR/session-cookies.json"
+snapshot_file "$APPGROUP_SETTINGS"
+snapshot_file "$COOKIE_FILE"
 
 # Test gate: run unit tests before building
 echo "==> Running unit tests..."
@@ -57,15 +52,9 @@ if [ $TEST_EXIT -ne 0 ]; then
     exit 1
 fi
 
-# Verify settings were NOT corrupted by test host
-if [ -n "$SETTINGS_HASH_BEFORE" ] && [ -f "$APPGROUP_SETTINGS" ]; then
-    SETTINGS_HASH_AFTER=$(shasum -a 256 "$APPGROUP_SETTINGS" | cut -d' ' -f1)
-    if [ "$SETTINGS_HASH_BEFORE" != "$SETTINGS_HASH_AFTER" ]; then
-        echo "WARNING: Tests corrupted settings.json — restoring from backup."
-        cp "${APPGROUP_SETTINGS}.backup" "$APPGROUP_SETTINGS"
-    fi
-    rm -f "${APPGROUP_SETTINGS}.backup"
-fi
+# Verify settings and session cookies were NOT corrupted by test host
+restore_file_if_changed "$APPGROUP_SETTINGS" || true
+restore_file_if_changed "$COOKIE_FILE" || true
 
 # Deregister DerivedData app from LaunchServices (xcodebuild test registers it,
 # which causes chronod to launch the widget extension from DerivedData instead of /Applications)
@@ -77,10 +66,6 @@ done
 for dd in "$DERIVED_DATA"/WeatherCC-*/Build/Products/*/WeatherCC.app; do
     [ -d "$dd" ] && "$LSREGISTER" -u "$dd" 2>/dev/null || true
 done
-
-# Test gate: run migration tests
-echo "==> Running migration tests..."
-"$SCRIPT_DIR/test-migration.sh"
 
 # Build
 echo "==> Building $SCHEME..."
@@ -110,7 +95,20 @@ sleep 0.5
 
 # Copy to /Applications
 echo "==> Installing to $INSTALL_DIR..."
-rm -rf "$INSTALL_DIR/${APP_NAME}.app"
+# Backup current app with version number
+if [ -d "$INSTALL_DIR/${APP_NAME}.app" ]; then
+    PLIST="$INSTALL_DIR/${APP_NAME}.app/Contents/Info.plist"
+    if [ -f "$PLIST" ]; then
+        CURRENT_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" \
+            "$PLIST" 2>/dev/null || echo "unknown")
+    else
+        CURRENT_VERSION="unknown"
+    fi
+    BACKUP_APP="$INSTALL_DIR/${APP_NAME}.app.v${CURRENT_VERSION}"
+    echo "==> Backing up current app as ${APP_NAME}.app.v${CURRENT_VERSION}..."
+    rm -rf "$BACKUP_APP"
+    mv "$INSTALL_DIR/${APP_NAME}.app" "$BACKUP_APP"
+fi
 cp -R "$BUILD_APP" "$INSTALL_DIR/${APP_NAME}.app"
 rm -rf "$INSTALL_DIR/${APP_NAME}.app/Contents/PlugIns/ClaudeUsageTrackerTests.xctest"
 
@@ -159,14 +157,22 @@ else
     echo "WARNING: Could not verify widget registration path: $WIDGET_REG"
 fi
 
-# Migrate data to App Group (outside sandbox, before app launch)
-echo "==> Migrating data to App Group..."
-"$SCRIPT_DIR/migrate-to-appgroup.sh"
-
-# データ整合性チェック（情報表示のみ、バックアップは手動復旧用に保持）
-if [ -f "$APPGROUP_DB" ]; then
-    POST_COUNT=$(sqlite3 -readonly "$APPGROUP_DB" "SELECT COUNT(*) FROM usage_log;" 2>/dev/null || echo 0)
-    echo "==> Data integrity: before=$PRE_COUNT after=$POST_COUNT (backup: ${BACKUP_FILE:-none})"
+# データ整合性チェック（検出 + abort、自動復元はしない）
+if [ -f "${BACKUP_FILE:-}" ] && [ -f "$APPGROUP_DB" ]; then
+    LOST=$(sqlite3 "$APPGROUP_DB" "
+        ATTACH '${BACKUP_FILE}' AS backup;
+        SELECT COUNT(*) FROM backup.usage_log
+        WHERE rowid NOT IN (SELECT rowid FROM main.usage_log);
+    " 2>/dev/null || echo "-1")
+    if [ "$LOST" != "0" ]; then
+        echo "FATAL: $LOST rows lost during deploy!"
+        echo "       Backup available: $BACKUP_FILE"
+        echo "       To restore: cp \"$BACKUP_FILE\" \"$APPGROUP_DB\""
+        echo "       Aborting launch. Investigate before restoring."
+        exit 1
+    else
+        echo "==> Data integrity verified: no rows lost (backup: $BACKUP_FILE)"
+    fi
 fi
 
 # Launch
