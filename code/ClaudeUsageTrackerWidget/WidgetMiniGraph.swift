@@ -211,7 +211,7 @@ struct WidgetMiniGraph: View {
                 .font(.system(size: Layout.percentFontSize, weight: .semibold))
                 .foregroundStyle(.white.opacity(Layout.percentOpacity))
         )
-        let showBelow = DisplayHelpers.percentTextShowsBelow(markerY: markerY, graphHeight: h)
+        let showBelow = DisplayHelpers.percentTextShowsBelow(percent: lastPercent)
         let percentY = showBelow ? markerY + Layout.percentBelowOffset : markerY - Layout.percentAboveOffset
         let percentAnchorX = DisplayHelpers.percentTextAnchorX(markerX: markerX, graphWidth: w)
         context.draw(percentText, at: CGPoint(x: markerX, y: percentY), anchor: UnitPoint(x: percentAnchorX, y: 0.5))

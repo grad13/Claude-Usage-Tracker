@@ -49,27 +49,6 @@ h2 {
 .card.full { grid-column: 1 / -1; }
 .chart-container { position: relative; width: 100%; height: 300px; overflow: visible; }
 .chart-container.tall { height: 400px; }
-.stats {
-  display: flex;
-  gap: 24px;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
-}
-.stat {
-  background: #21262d;
-  border-radius: 6px;
-  padding: 10px 16px;
-}
-.stat-value {
-  font-size: 22px;
-  font-weight: 600;
-  color: #e6edf3;
-}
-.stat-label {
-  font-size: 11px;
-  color: #8b949e;
-  margin-top: 2px;
-}
 .heatmap-grid {
   display: grid;
   grid-template-columns: 40px repeat(24, 1fr);
@@ -212,7 +191,6 @@ h2 {
 <div id="loading">Loading data...</div>
 <div id="app" style="display:none;">
 
-<div class="stats" id="stats"></div>
 
 <div class="tab-bar">
   <button class="tab-btn active" data-tab="usage">Usage</button>
@@ -1114,31 +1092,6 @@ function renderMain(usageData, tokenData) {
   _usageData = usageData;
   _tokenData = tokenData;
   _allDeltas = computeDeltas(usageData, tokenData);
-
-  const totalCost = tokenData.reduce((s, r) => s + r.costUSD, 0);
-  const usageSpan = usageData.length > 1
-    ? ((usageData[usageData.length-1].timestamp - usageData[0].timestamp) / 3600).toFixed(1)
-    : '0';
-  const latestHourly = usageData[usageData.length - 1]?.hourly_percent;
-  const latestWeekly = usageData[usageData.length - 1]?.weekly_percent;
-  const hourlyDisplay = latestHourly != null ? latestHourly + '%' : '-';
-  const weeklyDisplay = latestWeekly != null ? latestWeekly + '%' : '-';
-
-  // Count hourly sessions in this range
-  const hourlySessionIds = new Set();
-  for (const d of usageData) {
-    if (d.hourly_resets_at != null) hourlySessionIds.add(d.hourly_resets_at);
-  }
-
-  document.getElementById('stats').innerHTML = `
-    <div class="stat"><div class="stat-value">${usageData.length}</div><div class="stat-label">Usage Records</div></div>
-    <div class="stat"><div class="stat-value">${hourlySessionIds.size}</div><div class="stat-label">5h Sessions</div></div>
-    <div class="stat"><div class="stat-value">${tokenData.length.toLocaleString()}</div><div class="stat-label">Token Records</div></div>
-    <div class="stat"><div class="stat-value">$${totalCost.toFixed(2)}</div><div class="stat-label">Total Est. Cost</div></div>
-    <div class="stat"><div class="stat-value">${usageSpan}h</div><div class="stat-label">Span</div></div>
-    <div class="stat"><div class="stat-value">${hourlyDisplay}</div><div class="stat-label">Latest 5h</div></div>
-    <div class="stat"><div class="stat-value">${weeklyDisplay}</div><div class="stat-label">Latest 7d</div></div>
-  `;
 
   // Render the currently active tab
   const activeTab = document.querySelector('.tab-btn.active')?.dataset.tab || 'usage';

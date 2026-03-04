@@ -10,96 +10,6 @@ import SQLite3
 final class AnalysisBugHuntingTests: AnalysisJSTestCase {
 
     // =========================================================
-    // MARK: - Stats display: latestFiveH/latestSevenD with % suffix
-    // =========================================================
-
-    func testStats_latestFiveH_numberShowsPercent() {
-        let result = evalJS("""
-            main(
-                [{timestamp: 1771927200, hourly_percent: 42.5, weekly_percent: 15.3}],
-                []
-            );
-            const html = document.getElementById('stats').innerHTML;
-            return html.includes('42.5%');
-        """) as? Bool
-        XCTAssertTrue(result!, "Latest 5h should show '42.5%'")
-    }
-
-    func testStats_latestFiveH_dashShouldNotShowDashPercent() {
-        // When data is empty, latestFiveH = '-'. The template shows ${latestFiveH}%
-        // which produces '-%'. This is a bug — should be just '-' or 'N/A'.
-        let result = evalJS("""
-            main([], []);
-            const html = document.getElementById('stats').innerHTML;
-            const hasDashPercent = html.includes('->%') || html.includes('-%');
-            const hasDashAlone = html.includes('>-<');
-            return { hasDashPercent, hasDashAlone };
-        """) as? [String: Any]
-        // If this test fails, the template has the '-%' display bug
-        let hasDashPercent = result?["hasDashPercent"] as? Bool ?? false
-        XCTAssertFalse(hasDashPercent,
-                       "Empty data should NOT show '-%' — should show '-' without percent sign")
-    }
-
-    func testStats_latestSevenD_nullPercent_shouldNotShowDashPercent() {
-        // Last record has null weekly_percent → latestSevenD = '-'
-        // Template shows ${latestSevenD}% → '-%'
-        let result = evalJS("""
-            main(
-                [{timestamp: 1771927200, hourly_percent: 10, weekly_percent: null}],
-                []
-            );
-            const html = document.getElementById('stats').innerHTML;
-            // Find the Latest 7d stat value
-            const match = html.match(/Latest 7d/);
-            return html.includes('-%');
-        """) as? Bool
-        XCTAssertFalse(result ?? true,
-                       "Null percent should NOT show '-%' — the % suffix should be conditional")
-    }
-
-    func testStats_latestFiveH_zeroPercent_showsZeroPercent() {
-        let result = evalJS("""
-            main(
-                [{timestamp: 1771927200, hourly_percent: 0, weekly_percent: 0}],
-                []
-            );
-            const html = document.getElementById('stats').innerHTML;
-            return html.includes('0%');
-        """) as? Bool
-        XCTAssertTrue(result!, "0% usage should display as '0%', not '-'")
-    }
-
-    // =========================================================
-    // MARK: - Stats: usageSpan format
-    // =========================================================
-
-    func testStats_usageSpan_singleRecord_shows0h() {
-        let result = evalJS("""
-            main(
-                [{timestamp: 1771927200, hourly_percent: 10, weekly_percent: 5}],
-                []
-            );
-            const html = document.getElementById('stats').innerHTML;
-            return html.includes('0h');
-        """) as? Bool
-        XCTAssertTrue(result!, "Single usage record should show '0h' span")
-    }
-
-    func testStats_usageSpan_multipleRecords_format() {
-        let result = evalJS("""
-            main(
-                [{timestamp: 1771927200, hourly_percent: 10, weekly_percent: 5},
-                 {timestamp: 1771939800, hourly_percent: 20, weekly_percent: 8}],
-                []
-            );
-            const html = document.getElementById('stats').innerHTML;
-            return html.includes('3.5h');
-        """) as? Bool
-        XCTAssertTrue(result!, "Usage span 10:00→13:30 should show '3.5h'")
-    }
-
-    // =========================================================
     // MARK: - renderUsageTab chart config
     // =========================================================
 
@@ -322,31 +232,6 @@ final class AnalysisBugHuntingTests: AnalysisJSTestCase {
     // =========================================================
     // MARK: - Main function: tokenData.length.toLocaleString() vs usageData.length
     // =========================================================
-
-    func testStats_tokenCount_usesLocaleString() {
-        let result = evalJS("""
-            // Create data with 1234 token records to test toLocaleString
-            const tokenData = Array.from({length: 1234}, (_, i) => ({
-                timestamp: '2026-02-24T10:00:00Z', costUSD: 0.01
-            }));
-            main(
-                [{timestamp: 1771927200, hourly_percent: 10, weekly_percent: 5}],
-                tokenData
-            );
-            const html = document.getElementById('stats').innerHTML;
-            // toLocaleString would produce '1,234' in many locales
-            // Plain .length would produce '1234'
-            const hasFormatted = html.includes('1,234');
-            const hasPlain = html.includes('>1234<');
-            return { hasFormatted, hasPlain };
-        """) as? [String: Any]
-        // At least one format should appear in the stats
-        let hasFormatted = result?["hasFormatted"] as? Bool ?? false
-        let hasPlain = result?["hasPlain"] as? Bool ?? false
-        XCTAssertTrue(hasFormatted || hasPlain,
-                      "Token count should appear in stats (either formatted or plain)")
-    }
-
 
     // =========================================================
     // MARK: - computeDeltas hour uses local time

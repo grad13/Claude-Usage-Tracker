@@ -78,39 +78,44 @@ final class DisplayHelpersRemainingTextTests: XCTestCase {
 
     /// 24h or more: "4d 21h"
     func testRemainingText_4days21hours() {
+        let now = Date()
         let interval: TimeInterval = (4 * 24 + 21) * 3600
-        let future = Date().addingTimeInterval(interval)
-        let result = DisplayHelpers.remainingText(until: future)
+        let future = now.addingTimeInterval(interval)
+        let result = DisplayHelpers.remainingText(until: future, now: now)
         XCTAssertEqual(result, "4d 21h",
             "4d21h interval must format as '4d 21h'")
     }
 
     /// Exactly 24h → "1d 0h"
     func testRemainingText_exactly24hours() {
-        let future = Date().addingTimeInterval(24 * 3600)
-        let result = DisplayHelpers.remainingText(until: future)
+        let now = Date()
+        let future = now.addingTimeInterval(24 * 3600)
+        let result = DisplayHelpers.remainingText(until: future, now: now)
         XCTAssertEqual(result, "1d 0h")
     }
 
     /// 2h 35m
     func testRemainingText_2hours35minutes() {
+        let now = Date()
         let interval: TimeInterval = 2 * 3600 + 35 * 60
-        let future = Date().addingTimeInterval(interval)
-        let result = DisplayHelpers.remainingText(until: future)
+        let future = now.addingTimeInterval(interval)
+        let result = DisplayHelpers.remainingText(until: future, now: now)
         XCTAssertEqual(result, "2h 35m")
     }
 
     /// 1h 0m
     func testRemainingText_exactly1hour() {
-        let future = Date().addingTimeInterval(3600)
-        let result = DisplayHelpers.remainingText(until: future)
+        let now = Date()
+        let future = now.addingTimeInterval(3600)
+        let result = DisplayHelpers.remainingText(until: future, now: now)
         XCTAssertEqual(result, "1h 0m")
     }
 
     /// 19m — "0h" must be omitted
     func testRemainingText_19minutes_noZeroHourPrefix() {
-        let future = Date().addingTimeInterval(19 * 60)
-        let result = DisplayHelpers.remainingText(until: future)
+        let now = Date()
+        let future = now.addingTimeInterval(19 * 60)
+        let result = DisplayHelpers.remainingText(until: future, now: now)
         XCTAssertEqual(result, "19m",
             "When hours=0, the '0h' prefix must be omitted per spec (2026-02-22 change)")
     }
@@ -125,15 +130,17 @@ final class DisplayHelpersRemainingTextTests: XCTestCase {
 
     /// Expired (past date)
     func testRemainingText_expired_pastDate() {
-        let past = Date().addingTimeInterval(-1)
-        let result = DisplayHelpers.remainingText(until: past)
+        let now = Date()
+        let past = now.addingTimeInterval(-1)
+        let result = DisplayHelpers.remainingText(until: past, now: now)
         XCTAssertEqual(result, "expired")
     }
 
     /// Spec: "0h 19m" → "19m" (regression guard for 2026-02-22 change)
     func testRemainingText_doesNotReturn0hPrefix() {
-        let future = Date().addingTimeInterval(19 * 60 + 30)
-        let result = DisplayHelpers.remainingText(until: future)
+        let now = Date()
+        let future = now.addingTimeInterval(19 * 60 + 30)
+        let result = DisplayHelpers.remainingText(until: future, now: now)
         XCTAssertFalse(result.hasPrefix("0h"),
             "Spec change 2026-02-22: '0h Xm' format is banned; must be just 'Xm'")
     }

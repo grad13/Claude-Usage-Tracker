@@ -425,37 +425,18 @@ final class NowXFractionTests: XCTestCase {
 
 final class MarkerTextPositioningTests: XCTestCase {
 
-    // MARK: - percentTextShowsBelow (vertical position)
-    // Rule: near top (< topMargin) OR lower half (> graphHeight/2) → below marker
+    // MARK: - percentTextShowsBelow (percent-based: > 80% → below)
 
-    func testMarkerTextPosition_nearTop_placedBelow() {
-        // markerY = 5 (< 14 default topMargin) → below
-        XCTAssertTrue(DisplayHelpers.percentTextShowsBelow(markerY: 5, graphHeight: 80))
+    func testMarkerTextPosition_above80_placedBelow() {
+        XCTAssertTrue(DisplayHelpers.percentTextShowsBelow(percent: 90))
     }
 
-    func testMarkerTextPosition_atTop_placedBelow() {
-        // markerY = 0 → below
-        XCTAssertTrue(DisplayHelpers.percentTextShowsBelow(markerY: 0, graphHeight: 80))
+    func testMarkerTextPosition_exactly80_placedAbove() {
+        XCTAssertFalse(DisplayHelpers.percentTextShowsBelow(percent: 80))
     }
 
-    func testMarkerTextPosition_upperHalfAwayFromTop_placedAbove() {
-        // markerY = 20 (>= 14, upper half 20 <= 40) → above
-        XCTAssertFalse(DisplayHelpers.percentTextShowsBelow(markerY: 20, graphHeight: 80))
-    }
-
-    func testMarkerTextPosition_lowerHalf_placedBelow() {
-        // markerY = 50, graphHeight = 80 → 50 > 40 (lower half) → below
-        XCTAssertTrue(DisplayHelpers.percentTextShowsBelow(markerY: 50, graphHeight: 80))
-    }
-
-    func testMarkerTextPosition_exactlyAtHalfHeight_lowerHalfBoundary() {
-        // markerY = 40, graphHeight = 80 → 40 > 40 is false, 40 >= 14 → above
-        XCTAssertFalse(DisplayHelpers.percentTextShowsBelow(markerY: 40, graphHeight: 80))
-    }
-
-    func testMarkerTextPosition_justBelowHalf_placedBelow() {
-        // markerY = 41, graphHeight = 80 → 41 > 40 → lower half → below
-        XCTAssertTrue(DisplayHelpers.percentTextShowsBelow(markerY: 41, graphHeight: 80))
+    func testMarkerTextPosition_below80_placedAbove() {
+        XCTAssertFalse(DisplayHelpers.percentTextShowsBelow(percent: 47))
     }
 
     // MARK: - percentTextAnchorX (horizontal anchor)

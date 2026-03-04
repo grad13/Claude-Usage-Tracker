@@ -66,51 +66,6 @@ final class AnalysisTemplateRenderTests: AnalysisJSTestCase {
     // MARK: - main() / renderMain() (real template)
     // =========================================================
 
-    func testRealTemplate_main_setsStatsHTML() {
-        let result = evalJS("""
-            const usageData = [
-                {timestamp: 1771927200, hourly_percent: 10, weekly_percent: 5},
-                {timestamp: 1771939800, hourly_percent: 42.5, weekly_percent: 15.3},
-            ];
-            const tokenData = [
-                {timestamp: '2026-02-24T10:02:00Z', costUSD: 1.50},
-                {timestamp: '2026-02-24T11:00:00Z', costUSD: 2.00},
-            ];
-            main(usageData, tokenData);
-            const statsHTML = document.getElementById('stats').innerHTML;
-            return {
-                hasUsageCount: statsHTML.includes('2'),
-                hasTokenCount: statsHTML.includes('2'),
-                hasTotalCost: statsHTML.includes('3.50'),
-                hasUsageSpan: statsHTML.includes('3.5'),
-                hasLatest5h: statsHTML.includes('42.5'),
-                hasLatest7d: statsHTML.includes('15.3'),
-                appVisible: document.getElementById('app').style.display !== 'none',
-                loadingHidden: document.getElementById('loading').style.display === 'none',
-            };
-        """) as? [String: Any]
-        XCTAssertTrue(result?["hasUsageCount"] as? Bool ?? false, "Stats must show usage record count")
-        XCTAssertTrue(result?["hasTotalCost"] as? Bool ?? false, "Stats must show total cost $3.50")
-        XCTAssertTrue(result?["hasUsageSpan"] as? Bool ?? false, "Stats must show usage span 3.5h")
-        XCTAssertTrue(result?["hasLatest5h"] as? Bool ?? false, "Stats must show latest 5h%")
-        XCTAssertTrue(result?["hasLatest7d"] as? Bool ?? false, "Stats must show latest 7d%")
-        XCTAssertTrue(result?["appVisible"] as? Bool ?? false, "App div must be visible after main()")
-        XCTAssertTrue(result?["loadingHidden"] as? Bool ?? false, "Loading div must be hidden after main()")
-    }
-
-    func testRealTemplate_main_emptyData_showsDash() {
-        let result = evalJS("""
-            main([], []);
-            const statsHTML = document.getElementById('stats').innerHTML;
-            return {
-                hasUsageCount: statsHTML.includes('>0<'),
-                hasDash: statsHTML.includes('-'),
-            };
-        """) as? [String: Any]
-        XCTAssertTrue(result?["hasDash"] as? Bool ?? false,
-                      "Empty data should show dash for latest values")
-    }
-
     func testRealTemplate_main_setsGlobalVariables() {
         let result = evalJS("""
             const usageData = [
@@ -281,30 +236,6 @@ final class AnalysisTemplateRenderTests: AnalysisJSTestCase {
     // =========================================================
     // MARK: - Stats computation edge cases (real template)
     // =========================================================
-
-    func testRealTemplate_main_totalCostIsSum() {
-        let result = evalJS("""
-            main(
-                [{timestamp: 1771927200, hourly_percent: 10, weekly_percent: 5}],
-                [{timestamp: 'a', costUSD: 1.50}, {timestamp: 'b', costUSD: 2.00}, {timestamp: 'c', costUSD: 0.75}]
-            );
-            return document.getElementById('stats').innerHTML.includes('4.25');
-        """) as? Bool
-        XCTAssertTrue(result!, "Total cost should be $4.25 (1.50 + 2.00 + 0.75)")
-    }
-
-    func testRealTemplate_main_usageSpan_hours() {
-        let result = evalJS("""
-            main(
-                [{timestamp: 1771927200, hourly_percent: 10, weekly_percent: 5},
-                 {timestamp: 1771939800, hourly_percent: 20, weekly_percent: 8}],
-                []
-            );
-            return document.getElementById('stats').innerHTML.includes('3.5');
-        """) as? Bool
-        XCTAssertTrue(result!, "Usage span should be 3.5h (10:00 to 13:30)")
-    }
-
 
     // =========================================================
     // MARK: - Session navigation helpers (real template)

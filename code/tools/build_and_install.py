@@ -177,8 +177,8 @@ def install_app(build_app_path: Path) -> None:
     if new_app.exists():
         shutil.rmtree(str(new_app))
 
-    # Copy new build to .new
-    shutil.copytree(str(build_app_path), str(new_app))
+    # Copy new build to .new (ditto preserves macOS metadata including bundle bit)
+    subprocess.run(["ditto", str(build_app_path), str(new_app)], check=True)
 
     # Remove test bundle from .new
     test_xctest = new_app / "Contents/PlugIns/ClaudeUsageTrackerTests.xctest"

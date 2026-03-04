@@ -165,11 +165,6 @@ final class AnalysisExporterTests: XCTestCase {
         XCTAssertTrue(html.contains("id=\"sessionSelect\""))
     }
 
-    func testHtmlTemplate_hasStatsContainer() {
-        let html = AnalysisExporter.htmlTemplate
-        XCTAssertTrue(html.contains("id=\"stats\""))
-    }
-
     func testHtmlTemplate_hasLoadingIndicator() {
         let html = AnalysisExporter.htmlTemplate
         XCTAssertTrue(html.contains("id=\"loading\""))
