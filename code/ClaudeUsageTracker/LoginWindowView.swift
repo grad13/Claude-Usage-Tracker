@@ -24,6 +24,7 @@ struct LoginWindowView: View {
             set: { isPresented in
                 if !isPresented {
                     viewModel.closePopup()
+                    viewModel.handlePopupClosed()
                 }
             }
         )) {

@@ -138,6 +138,7 @@ extension UsageViewModel {
             if isLoggedIn {
                 try? await Task.sleep(nanoseconds: 500_000_000)
                 closePopup()
+                handleSessionDetected()
             }
         }
     }
@@ -190,9 +191,10 @@ extension UsageViewModel {
                 for cookie in cookies {
                     dataStore.httpCookieStore.delete(cookie)
                 }
-                // Stage 3: Reload usage page
+                // Stage 3: Reload usage page and restart login detection
                 Task { @MainActor in
                     self?.loadUsagePage()
+                    self?.startLoginPolling()
                 }
             }
         }
