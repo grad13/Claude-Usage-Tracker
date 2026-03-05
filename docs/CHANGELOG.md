@@ -55,7 +55,7 @@
 - `rollback-rename.sh`: Rollback script for rename deployment
 
 ### Fixed
-- **Widget App Group support**: Set `DEVELOPMENT_TEAM=C3WA2TT222` in pbxproj, add `-allowProvisioningUpdates` to xcodebuild. Widget can now read data from new App Group
+- **Widget App Group support**: Set `DEVELOPMENT_TEAM` in pbxproj, add `-allowProvisioningUpdates` to xcodebuild. Widget can now read data from new App Group
 - **usage.db migration**: Change from INSERT OR IGNORE merge to force-copy (`cp -f`). Guarantee exact match with old App Group
 - **build-and-install.sh**: Remove automatic merge from backup (conflicts with force-copy)
 
@@ -76,7 +76,7 @@
 ### Changed
 - **Git-track deploy scripts + compilation support**
   - Move `code/_tools/` → `tools/` (now git-tracked)
-  - `build-and-install.sh`: Update APP_NAME / SCHEME / xcodeproj / xctest / appex / pluginkit ID to renamed ClaudeUsageTracker. Add `DEVELOPMENT_TEAM=C3WA2TT222`
+  - `build-and-install.sh`: Update APP_NAME / SCHEME / xcodeproj / xctest / appex / pluginkit ID to renamed ClaudeUsageTracker. Add `DEVELOPMENT_TEAM`
   - Update usage comments in scripts to current paths
   - Remove stale `code/WeatherCC.xcodeproj` (empty shell)
 
