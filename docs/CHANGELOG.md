@@ -3,6 +3,14 @@
 
 ## [Unreleased]
 
+## [0.9.10] - 2026-03-06
+
+### Changed
+- Extracted GraphCalc to Shared framework (tests-to-code C1 fix)
+- Removed test logic reimplementations — tests now call production code directly
+- Split S6 test files by responsibility (40 test files analyzed)
+- Cleaned up transient skill analysis artifacts
+
 ## [0.9.9] - 2026-03-06
 
 ### Fixed
