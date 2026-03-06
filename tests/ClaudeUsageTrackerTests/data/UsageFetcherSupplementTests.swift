@@ -12,11 +12,11 @@
 //   - parse(jsonString:) Format A/B disambiguation (__error with auth substrings)
 //   - parse(jsonString:) rawJSON preserved for Format A
 //   - parse(jsonString:) decodingFailed path (non-string body)
-//   - readOrgId / hasValidSession / fetch: WebView-dependent — skipped with rationale
+//   - hasValidSession / fetch: WebView-dependent — skipped with rationale
 //
 // NOTE on WebView-dependent functions:
-//   readOrgId(from:), hasValidSession(using:), and fetch(using:) all require a live
-//   WKWebView with an active browser session (cookies, JavaScript context).
+//   hasValidSession(using:) and fetch(using:) require a live WKWebView with an
+//   active browser session (cookies, JavaScript context).
 //   They cannot be tested without a real WebView because:
 //     1. WKWebView cannot be meaningfully stubbed at the interface level; the methods
 //        take a concrete WKWebView, not a protocol.
@@ -243,25 +243,11 @@ final class UsageFetcherSupplementTests: XCTestCase {
         }
     }
 
-    // MARK: - parseUnixTimestamp — additional edge cases
-
-    /// Spec: parseUnixTimestamp accepts Double and Int only. Negative timestamp is valid.
-    func testParseUnixTimestamp_negativeDouble() {
-        let date = UsageFetcher.parseUnixTimestamp(-1.0)
+    /// parseResetsAt accepts negative Double timestamps (before Unix epoch).
+    func testParseResetsAt_negativeDouble() {
+        let date = UsageFetcher.parseResetsAt(-1.0)
         XCTAssertNotNil(date, "Negative Double should produce a Date before epoch")
         XCTAssertEqual(date!.timeIntervalSince1970, -1.0, accuracy: 0.001)
-    }
-
-    /// Spec: parseUnixTimestamp rejects String even if its content is numeric.
-    func testParseUnixTimestamp_numericString_isNil() {
-        XCTAssertNil(UsageFetcher.parseUnixTimestamp("1740000000.0"),
-                     "Numeric string is not Double or Int — must return nil")
-    }
-
-    /// Spec: parseUnixTimestamp rejects Bool (not Double or Int).
-    func testParseUnixTimestamp_bool_isNil() {
-        XCTAssertNil(UsageFetcher.parseUnixTimestamp(false),
-                     "Bool is not a valid Unix timestamp type")
     }
 
     // MARK: - trimFractionalSeconds — boundary: exactly 4 digits
@@ -298,12 +284,7 @@ final class UsageFetcherSupplementTests: XCTestCase {
                        "decodingFailed must have a non-empty errorDescription")
     }
 
-    // MARK: - Skipped: readOrgId, hasValidSession, fetch (WebView-dependent)
-    //
-    // readOrgId(from:WKWebView):
-    //   - Stage 1 reads WKHTTPCookieStore.allCookies() — requires live WKWebView
-    //   - Stage 2 executes document.cookie via callAsyncJavaScript — requires live WKProcess
-    //   - Cannot be unit-tested without refactoring to accept a CookieStoreProvider protocol
+    // MARK: - Skipped: hasValidSession, fetch (WebView-dependent)
     //
     // hasValidSession(using:WKWebView):
     //   - Reads WKHTTPCookieStore.allCookies() and checks sessionKey cookie expiry

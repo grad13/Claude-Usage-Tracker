@@ -1,6 +1,6 @@
 ---
 Created: 2026-02-26
-Updated: 2026-03-03
+Updated: 2026-03-07
 Checked: -
 Deprecated: -
 Format: spec-v2.1
@@ -58,19 +58,6 @@ Computed property on `UsageFetchError`. Determines whether the error is authenti
 - For `decodingFailed`: always `false`
 
 Used by `UsageViewModel` as the criterion for setting `isAutoRefreshEnabled` to `false`.
-
-## readOrgId function
-
-`UsageFetcher.readOrgId(from:)` -- utility function for obtaining the org ID from the Swift side.
-
-- **Signature**: `@MainActor static func readOrgId(from webView: WKWebView) async throws -> String`
-- **Purpose**: Used when the org ID is needed on the Swift side, independently of `fetch()`
-- **Retrieval stages**:
-  1. **Stage 1: Swift Cookie Store** -- searches for a `lastActiveOrg` cookie (domain `.claude.ai`) via `webView.configuration.websiteDataStore.httpCookieStore.allCookies()`
-  2. **Stage 2: JS document.cookie** -- extracts `lastActiveOrg=` from `document.cookie` via JavaScript
-- **Error**: If both stages fail, throws `UsageFetchError.scriptFailed("Missing organization id")`
-
-Note: The JS script within `fetch()` has its own 4-stage fallback and does not use `readOrgId`. The two implementations are independent.
 
 ## hasValidSession function
 
@@ -166,36 +153,6 @@ Errors caught by the JS script are returned as `{"__error": "error message"}`. `
 `parseResetsAt(_:)` integrates these and accepts both numeric (Unix timestamp) and string (ISO 8601) values:
 - `Double` or `Int` -> `Date(timeIntervalSince1970:)`
 - `String` -> `parseResetDate()`
-
-### parseUnixTimestamp() helper
-
-A Unix timestamp-specific parse function that exists independently of `parseResetsAt(_:)`.
-
-```swift
-/// Parse a Unix timestamp (seconds since epoch) to Date.
-static func parseUnixTimestamp(_ value: Any?) -> Date? {
-    if let ts = value as? Double {
-        return Date(timeIntervalSince1970: ts)
-    }
-    if let ts = value as? Int {
-        return Date(timeIntervalSince1970: Double(ts))
-    }
-    return nil
-}
-```
-
-- **Signature**: `static func parseUnixTimestamp(_ value: Any?) -> Date?`
-- **Parameter**: `value: Any?` -- accepts `Double` or `Int`
-- **Return value**:
-  - `Double` -> `Date(timeIntervalSince1970: ts)`
-  - `Int` -> `Date(timeIntervalSince1970: Double(ts))`
-  - Anything else / `nil` -> `nil`
-- **Relationship to `parseResetsAt(_:)`**: `parseResetsAt` accepts both numeric (Unix timestamp) and string (ISO 8601) values, whereas `parseUnixTimestamp` is a dedicated function for numeric values only. The internal implementation for the numeric case is identical.
-
-| Function | Supported formats |
-|----------|-------------------|
-| `parseUnixTimestamp(_:)` | Unix timestamp (`Double` / `Int`) only |
-| `parseResetsAt(_:)` | Unix timestamp (`Double` / `Int`) + ISO 8601 string |
 
 ## Org ID retrieval within JS (4-stage fallback)
 

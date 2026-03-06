@@ -1,27 +1,8 @@
-// meta: created=2026-02-21 updated=2026-03-06 checked=2026-02-21
+// meta: created=2026-02-21 updated=2026-03-07 checked=2026-02-21
 import Foundation
 import WebKit
 
 enum UsageFetcher {
-
-    // MARK: - Org ID (Swift cookie store + JS document.cookie fallback)
-
-    @MainActor
-    static func readOrgId(from webView: WKWebView) async throws -> String {
-        // Stage 1: Swift cookie store
-        let cookies = await webView.configuration.websiteDataStore.httpCookieStore.allCookies()
-        if let orgCookie = cookies.first(where: {
-            $0.name == "lastActiveOrg" && $0.domain.hasSuffix("claude.ai")
-        }) {
-            return orgCookie.value
-        }
-        // Stage 2: JS document.cookie fallback
-        let js = "document.cookie.split('; ').find(c => c.startsWith('lastActiveOrg='))?.split('=')[1] || ''"
-        if let result = try? await webView.evaluateJavaScript(js) as? String, !result.isEmpty {
-            return result
-        }
-        throw UsageFetchError.scriptFailed("Missing organization id")
-    }
 
     // MARK: - Public
 
@@ -224,17 +205,6 @@ enum UsageFetcher {
         if let ts = value as? Int { return Date(timeIntervalSince1970: Double(ts)) }
         // Format A: ISO 8601 string
         if let str = value as? String { return parseResetDate(str) }
-        return nil
-    }
-
-    /// Parse a Unix timestamp (seconds since epoch) to Date.
-    static func parseUnixTimestamp(_ value: Any?) -> Date? {
-        if let ts = value as? Double {
-            return Date(timeIntervalSince1970: ts)
-        }
-        if let ts = value as? Int {
-            return Date(timeIntervalSince1970: Double(ts))
-        }
         return nil
     }
 

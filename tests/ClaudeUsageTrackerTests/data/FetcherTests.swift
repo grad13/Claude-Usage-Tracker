@@ -146,30 +146,6 @@ final class FetcherTests: XCTestCase {
         XCTAssertEqual(result!, 75.0, accuracy: 0.001)
     }
 
-    // MARK: - parseUnixTimestamp
-
-    func testParseUnixTimestamp_valid() {
-        let date = UsageFetcher.parseUnixTimestamp(1740000000.0)
-        XCTAssertNotNil(date)
-        XCTAssertEqual(date!.timeIntervalSince1970, 1740000000.0, accuracy: 0.001)
-    }
-
-    func testParseUnixTimestamp_nil() {
-        XCTAssertNil(UsageFetcher.parseUnixTimestamp(nil))
-    }
-
-    func testParseUnixTimestamp_string() {
-        // String value should not be parsed (type mismatch)
-        XCTAssertNil(UsageFetcher.parseUnixTimestamp("1740000000"))
-    }
-
-    func testParseUnixTimestamp_int() {
-        // API may return Int instead of Double
-        let date = UsageFetcher.parseUnixTimestamp(1740000000 as Int)
-        XCTAssertNotNil(date)
-        XCTAssertEqual(date!.timeIntervalSince1970, 1740000000.0, accuracy: 0.001)
-    }
-
     // MARK: - parse(jsonString:) — testable without WebView
 
     func testParse_validAPIResponse() throws {
