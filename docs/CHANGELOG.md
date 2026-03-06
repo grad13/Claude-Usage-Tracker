@@ -3,6 +3,25 @@
 
 ## [Unreleased]
 
+## [0.9.8] - 2026-03-06
+
+### Added
+- 4-mode session navigation: Session Weekly/Hourly, Calendrical Week/Day
+- Hourly session bands as chart background (alternating stripes per hourly session)
+- Future zone stripes for Session Hourly mode
+- Time ticks and hour grid lines for short time scales
+
+### Changed
+- Unified X-axis label rendering via plugin across all modes
+- Chart fills viewport height dynamically (no fixed height)
+- Removed chart panel border/background for cleaner look
+- Disabled Chart.js animation for instant rendering
+- Show start/end times in Hourly Session dropdown labels
+
+### Removed
+- "Usage Timeline" heading
+- Day-of-week from Calendrical Day labels
+
 ## [0.9.7] - 2026-03-06
 
 ### Removed
