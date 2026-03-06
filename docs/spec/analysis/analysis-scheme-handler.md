@@ -144,6 +144,11 @@ ORDER BY u.timestamp ASC
 | UT-M03 | `sqlite3_step` does not return `SQLITE_ROW` | `"{}"` (Data) | Table is empty |
 | UT-M04 | Normal (data present) | `{ latestSevenDayResetsAt: Int, latestTimestamp: Int, oldestTimestamp: Int }` | NULL becomes `null` |
 | UT-M05 | weekly_sessions is empty (NULL from LEFT JOIN) | `{ latestSevenDayResetsAt: null, latestTimestamp: Int, oldestTimestamp: Int }` | LEFT JOIN returns SQLITE_ROW as long as usage_log has data |
+| UT-M06 | usage_log has data, weekly/hourly_sessions have data | `{ latestSevenDayResetsAt, latestTimestamp, oldestTimestamp, weeklySessions: [...], hourlySessions: [...] }` | All fields output |
+| UT-M07 | usage_log has data, sessions tables empty | `{ latestSevenDayResetsAt, latestTimestamp, oldestTimestamp, weeklySessions: [], hourlySessions: [] }` | hasUsageData=true so keys exist (empty arrays) |
+| UT-M08 | usage_log empty, sessions tables have data | `{ weeklySessions: [...], hourlySessions: [...] }` | hasUsageData=false but sessions non-empty |
+| UT-M09 | usage_log empty, sessions tables empty | `{}` | All empty → result is empty |
+| UT-M10 | sessions id or resets_at is NULL | Key omitted from session object | `if let` guard skips nil keys |
 
 **SQL:**
 ```sql
@@ -161,6 +166,49 @@ LEFT JOIN weekly_sessions ws ON u.weekly_session_id = ws.id
 | 2 | `MIN(u.timestamp)` | `oldestTimestamp` | `Int?` (epoch) |
 
 All columns are read via `columnInt`; nil values are converted to `NSNull()` for JSON serialization.
+
+### queryMetaJSON: hasUsageData Condition Flag
+
+`queryMetaJSON` uses an internal flag `hasUsageData: Bool` to control the response structure based on the aggregate query result.
+
+| Condition | hasUsageData | Notes |
+|-----------|-------------|-------|
+| `sqlite3_step` does not return `SQLITE_ROW` | `false` | usage_log table is empty |
+| `SQLITE_ROW` but both `latestTimestamp` and `oldestTimestamp` are nil | `false` | Aggregate result is all NULL |
+| `SQLITE_ROW` and `latestTimestamp` or `oldestTimestamp` is non-nil | `true` | usage_log has data |
+
+Aggregate meta fields (`latestSevenDayResetsAt`, `latestTimestamp`, `oldestTimestamp`) are only added to `result` when `hasUsageData == true`.
+
+### queryMetaJSON: Session List (weeklySessions / hourlySessions)
+
+After the aggregate query, session lists are fetched from `weekly_sessions` and `hourly_sessions` tables.
+
+**SQL (per table):**
+
+```sql
+SELECT id, resets_at FROM weekly_sessions ORDER BY resets_at ASC
+SELECT id, resets_at FROM hourly_sessions ORDER BY resets_at ASC
+```
+
+**JSON key mapping:**
+
+| JSON Key | Table |
+|----------|-------|
+| `weeklySessions` | `weekly_sessions` |
+| `hourlySessions` | `hourly_sessions` |
+
+Each session element contains `id` (Int?) and `resets_at` (Int?, epoch). Keys with nil values are omitted from the object (not NSNull).
+
+**Output condition:**
+
+| hasUsageData | sessions array | Key added to result |
+|-------------|--------------|---------------------|
+| `true` | empty | Yes (empty array `[]`) |
+| `true` | non-empty | Yes |
+| `false` | empty | No (key omitted) |
+| `false` | non-empty | Yes |
+
+Condition: `hasUsageData || !sessions.isEmpty`
 
 ### Date Range Filter (from / to Parameters)
 

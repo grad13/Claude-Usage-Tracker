@@ -1,10 +1,10 @@
 ---
 Created: 2026-02-26
-Updated: 2026-03-03
+Updated: 2026-03-06
 Checked: -
 Deprecated: -
 Format: spec-v2.1
-Source: code/ClaudeUsageTracker/UsageViewModel.swift, code/ClaudeUsageTracker/UsageViewModel+Predict.swift, code/ClaudeUsageTracker/UsageViewModel+Settings.swift
+Source: code/ClaudeUsageTracker/UsageViewModel.swift, code/ClaudeUsageTracker/UsageViewModel+Session.swift, code/ClaudeUsageTracker/UsageViewModel+Settings.swift, code/ClaudeUsageTracker/UsageViewModel+Debug.swift
 ---
 
 # UsageViewModel Lifecycle
@@ -14,8 +14,9 @@ Source: code/ClaudeUsageTracker/UsageViewModel.swift, code/ClaudeUsageTracker/Us
 | Source | Runtime |
 |--------|---------|
 | code/ClaudeUsageTracker/UsageViewModel.swift | macOS |
-| code/ClaudeUsageTracker/UsageViewModel+Predict.swift | macOS |
+| code/ClaudeUsageTracker/UsageViewModel+Session.swift | macOS |
 | code/ClaudeUsageTracker/UsageViewModel+Settings.swift | macOS |
+| code/ClaudeUsageTracker/UsageViewModel+Debug.swift | macOS |
 
 | Field | Value |
 |-------|-------|
@@ -27,13 +28,11 @@ Source: code/ClaudeUsageTracker/UsageViewModel.swift, code/ClaudeUsageTracker/Us
 `UsageViewModel.init()` performs initialization in the following order. Everything runs on `@MainActor`.
 
 ```
-1. Dependency injection (8 protocols)
+1. Dependency injection (6 protocols)
    - fetcher: UsageFetching
    - settingsStore: SettingsStoring
    - usageStore: UsageStoring
-   - snapshotWriter: SnapshotWriting
    - widgetReloader: WidgetReloading
-   - tokenSync: TokenSyncing
    - loginItemManager: LoginItemManaging
    - alertChecker: AlertChecking
 
@@ -53,10 +52,8 @@ Source: code/ClaudeUsageTracker/UsageViewModel.swift, code/ClaudeUsageTracker/Us
 5. Synchronous operations (executed sequentially)
    a. reloadHistory()              ← Load history from SQLite into memory
    b. SQLiteBackup.perform()       ← Back up usage DB (details below)
-   c. SQLiteBackup.perform()       ← Back up snapshot DB (App Group path)
-   d. fetchPredict()               ← JSONL cost estimation (async via Task.detached)
-   e. syncLoginItem()              ← Sync auto-launch setting via SMAppService
-   f. startCookieObservation()     ← Register WKHTTPCookieStoreObserver
+   c. syncLoginItem()              ← Sync auto-launch setting via SMAppService
+   d. startCookieObservation()     ← Register WKHTTPCookieStoreObserver
 
 6. Asynchronous operations (Task)
    a. restoreSessionCookies()      ← Restore cookies from App Group
@@ -66,12 +63,11 @@ Source: code/ClaudeUsageTracker/UsageViewModel.swift, code/ClaudeUsageTracker/Us
 
 ## SQLiteBackup at Launch
 
-SQLite database backups are performed in init() steps 5b-5c.
+SQLite database backup is performed in init() step 5b.
 
-- **Target DBs**: usage DB (`usageStore.dbPath`), snapshot DB (`AppGroupConfig.snapshotDBPath`)
+- **Target DB**: usage DB (`usageStore.dbPath`)
 - **Timing**: Once at app launch (synchronous within init)
 - **Retention period**: 3 days (handled by SQLiteBackup logic)
-- **Condition**: Snapshot DB backup runs only if `AppGroupConfig.snapshotDBPath` is non-nil
 
 ## fetch() vs fetchSilently() Differences
 
@@ -86,14 +82,11 @@ Both methods call `fetcher.fetch(from: webView)`, but differ in the following wa
 | **On auth error** | `isAutoRefreshEnabled = false` | Same |
 | **Debug logging** | None | Logs start, success, and errors |
 
-Shared success processing (within `applyResult`):
+Shared success processing (within `applyResult`, 4 phases):
 1. Update `@Published` properties (5h/7d percent, resetsAt)
-2. Save to SQLite via `usageStore.save(result)`
+2. Save to SQLite via `usageStore.save(result)` + `reloadHistory()`
 3. Evaluate thresholds and send notifications via `alertChecker.checkAlerts(result:settings:)`
-4. Reload history via `reloadHistory()`
-5. Write widget snapshot via `snapshotWriter.saveAfterFetch()`
-6. Update widget via `widgetReloader.reloadAllTimelines()`
-7. Re-run JSONL cost estimation via `fetchPredict()`
+4. Update widget via `widgetReloader.reloadAllTimelines()`
 
 ## statusText Calculation Logic
 
@@ -158,19 +151,6 @@ Log file details:
 - **Timestamp**: Default `ISO8601DateFormatter()` format (e.g., `2026-02-26T12:34:56Z`)
 - **Rotation**: None (cleared on each launch)
 
-## fetchPredict() Timing and Behavior
-
-- **Trigger**: At `init()` and within `applyResult()` (recalculated on every successful fetch)
-- **Execution thread**: Runs on a background thread outside MainActor via `Task.detached`
-- **Processing flow**:
-  1. Check existence of `~/.claude/projects/` directory
-  2. Scan and sync JSONL files via `tokenSync.sync(directories:)`
-  3. Load records from the past 8 days (`cutoff = -8 * 24 * 3600`)
-  4. Calculate costs for 5h / 168h (7d) windows via `CostEstimator.estimate()`
-  5. Update `@Published` properties via `MainActor.run`
-  6. Update snapshot and widget
-- **nil handling**: Sets `nil` when the directory doesn't exist or when the cost is 0
-
 ## @Published Properties
 
 | Property | Type | Initial Value | Description |
@@ -186,8 +166,7 @@ Log file details:
 | `popupWebView` | `WKWebView?` | `nil` | OAuth popup WebView |
 | `fiveHourHistory` | `[UsageStore.DataPoint]` | `[]` | 5-hour window history data |
 | `sevenDayHistory` | `[UsageStore.DataPoint]` | `[]` | 7-day window history data |
-| `predictFiveHourCost` | `Double?` | `nil` | 5-hour window estimated cost (USD) |
-| `predictSevenDayCost` | `Double?` | `nil` | 7-day window estimated cost (USD) |
+
 
 ## Internal State Properties (non-@Published)
 
@@ -279,7 +258,7 @@ syncLoginItem()
 #### Call Sites
 
 - `toggleStartAtLogin()`: Called immediately after toggling `startAtLogin` via UI interaction
-- `init()` step 5e: Called at launch to sync the setting value with the system state
+- `init()` step 5c: Called at launch to sync the setting value with the system state
 
 #### Design Intent
 

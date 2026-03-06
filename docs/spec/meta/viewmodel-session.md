@@ -1,6 +1,6 @@
 ---
 Created: 2026-03-03
-Updated: 2026-03-04
+Updated: 2026-03-06
 Checked: -
 Deprecated: -
 Format: spec-v2.1
@@ -215,24 +215,20 @@ signOut()
   |   +-- sevenDayPercent = nil
   |   +-- fiveHourResetsAt = nil
   |   +-- sevenDayResetsAt = nil
-  |   +-- predictFiveHourCost = nil
-  |   +-- predictSevenDayCost = nil
   |   +-- error = nil
-  +-- snapshotWriter.clearOnSignOut()        ← Clear widget shared data
   +-- widgetReloader.reloadAllTimelines()    ← Request widget timeline reload
   +-- WebView data deletion (3 stages)
       +-- Stage 1: removeData(allWebsiteDataTypes, distantPast)
       +-- Stage 2: getAllCookies → delete each cookie individually
-      +-- Stage 3: loadUsagePage() (display login screen)
+      +-- Stage 3: loadUsagePage() + startLoginPolling()
 ```
 
 ### Widget Integration Details
 
 | Method | Responsibility |
 |--------|----------------|
-| `snapshotWriter.clearOnSignOut()` | Removes widget snapshot data from App Group shared storage. Prevents the widget from continuing to display stale data. |
-| `widgetReloader.reloadAllTimelines()` | Calls `WidgetCenter.shared.reloadAllTimelines()` to request immediate timeline reconstruction. Reflects the cleared data. |
+| `widgetReloader.reloadAllTimelines()` | Calls `WidgetCenter.shared.reloadAllTimelines()` to request immediate timeline reconstruction. |
 
 ### Execution Order Rationale
 
-Executing `clearOnSignOut()` → `reloadAllTimelines()` in this order ensures the widget reads cleared data when it reloads. Reversing the order could result in the reload reading stale data. Widget integration runs before WebView data deletion (an async callback chain), so the widget updates immediately without waiting for the WebView cleanup to complete.
+`reloadAllTimelines()` runs before WebView data deletion (an async callback chain), so the widget updates immediately without waiting for the WebView cleanup to complete. Stage 3 includes `startLoginPolling()` to begin detecting the next login.

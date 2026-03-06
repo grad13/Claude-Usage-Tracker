@@ -112,7 +112,7 @@ No state transitions. MiniUsageGraph is a pure rendering view with no internal s
 |---------|-----------|-----------------|-------|
 | DR-01 | Always | Background rectangle | bgColor or bgColorSignedOut |
 | DR-02 | divisions > 1 | Vertical time division lines (tickColor, 0.5pt) | 1..<divisions lines |
-| DR-03 | points is non-empty && points[0].x > 0 | Gray fill for no-data interval (noDataFill) | From window start to first data point |
+| DR-03 | points is non-empty && points[0].x > 1 (1pt threshold) | Gray fill for no-data interval (noDataFill) | From window start to first data point. 1px or less gap is ignored to avoid sub-pixel artifacts |
 | DR-04 | points is non-empty | Past area fill (areaColor, areaOpacity) | Step-style polyline → bottom edge → close path |
 | DR-05 | fillEndX > effectiveNowX + 1 (pixel coordinates, 1pt or more difference) | Future area fill (areaOpacity * 0.35) + hatching pattern (areaOpacity * 0.5) | Predicted region until reset |
 | DR-06 | points is non-empty | Usage horizontal dashed line (usageLineColor, 0.5pt, dash [2,2]) | Drawn at the Y coordinate of the latest data point |

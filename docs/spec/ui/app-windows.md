@@ -95,7 +95,7 @@ A sheet modal for OAuth popups. Presented from LoginWindowView's `.sheet()` modi
 | Attribute | Value |
 |-----------|-------|
 | Display trigger | `viewModel.popupWebView != nil` |
-| Dismiss action | `viewModel.closePopup()` |
+| Dismiss action | `viewModel.closePopup()` + `viewModel.handlePopupClosed()` (both called on any dismiss path) |
 | Minimum size | 520 x 640 pt (`minWidth: 520, minHeight: 640`) |
 | VStack spacing | 12pt |
 | Padding | `.padding()` (default value) |

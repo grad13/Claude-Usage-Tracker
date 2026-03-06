@@ -60,6 +60,7 @@ Alert Settings >                     ← submenu (detailed below)
 Refresh Interval >                   ← documented in existing spec
 ✓ Start at Login                     ← documented in existing spec
 ───
+v{version}                           ← .footnote, .secondary
 Quit                                 ← ⌘Q
 ```
 
@@ -254,6 +255,17 @@ Alert Settings >
 |--------|-------|-------------|
 | Calendar (midnight) | `.calendar` | Midnight boundary in local timezone |
 | Session-based | `.session` | Based on the weekly session (resets_at reference) |
+
+## Version Display
+
+The version string is displayed between the last Divider and the Quit button.
+
+| Property | Value |
+|----------|-------|
+| Format | `v{CFBundleShortVersionString}` (e.g. `v0.3.0`). Falls back to `v?` if the key is missing |
+| Font | `.footnote` |
+| Color | `.secondary` (via `.foregroundStyle(.secondary)`) |
+| Interactivity | Static `Text` -- not a button, not selectable |
 
 ## Quit (⌘Q)
 
