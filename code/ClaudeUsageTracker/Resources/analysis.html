@@ -209,6 +209,8 @@ let _navIndex = 0;
 let _navSlots = [];
 const _allSlots = {};        // { sessionWeekly, sessionHourly, calWeek, calDay }
 
+Chart.defaults.animation = false;
+
 Chart.register({
   id: 'dayBoundary',
   beforeDatasetsDraw(chart) {
