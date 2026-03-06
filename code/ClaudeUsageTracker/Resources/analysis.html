@@ -582,6 +582,10 @@ function formatDateShort(d) {
   return (d.getMonth() + 1) + '/' + String(d.getDate()).padStart(2, '0');
 }
 
+function formatDateTime(d) {
+  return formatDateShort(d) + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+}
+
 function formatDateFull(d) {
   const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   return days[d.getDay()] + ' ' + (d.getMonth() + 1) + '/' + String(d.getDate()).padStart(2, '0');
@@ -593,7 +597,7 @@ let _meta = {};
 // Session navigation
 // ============================================================
 
-function buildSessionSlots(sessions, intervalSec) {
+function buildSessionSlots(sessions, intervalSec, labelFn) {
   return (sessions || []).map(s => {
     const start = s.resets_at - intervalSec;
     const end = s.resets_at;
@@ -602,7 +606,7 @@ function buildSessionSlots(sessions, intervalSec) {
     return {
       start,
       end,
-      label: formatDateShort(startDate) + ' \u2014 ' + formatDateShort(endDate),
+      label: labelFn(startDate, endDate),
     };
   });
 }
@@ -725,8 +729,10 @@ const main = renderMain;
     const metaRes = await fetch('cut://meta.json');
     _meta = metaRes.ok ? await metaRes.json() : {};
 
-    _allSlots.sessionWeekly = buildSessionSlots(_meta.weeklySessions, 7 * 86400);
-    _allSlots.sessionHourly = buildSessionSlots(_meta.hourlySessions, 5 * 3600);
+    _allSlots.sessionWeekly = buildSessionSlots(_meta.weeklySessions, 7 * 86400,
+      (s, e) => formatDateShort(s) + ' \u2014 ' + formatDateShort(e));
+    _allSlots.sessionHourly = buildSessionSlots(_meta.hourlySessions, 5 * 3600,
+      (s, e) => formatDateTime(s) + ' \u2014 ' + formatDateTime(e));
     _allSlots.calWeek = buildCalendarSlots(_meta, 7 * 86400, (d, endEpoch) => {
       return formatDateShort(d) + ' \u2014 ' + formatDateShort(new Date(endEpoch * 1000));
     });
