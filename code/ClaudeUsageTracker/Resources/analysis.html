@@ -619,8 +619,7 @@ function renderUsageTab() {
       },
     },
     plugins: [
-      ...(_navMode === 'sessionHourly' ? [futureZonePlugin] :
-          _navMode === 'sessionWeekly' ? [hourlyBandsPlugin] : []),
+      ...(_navMode === 'sessionHourly' ? [futureZonePlugin] : [hourlyBandsPlugin]),
       weeklyBoundaryPlugin,
       crosshairPlugin,
     ],
