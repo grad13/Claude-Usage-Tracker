@@ -1,22 +1,8 @@
-// Supplement for: widget design integration tests
-// Source spec: _documents/spec/widget/design.md
-// Generated from spec only — no source code was read.
+// Tests for WidgetMiniGraph coordinate-calculation logic
+// Covers: resolveWindowStart, drawTicks divisions, buildPoints
 //
-// Scope of this file:
-//   1. UsageTimelineProvider timeline policy (5-minute refresh)
-//   2. WidgetMiniGraph coordinate-calculation logic (drawTicks divisions, buildPoints)
-//   3. resolveWindowStart priority logic
-//   4. WidgetMediumView.nowXFraction calculation
-//   5. WidgetLargeView.remainingText prefix logic
-//   6. DisplayHelpers.remainingText formatting
-//   7. UsageEntry / UsageWidget configuration constants
-//
-// Intentionally excluded:
-//   - SwiftUI View body tests (WidgetSmallView, WidgetMediumView, WidgetLargeView,
-//     WidgetMiniGraph Canvas rendering): these require a live SwiftUI environment
-//     and cannot be meaningfully unit-tested without snapshot/screenshot infrastructure.
-//   - WidgetKit getTimeline() / getSnapshot() end-to-end: requires WidgetKit runtime
-//     that is unavailable in a plain XCTest target.
+// Split: NowXFractionTests → widget/WidgetMediumViewNowXTests.swift
+//        MarkerTextPositioningTests → shared/DisplayHelpersMarkerTests.swift
 
 import XCTest
 import ClaudeUsageTrackerShared
@@ -67,18 +53,6 @@ private func specBuildPoints(
 ///   windowSeconds <= 18001 → 5 divisions, otherwise → 7.
 private func specTickDivisions(windowSeconds: TimeInterval) -> Int {
     windowSeconds <= 5 * 3600 + 1 ? 5 : 7
-}
-
-/// Reproduces nowXFraction from spec (WidgetMediumView):
-///   clamp((now - (resetsAt - windowSeconds)) / windowSeconds, 0, 1)
-private func specNowXFraction(
-    resetsAt: Date,
-    windowSeconds: TimeInterval,
-    now: Date
-) -> Double {
-    let windowStart = resetsAt.addingTimeInterval(-windowSeconds)
-    let nowElapsed = now.timeIntervalSince(windowStart)
-    return min(max(nowElapsed / windowSeconds, 0.0), 1.0)
 }
 
 // MARK: - resolveWindowStart
@@ -352,120 +326,5 @@ final class BuildPointsTests: XCTestCase {
     }
 }
 
-// MARK: - nowXFraction (WidgetMediumView)
-
-final class NowXFractionTests: XCTestCase {
-
-    private let windowSeconds5h: TimeInterval = 5 * 3600
-    private let windowSeconds7d: TimeInterval = 7 * 24 * 3600
-
-    /// now is exactly at window start → fraction = 0.0
-    func testNowXFraction_nowAtWindowStart_isZero() {
-        let resetsAt = Date(timeIntervalSince1970: 1_740_018_000)
-        // window start = resetsAt - 5h
-        let windowStart = resetsAt.addingTimeInterval(-windowSeconds5h)
-        let result = specNowXFraction(resetsAt: resetsAt, windowSeconds: windowSeconds5h, now: windowStart)
-        XCTAssertEqual(result, 0.0, accuracy: 0.0001)
-    }
-
-    /// now is exactly at resetsAt → fraction = 1.0
-    func testNowXFraction_nowAtResetsAt_isOne() {
-        let resetsAt = Date(timeIntervalSince1970: 1_740_018_000)
-        let result = specNowXFraction(resetsAt: resetsAt, windowSeconds: windowSeconds5h, now: resetsAt)
-        XCTAssertEqual(result, 1.0, accuracy: 0.0001)
-    }
-
-    /// now is at midpoint of window → fraction = 0.5
-    func testNowXFraction_nowAtMidpoint_isHalf() {
-        let resetsAt = Date(timeIntervalSince1970: 1_740_018_000)
-        let midpoint = resetsAt.addingTimeInterval(-windowSeconds5h / 2)
-        let result = specNowXFraction(resetsAt: resetsAt, windowSeconds: windowSeconds5h, now: midpoint)
-        XCTAssertEqual(result, 0.5, accuracy: 0.0001)
-    }
-
-    /// now is past resetsAt → fraction clamped to 1.0
-    func testNowXFraction_nowPastResetsAt_clampedToOne() {
-        let resetsAt = Date(timeIntervalSince1970: 1_740_018_000)
-        let afterReset = resetsAt.addingTimeInterval(3600)
-        let result = specNowXFraction(resetsAt: resetsAt, windowSeconds: windowSeconds5h, now: afterReset)
-        XCTAssertEqual(result, 1.0, accuracy: 0.0001,
-            "Fraction must not exceed 1.0 even when now > resetsAt")
-    }
-
-    /// now is before window start → fraction clamped to 0.0
-    func testNowXFraction_nowBeforeWindowStart_clampedToZero() {
-        let resetsAt = Date(timeIntervalSince1970: 1_740_018_000)
-        let beforeWindow = resetsAt.addingTimeInterval(-(windowSeconds5h + 3600))
-        let result = specNowXFraction(resetsAt: resetsAt, windowSeconds: windowSeconds5h, now: beforeWindow)
-        XCTAssertEqual(result, 0.0, accuracy: 0.0001,
-            "Fraction must not go below 0.0 even when now < windowStart")
-    }
-
-    /// 7d window: 3.5 days elapsed → fraction = 0.5
-    func testNowXFraction_7dWindow_halfElapsed_isHalf() {
-        let resetsAt = Date(timeIntervalSince1970: 1_740_604_800)
-        let halfElapsed = resetsAt.addingTimeInterval(-windowSeconds7d / 2)
-        let result = specNowXFraction(resetsAt: resetsAt, windowSeconds: windowSeconds7d, now: halfElapsed)
-        XCTAssertEqual(result, 0.5, accuracy: 0.0001)
-    }
-
-    /// Pixel x position: fraction * width. Verify midpoint maps to width/2.
-    func testNowXFraction_pixelPosition_midpointMapsToHalfWidth() {
-        let w: Double = 200
-        let resetsAt = Date(timeIntervalSince1970: 1_740_018_000)
-        let midpoint = resetsAt.addingTimeInterval(-windowSeconds5h / 2)
-        let fraction = specNowXFraction(resetsAt: resetsAt, windowSeconds: windowSeconds5h, now: midpoint)
-        let pixelX = fraction * w
-        XCTAssertEqual(pixelX, 100.0, accuracy: 0.01)
-    }
-}
-
-// MARK: - WidgetMiniGraph marker text positioning logic
-// Tests call DisplayHelpers (Shared module) directly — no spec re-implementation.
-
-final class MarkerTextPositioningTests: XCTestCase {
-
-    // MARK: - percentTextShowsBelow (percent-based: > 80% → below)
-
-    func testMarkerTextPosition_above80_placedBelow() {
-        XCTAssertTrue(DisplayHelpers.percentTextShowsBelow(percent: 90))
-    }
-
-    func testMarkerTextPosition_exactly80_placedAbove() {
-        XCTAssertFalse(DisplayHelpers.percentTextShowsBelow(percent: 80))
-    }
-
-    func testMarkerTextPosition_below80_placedAbove() {
-        XCTAssertFalse(DisplayHelpers.percentTextShowsBelow(percent: 47))
-    }
-
-    // MARK: - percentTextAnchorX (horizontal anchor)
-    // Rule: x < margin(16) → 0 (leading); x > width-margin → 1 (trailing); else → 0.5 (center)
-
-    func testMarkerTextAnchor_nearLeftEdge_isLeading() {
-        XCTAssertEqual(DisplayHelpers.percentTextAnchorX(markerX: 10, graphWidth: 100), 0)
-    }
-
-    func testMarkerTextAnchor_atLeftMarginBoundary_isLeading() {
-        // x = 15 < 16 → leading (0)
-        XCTAssertEqual(DisplayHelpers.percentTextAnchorX(markerX: 15, graphWidth: 100), 0)
-    }
-
-    func testMarkerTextAnchor_justInsideLeftMargin_isCenter() {
-        // x = 16 is NOT < 16 → check right; 16 < 84 → center (0.5)
-        XCTAssertEqual(DisplayHelpers.percentTextAnchorX(markerX: 16, graphWidth: 100), 0.5)
-    }
-
-    func testMarkerTextAnchor_nearRightEdge_isTrailing() {
-        XCTAssertEqual(DisplayHelpers.percentTextAnchorX(markerX: 90, graphWidth: 100), 1)
-    }
-
-    func testMarkerTextAnchor_atRightMarginBoundary_isTrailing() {
-        // x = 85, width = 100 → 85 > 84 → trailing (1)
-        XCTAssertEqual(DisplayHelpers.percentTextAnchorX(markerX: 85, graphWidth: 100), 1)
-    }
-
-    func testMarkerTextAnchor_middleOfGraph_isCenter() {
-        XCTAssertEqual(DisplayHelpers.percentTextAnchorX(markerX: 50, graphWidth: 100), 0.5)
-    }
-}
+// Note: NowXFractionTests moved to widget/WidgetMediumViewNowXTests.swift
+// Note: MarkerTextPositioningTests moved to shared/DisplayHelpersMarkerTests.swift
