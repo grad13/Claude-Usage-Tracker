@@ -170,7 +170,12 @@ final class SettingsStore {
             return settings.validated()
         } catch {
             NSLog("[ClaudeUsageTracker] Settings parse error, using defaults: %@", "\(error)")
-            return AppSettings()
+            let bakURL = fileURL.appendingPathExtension("bak")
+            try? FileManager.default.removeItem(at: bakURL)
+            try? FileManager.default.moveItem(at: fileURL, to: bakURL)
+            let defaults = AppSettings()
+            save(defaults)
+            return defaults
         }
     }
 

@@ -1,4 +1,4 @@
-// meta: created=2026-02-21 updated=2026-03-06 checked=2026-02-26
+// meta: created=2026-02-21 updated=2026-03-07 checked=2026-02-26
 import Foundation
 import WebKit
 import Combine
@@ -35,6 +35,10 @@ final class UsageViewModel: ObservableObject, WebViewCoordinatorDelegate {
     var isAutoRefreshEnabled: Bool?
     /// Throttle usage-page redirects to prevent infinite loops.
     var lastRedirectAt: Date?
+    /// Current retry count for fetchSilently (reset on success or after max retries).
+    private var retryCount = 0
+    private static let maxRetries = 3
+    private static let retryDelays: [TimeInterval] = [30, 60, 120]
 
     var statusText: String {
         let fiveH = fiveHourPercent.map { String(format: "%.0f%%", $0) } ?? "--"
@@ -210,18 +214,32 @@ final class UsageViewModel: ObservableObject, WebViewCoordinatorDelegate {
                 isLoggedIn = true
                 isAutoRefreshEnabled = true
                 error = nil
+                retryCount = 0
                 startAutoRefresh()
                 backupSessionCookies()
             } catch {
+                let isAuthError = (error as? UsageFetchError)?.isAuthError == true
                 if let fetchError = error as? UsageFetchError {
                     debug("fetchSilently: error=\(fetchError.diagnosticMessage)")
-                    if fetchError.isAuthError { isAutoRefreshEnabled = false }
+                    if isAuthError { isAutoRefreshEnabled = false }
                 } else {
                     debug("fetchSilently: error=\(error)")
                 }
                 if isLoggedIn {
                     self.error = error.localizedDescription
                 }
+
+                // Retry on non-auth errors with exponential backoff
+                if !isAuthError && retryCount < Self.maxRetries {
+                    let delay = Self.retryDelays[retryCount]
+                    retryCount += 1
+                    debug("fetchSilently: scheduling retry \(retryCount)/\(Self.maxRetries) in \(delay)s")
+                    isFetching = false
+                    try? await Task.sleep(for: .seconds(delay))
+                    fetchSilently()
+                    return
+                }
+                retryCount = 0
             }
             isFetching = false
         }

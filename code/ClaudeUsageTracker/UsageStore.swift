@@ -1,4 +1,4 @@
-// meta: created=2026-02-21 updated=2026-03-04 checked=2026-03-03
+// meta: created=2026-02-21 updated=2026-03-07 checked=2026-03-03
 import Foundation
 import SQLite3
 import ClaudeUsageTrackerShared
@@ -11,6 +11,37 @@ final class UsageStore {
     init(dbPath: String) {
         self.dbPath = dbPath
         self.dirURL = URL(fileURLWithPath: dbPath).deletingLastPathComponent()
+        checkIntegrity()
+    }
+
+    private func checkIntegrity() {
+        guard FileManager.default.fileExists(atPath: dbPath) else { return }
+
+        let isCorrupt = SQLiteHelper.withDatabase(path: dbPath) { db -> Bool in
+            var stmt: OpaquePointer?
+            guard sqlite3_prepare_v2(db, "PRAGMA quick_check", -1, &stmt, nil) == SQLITE_OK else {
+                return true
+            }
+            defer { sqlite3_finalize(stmt) }
+            guard sqlite3_step(stmt) == SQLITE_ROW,
+                  let cStr = sqlite3_column_text(stmt, 0) else {
+                return true
+            }
+            return String(cString: cStr) != "ok"
+        } ?? true
+
+        guard isCorrupt else { return }
+
+        NSLog("[UsageStore] Database integrity check failed, recovering")
+        let dbURL = URL(fileURLWithPath: dbPath)
+        let corruptURL = dbURL.appendingPathExtension("corrupt")
+        try? FileManager.default.removeItem(at: corruptURL)
+        try? FileManager.default.moveItem(at: dbURL, to: corruptURL)
+        // Clean up WAL/SHM files
+        for ext in ["-wal", "-shm"] {
+            let auxURL = URL(fileURLWithPath: dbPath + ext)
+            try? FileManager.default.removeItem(at: auxURL)
+        }
     }
 
     static let shared: UsageStore = {
