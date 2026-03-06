@@ -6,10 +6,21 @@ import SwiftUI
 struct MenuBarLabel: View {
     @ObservedObject var viewModel: UsageViewModel
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.openWindow) private var openWindow
+    @State private var hasCheckedInitialLogin = false
 
     var body: some View {
         let image = renderGraphs()
         Image(nsImage: image)
+            .task {
+                guard !hasCheckedInitialLogin else { return }
+                hasCheckedInitialLogin = true
+                try? await Task.sleep(for: .seconds(2))
+                if !viewModel.isLoggedIn {
+                    openWindow(id: "login")
+                    NSApp.activate(ignoringOtherApps: true)
+                }
+            }
     }
 
     static func graphCount(settings: AppSettings) -> Int {

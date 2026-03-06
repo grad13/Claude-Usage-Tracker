@@ -1,4 +1,4 @@
-// meta: created=2026-02-21 updated=2026-03-04 checked=2026-03-03
+// meta: created=2026-02-21 updated=2026-03-07 checked=2026-03-03
 import Foundation
 import SwiftUI
 import ClaudeUsageTrackerShared
@@ -169,7 +169,7 @@ final class SettingsStore {
             let settings = try decoder.decode(AppSettings.self, from: data)
             return settings.validated()
         } catch {
-            print("[Settings] Parse error, using defaults: \(error)")
+            NSLog("[ClaudeUsageTracker] Settings parse error, using defaults: %@", "\(error)")
             return AppSettings()
         }
     }
@@ -184,7 +184,7 @@ final class SettingsStore {
             let data = try encoder.encode(settings)
             try data.write(to: fileURL, options: .atomic)
         } catch {
-            print("[Settings] Failed to save: \(error)")
+            NSLog("[ClaudeUsageTracker] Settings save error: %@", "\(error)")
         }
     }
 

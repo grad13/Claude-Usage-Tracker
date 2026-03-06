@@ -36,6 +36,7 @@
 		AA10001C /* AlertChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00001C /* AlertChecker.swift */; };
 		AA10001E /* UsageModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00001E /* UsageModels.swift */; };
 		AA10001F /* UsageViewModel+Debug.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00001F /* UsageViewModel+Debug.swift */; };
+		AA100020 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = AA000020 /* PrivacyInfo.xcprivacy */; };
 		BB100001 /* SettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000001 /* SettingsTests.swift */; };
 		BB100002 /* FetcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000002 /* FetcherTests.swift */; };
 		BB100003 /* ViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000003 /* ViewModelTests.swift */; };
@@ -182,6 +183,7 @@
 		AA00001C /* AlertChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertChecker.swift; sourceTree = "<group>"; };
 		AA00001E /* UsageModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageModels.swift; sourceTree = "<group>"; };
 		AA00001F /* UsageViewModel+Debug.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UsageViewModel+Debug.swift"; sourceTree = "<group>"; };
+		AA000020 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		AA00001D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		AA000010 /* ClaudeUsageTracker.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ClaudeUsageTracker.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BB000001 /* SettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsTests.swift; sourceTree = "<group>"; };
@@ -322,6 +324,7 @@
 				AA00001C /* AlertChecker.swift */,
 				AA00001E /* UsageModels.swift */,
 				AA00001F /* UsageViewModel+Debug.swift */,
+				AA000020 /* PrivacyInfo.xcprivacy */,
 				AA000005 /* Info.plist */,
 				AA000006 /* ClaudeUsageTracker.entitlements */,
 			);
@@ -623,6 +626,7 @@
 			files = (
 				AA10001D /* Assets.xcassets in Resources */,
 				AA100016 /* analysis.html in Resources */,
+				AA100020 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
