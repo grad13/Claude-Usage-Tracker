@@ -774,7 +774,7 @@ const main = renderMain;
     _allSlots.calWeek = buildCalendarSlots(_meta, 7 * 86400, (d, endEpoch) => {
       return formatDateShort(d) + ' \u2014 ' + formatDateShort(new Date(endEpoch * 1000));
     });
-    _allSlots.calDay = buildCalendarSlots(_meta, 86400, (d) => formatDateFull(d));
+    _allSlots.calDay = buildCalendarSlots(_meta, 86400, (d) => formatDateShort(d));
     _navSlots = _allSlots.sessionWeekly;
     _navIndex = _navSlots.length - 1;
 
