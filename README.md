@@ -87,6 +87,23 @@ xcodebuild -project code/ClaudeUsageTracker.xcodeproj \
 
 The data-fetching approach (using WKWebView browser sessions to access internal APIs) is inspired by [AgentLimits](https://github.com/Nihondo/AgentLimits).
 
+## Recent Changes
+
+### 0.9.11
+- Fixed: App shown as folder in Dock after install (bundle bit not set)
+- Fixed: Auth errors now show "Session expired" instead of raw diagnostic string
+- Added: Bundle bit verification in deploy script
+
+### 0.9.10
+- Extracted GraphCalc to Shared framework
+- Removed test logic reimplementations — tests now call production code directly
+- Split S6 test files by responsibility
+
+### 0.9.9
+- Fixed: Analysis window now reloads on reopen
+- Added: 30 tests from spec (protocols, analysis JS, mini-usage-graph)
+- Refactored UsageModels.swift and UsageViewModel+Debug.swift extraction
+
 ## License
 
 MIT
