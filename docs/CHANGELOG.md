@@ -3,6 +3,19 @@
 
 ## [Unreleased]
 
+## [0.9.9] - 2026-03-06
+
+### Fixed
+- Analysis window now reloads on reopen (new sessions appear after weekly turnover)
+
+### Added
+- 30 tests from spec: protocols conformance, analysis JS logic, mini-usage-graph logic
+- MiniUsageGraph: extracted usageValue/fillEndFrac as internal for testability
+
+### Changed
+- protocols.md: removed DI-03 (SnapshotWriting) and DI-07 (TokenSyncing) to match code
+- Refactored UsageModels.swift and UsageViewModel+Debug.swift extraction
+
 ## [0.9.8] - 2026-03-06
 
 ### Added
