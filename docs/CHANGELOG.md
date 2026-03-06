@@ -7,7 +7,6 @@
 
 ### Added
 - Light mode support for menu bar graphs (auto-follows system appearance)
-- Auto-show Sign In window on first launch when not logged in
 - Privacy manifest (PrivacyInfo.xcprivacy) for main app and widget
 - Network error auto-retry with exponential backoff (30s/60s/120s, max 3)
 - Database integrity check on init (PRAGMA quick_check, auto-recovery)

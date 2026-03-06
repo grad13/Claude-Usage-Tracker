@@ -73,18 +73,6 @@ func applicationDidFinishLaunching(_ notification: Notification) {
 }
 ```
 
-## Initial Login Check
-
-`MenuBarLabel` performs a one-time login check on app launch via `.task`:
-
-1. Wait 2 seconds (allows cookie restoration + login polling to complete)
-2. If `viewModel.isLoggedIn` is still `false`, open the Sign In window via `openWindow(id: "login")` and activate the app
-3. The check runs only once (`@State hasCheckedInitialLogin` guard)
-
-This ensures first-time users see the login window automatically instead of a blank `"5h: -- / 7d: --"` menu bar label with no guidance.
-
-If cookies are successfully restored during the 2-second wait, `isLoggedIn` becomes `true` and the window is not shown.
-
 ## LoginWindowView Error Display UI
 
 `LoginWindowView` displays an error message above the WebView when `viewModel.error` is non-nil.
