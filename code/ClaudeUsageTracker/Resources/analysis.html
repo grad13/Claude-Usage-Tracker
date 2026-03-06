@@ -266,12 +266,27 @@ Chart.register({
 });
 
 function timeXScale() {
+  const showTimeTicks = _navMode === 'sessionHourly' || _navMode === 'calDay';
+  const stepHours = _navMode === 'sessionHourly' ? 1 : 3;
   const cfg = {
     type: 'time',
-    ticks: { display: false },
+    ticks: showTimeTicks ? {
+      display: true,
+      color: '#484f58',
+      font: { size: 10 },
+      stepSize: stepHours,
+      maxRotation: 0,
+      callback(value) {
+        const d = new Date(value);
+        return String(d.getHours()).padStart(2, '0') + ':00';
+      },
+    } : { display: false },
     grid: { display: false },
     afterFit(scale) { scale.height = 40; },
   };
+  if (showTimeTicks) {
+    cfg.time = { unit: 'hour', stepSize: stepHours };
+  }
   if (_xMin != null) cfg.min = _xMin;
   if (_xMax != null) cfg.max = _xMax;
   return cfg;
