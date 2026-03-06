@@ -18,6 +18,7 @@ Source: code/ClaudeUsageTrackerWidget/UsageWidget.swift, code/ClaudeUsageTracker
 | code/ClaudeUsageTrackerWidget/WidgetMediumView.swift | macOS |
 | code/ClaudeUsageTrackerWidget/WidgetLargeView.swift | macOS |
 | code/ClaudeUsageTrackerWidget/WidgetMiniGraph.swift | macOS |
+| code/ClaudeUsageTrackerWidget/WidgetColorThemeResolver.swift | macOS |
 
 | Field | Value |
 |-------|-------|
