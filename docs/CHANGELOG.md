@@ -3,6 +3,12 @@
 
 ## [Unreleased]
 
+## [0.9.7] - 2026-03-06
+
+### Removed
+- Token/predict/cost features removed from analysis page and backend (TokenStore, JSONLParser, CostEstimator, UsageViewModel+Predict)
+- Analysis page simplified from 6-tab system to usage-only chart with session navigation
+
 ## [0.9.6] - 2026-03-06
 
 ### Fixed
