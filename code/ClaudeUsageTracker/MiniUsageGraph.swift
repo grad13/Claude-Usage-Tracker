@@ -1,4 +1,4 @@
-// meta: created=2026-02-26 updated=2026-02-26 checked=2026-02-26
+// meta: created=2026-02-26 updated=2026-03-07 checked=2026-02-26
 import SwiftUI
 
 struct MiniUsageGraph: View {
@@ -11,11 +11,26 @@ struct MiniUsageGraph: View {
     let chartWidth: CGFloat
     let isLoggedIn: Bool
 
-    private static let bgColor = Color(red: 0x12/255, green: 0x12/255, blue: 0x12/255)
-    private static let bgColorSignedOut = Color(red: 0x3A/255, green: 0x10/255, blue: 0x10/255)
-    private static let tickColor = Color.white.opacity(0.07)
-    private static let usageLineColor = Color.white.opacity(0.3)
-    private static let noDataFill = Color.white.opacity(0.06)
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var bgColor: Color {
+        isLoggedIn
+            ? (colorScheme == .dark
+                ? Color(red: 0x12/255, green: 0x12/255, blue: 0x12/255)
+                : Color(red: 0xE8/255, green: 0xE8/255, blue: 0xE8/255))
+            : (colorScheme == .dark
+                ? Color(red: 0x3A/255, green: 0x10/255, blue: 0x10/255)
+                : Color(red: 0xFF/255, green: 0xCC/255, blue: 0xCC/255))
+    }
+    private var tickColor: Color {
+        colorScheme == .dark ? Color.white.opacity(0.07) : Color.black.opacity(0.1)
+    }
+    private var usageLineColor: Color {
+        colorScheme == .dark ? Color.white.opacity(0.3) : Color.black.opacity(0.3)
+    }
+    private var noDataFill: Color {
+        colorScheme == .dark ? Color.white.opacity(0.06) : Color.black.opacity(0.06)
+    }
 
     private func xPosition(for timestamp: Date, windowStart: Date) -> Double {
         let elapsed = timestamp.timeIntervalSince(windowStart)
@@ -46,8 +61,7 @@ struct MiniUsageGraph: View {
             let h = size.height
 
             // Background
-            let bg = isLoggedIn ? Self.bgColor : Self.bgColorSignedOut
-            context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(bg))
+            context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(bgColor))
 
             // Determine window start
             let windowStart: Date
@@ -65,7 +79,7 @@ struct MiniUsageGraph: View {
                 var tickPath = Path()
                 tickPath.move(to: CGPoint(x: x, y: 0))
                 tickPath.addLine(to: CGPoint(x: x, y: h))
-                context.stroke(tickPath, with: .color(Self.tickColor), lineWidth: 0.5)
+                context.stroke(tickPath, with: .color(tickColor), lineWidth: 0.5)
             }
 
             // Build points (skip data before window start)
@@ -84,7 +98,7 @@ struct MiniUsageGraph: View {
             if points[0].x > 1 {
                 context.fill(
                     Path(CGRect(x: 0, y: 0, width: points[0].x, height: h)),
-                    with: .color(Self.noDataFill)
+                    with: .color(noDataFill)
                 )
             }
 
@@ -143,7 +157,7 @@ struct MiniUsageGraph: View {
             usageLine.addLine(to: CGPoint(x: w, y: usageY))
             context.stroke(
                 usageLine,
-                with: .color(Self.usageLineColor),
+                with: .color(usageLineColor),
                 style: StrokeStyle(lineWidth: 0.5, dash: [2, 2])
             )
         }

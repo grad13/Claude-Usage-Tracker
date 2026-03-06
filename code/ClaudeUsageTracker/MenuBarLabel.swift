@@ -1,10 +1,11 @@
-// meta: created=2026-02-26 updated=2026-03-06 checked=2026-02-26
+// meta: created=2026-02-26 updated=2026-03-07 checked=2026-02-26
 import SwiftUI
 
 // MARK: - Menu Bar Label (mini graphs)
 
 struct MenuBarLabel: View {
     @ObservedObject var viewModel: UsageViewModel
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         let image = renderGraphs()
@@ -21,12 +22,15 @@ struct MenuBarLabel: View {
 
         let content: AnyView
         if graphCount > 0 {
-            content = AnyView(MenuBarGraphsContent(viewModel: viewModel))
+            content = AnyView(
+                MenuBarGraphsContent(viewModel: viewModel)
+                    .environment(\.colorScheme, colorScheme)
+            )
         } else {
             content = AnyView(
                 Text(viewModel.statusText)
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.white)
+                    .foregroundColor(colorScheme == .dark ? .white : .black)
             )
         }
 
