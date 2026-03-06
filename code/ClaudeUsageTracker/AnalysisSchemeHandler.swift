@@ -107,19 +107,21 @@ final class AnalysisSchemeHandler: NSObject, WKURLSchemeHandler {
                 result["oldestTimestamp"] = SQLiteHelper.columnInt(stmt, 2) ?? NSNull()
             }
 
-            // Weekly sessions list for session-based navigation
-            SQLiteHelper.withStatement(db: db, sql:
-                "SELECT id, resets_at FROM weekly_sessions ORDER BY resets_at ASC"
-            ) { stmt in
-                var sessions: [[String: Any]] = []
-                while sqlite3_step(stmt) == SQLITE_ROW {
-                    var session: [String: Any] = [:]
-                    if let id = SQLiteHelper.columnInt(stmt, 0) { session["id"] = id }
-                    if let ra = SQLiteHelper.columnInt(stmt, 1) { session["resets_at"] = ra }
-                    sessions.append(session)
-                }
-                if hasUsageData || !sessions.isEmpty {
-                    result["weeklySessions"] = sessions
+            // Session lists for session-based navigation
+            for (key, table) in [("weeklySessions", "weekly_sessions"), ("hourlySessions", "hourly_sessions")] {
+                SQLiteHelper.withStatement(db: db, sql:
+                    "SELECT id, resets_at FROM \(table) ORDER BY resets_at ASC"
+                ) { stmt in
+                    var sessions: [[String: Any]] = []
+                    while sqlite3_step(stmt) == SQLITE_ROW {
+                        var session: [String: Any] = [:]
+                        if let id = SQLiteHelper.columnInt(stmt, 0) { session["id"] = id }
+                        if let ra = SQLiteHelper.columnInt(stmt, 1) { session["resets_at"] = ra }
+                        sessions.append(session)
+                    }
+                    if hasUsageData || !sessions.isEmpty {
+                        result[key] = sessions
+                    }
                 }
             }
 

@@ -88,8 +88,8 @@ final class AnalysisExporterTests: XCTestCase {
 
     func testHtmlTemplate_hasSessionNavControls() {
         let html = AnalysisExporter.htmlTemplate
-        XCTAssertTrue(html.contains("id=\"modeWeekly\""))
-        XCTAssertTrue(html.contains("id=\"modeDaily\""))
+        XCTAssertTrue(html.contains("data-mode=\"sessionWeekly\""))
+        XCTAssertTrue(html.contains("data-mode=\"calDay\""))
         XCTAssertTrue(html.contains("id=\"navPrev\""))
         XCTAssertTrue(html.contains("id=\"navNext\""))
         XCTAssertTrue(html.contains("id=\"sessionSelect\""))

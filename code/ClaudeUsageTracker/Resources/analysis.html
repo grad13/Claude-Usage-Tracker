@@ -50,21 +50,42 @@ h2 {
 }
 .mode-toggle {
   display: flex;
-  background: #21262d;
+  gap: 8px;
+  align-items: center;
+}
+.mode-group {
+  display: flex;
+  align-items: center;
   border: 1px solid #30363d;
   border-radius: 6px;
   overflow: hidden;
+  transition: border-color 0.15s;
 }
-.mode-btn {
+.mode-group.active { border-color: #1f6feb; }
+.mode-group-label {
   background: none;
   border: none;
+  color: #484f58;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  pointer-events: none;
+  transition: color 0.15s;
+}
+.mode-group.active .mode-group-label { color: #58a6ff; }
+.mode-btn {
+  background: #21262d;
+  border: none;
+  border-left: 1px solid #30363d;
   color: #8b949e;
-  padding: 6px 16px;
+  padding: 6px 12px;
   font-size: 12px;
   cursor: pointer;
   transition: all 0.15s;
 }
-.mode-btn:hover { color: #c9d1d9; }
+.mode-btn:hover { color: #c9d1d9; background: #30363d; }
 .mode-btn.active {
   background: #1f6feb;
   color: #fff;
@@ -116,8 +137,16 @@ h2 {
 <div class="header-row">
   <div class="nav-controls">
     <div class="mode-toggle">
-      <button class="mode-btn active" id="modeWeekly">Weekly Session</button>
-      <button class="mode-btn" id="modeDaily">Daily Session</button>
+      <div class="mode-group active" id="groupSession">
+        <span class="mode-group-label">Session</span>
+        <button class="mode-btn active" data-mode="sessionWeekly">Weekly</button>
+        <button class="mode-btn" data-mode="sessionHourly">Hourly</button>
+      </div>
+      <div class="mode-group" id="groupCalendrical">
+        <span class="mode-group-label">Calendrical</span>
+        <button class="mode-btn" data-mode="calWeek">Week</button>
+        <button class="mode-btn" data-mode="calDay">Day</button>
+      </div>
     </div>
     <div class="session-nav">
       <button class="nav-btn" id="navPrev">&#9664;</button>
@@ -175,11 +204,10 @@ let _xMin = null, _xMax = null;
 const _charts = {};
 
 // Session navigation state
-let _navMode = 'weekly';    // 'weekly' | 'daily'
-let _navIndex = 0;          // Current index in _navSlots
-let _navSlots = [];          // [{start, end, label}] for current mode
-let _weeklySlots = [];       // Weekly session slots from meta
-let _dailySlots = [];        // Daily slots computed from meta
+let _navMode = 'sessionWeekly';
+let _navIndex = 0;
+let _navSlots = [];
+const _allSlots = {};        // { sessionWeekly, sessionHourly, calWeek, calDay }
 
 Chart.register({
   id: 'dayBoundary',
@@ -563,10 +591,9 @@ let _meta = {};
 // Session navigation
 // ============================================================
 
-function buildWeeklySlots(meta) {
-  const sessions = meta.weeklySessions || [];
-  return sessions.map(s => {
-    const start = s.resets_at - 7 * 86400;
+function buildSessionSlots(sessions, intervalSec) {
+  return (sessions || []).map(s => {
+    const start = s.resets_at - intervalSec;
     const end = s.resets_at;
     const startDate = new Date(start * 1000);
     const endDate = new Date(end * 1000);
@@ -578,24 +605,30 @@ function buildWeeklySlots(meta) {
   });
 }
 
-function buildDailySlots(meta) {
+function buildCalendarSlots(meta, stepSec, labelFn) {
   if (!meta.oldestTimestamp || !meta.latestTimestamp) return [];
-  const firstDay = new Date(meta.oldestTimestamp * 1000);
-  firstDay.setHours(0, 0, 0, 0);
-  const lastDay = new Date(meta.latestTimestamp * 1000);
-  lastDay.setHours(23, 59, 59, 999);
+  const first = new Date(meta.oldestTimestamp * 1000);
+  first.setHours(0, 0, 0, 0);
+  if (stepSec === 7 * 86400) {
+    // Align to Monday
+    const day = first.getDay();
+    const offset = day === 0 ? -6 : 1 - day;
+    first.setDate(first.getDate() + offset);
+  }
+  const last = new Date(meta.latestTimestamp * 1000);
+  last.setHours(23, 59, 59, 999);
 
   const slots = [];
-  const d = new Date(firstDay);
-  while (d <= lastDay) {
-    const dayStart = Math.floor(d.getTime() / 1000);
-    const dayEnd = dayStart + 86400;
+  const d = new Date(first);
+  while (d <= last) {
+    const slotStart = Math.floor(d.getTime() / 1000);
+    const slotEnd = slotStart + stepSec;
     slots.push({
-      start: dayStart,
-      end: dayEnd,
-      label: formatDateFull(d),
+      start: slotStart,
+      end: slotEnd,
+      label: labelFn(d, slotEnd),
     });
-    d.setDate(d.getDate() + 1);
+    d.setTime(d.getTime() + stepSec * 1000);
   }
   return slots;
 }
@@ -630,26 +663,28 @@ async function navigateTo(index) {
   updateNavUI();
 }
 
-function initNavigation() {
-  // Mode toggle
-  document.getElementById('modeWeekly').addEventListener('click', () => {
-    if (_navMode === 'weekly') return;
-    _navMode = 'weekly';
-    document.getElementById('modeWeekly').classList.add('active');
-    document.getElementById('modeDaily').classList.remove('active');
-    _navSlots = _weeklySlots;
-    _navIndex = _navSlots.length - 1;
-    navigateTo(_navIndex);
-  });
+function switchMode(mode) {
+  if (_navMode === mode) return;
+  _navMode = mode;
+  _navSlots = _allSlots[mode] || [];
+  _navIndex = _navSlots.length - 1;
 
-  document.getElementById('modeDaily').addEventListener('click', () => {
-    if (_navMode === 'daily') return;
-    _navMode = 'daily';
-    document.getElementById('modeDaily').classList.add('active');
-    document.getElementById('modeWeekly').classList.remove('active');
-    _navSlots = _dailySlots;
-    _navIndex = _navSlots.length - 1;
-    navigateTo(_navIndex);
+  // Update button active states
+  document.querySelectorAll('.mode-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.mode === mode);
+  });
+  // Update group active states
+  const isSession = mode.startsWith('session');
+  document.getElementById('groupSession').classList.toggle('active', isSession);
+  document.getElementById('groupCalendrical').classList.toggle('active', !isSession);
+
+  navigateTo(_navIndex);
+}
+
+function initNavigation() {
+  // Mode toggle — delegate from all mode buttons
+  document.querySelectorAll('.mode-btn[data-mode]').forEach(btn => {
+    btn.addEventListener('click', () => switchMode(btn.dataset.mode));
   });
 
   // Nav buttons
@@ -688,9 +723,13 @@ const main = renderMain;
     const metaRes = await fetch('cut://meta.json');
     _meta = metaRes.ok ? await metaRes.json() : {};
 
-    _weeklySlots = buildWeeklySlots(_meta);
-    _dailySlots = buildDailySlots(_meta);
-    _navSlots = _weeklySlots;
+    _allSlots.sessionWeekly = buildSessionSlots(_meta.weeklySessions, 7 * 86400);
+    _allSlots.sessionHourly = buildSessionSlots(_meta.hourlySessions, 5 * 3600);
+    _allSlots.calWeek = buildCalendarSlots(_meta, 7 * 86400, (d, endEpoch) => {
+      return formatDateShort(d) + ' \u2014 ' + formatDateShort(new Date(endEpoch * 1000));
+    });
+    _allSlots.calDay = buildCalendarSlots(_meta, 86400, (d) => formatDateFull(d));
+    _navSlots = _allSlots.sessionWeekly;
     _navIndex = _navSlots.length - 1;
 
     initNavigation();
