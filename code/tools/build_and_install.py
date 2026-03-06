@@ -219,6 +219,9 @@ def install_app(build_app_path: Path) -> None:
 
     new_app.rename(current_app)
 
+    # Set bundle bit so Finder treats it as an app, not a folder
+    subprocess.run(["SetFile", "-a", "B", str(current_app)], check=True)
+
 
 def check_lost_rows(current_db: str, backup_db: str) -> int:
     """Count rows in backup that are missing from current DB."""
@@ -234,12 +237,29 @@ def check_lost_rows(current_db: str, backup_db: str) -> int:
 
 def register_and_verify(backup_file: Path | None) -> None:
     """Register with LaunchServices, verify widget, check data integrity, launch."""
+    # Verify bundle bit (Finder shows as folder without it)
+    app_path = str(INSTALL_DIR / f"{APP_NAME}.app")
+    result = subprocess.run(
+        ["GetFileInfo", app_path], capture_output=True, text=True
+    )
+    if result.returncode == 0:
+        for line in result.stdout.splitlines():
+            if line.startswith("attributes:"):
+                attrs = line.split(":", 1)[1].strip()
+                if "B" not in attrs:
+                    raise RuntimeError(
+                        f"Bundle bit not set on {app_path}!\n"
+                        f"       attributes: {attrs}\n"
+                        f"       Finder will show it as a folder, not an app."
+                    )
+                print(f"==> Bundle bit verified: {attrs}")
+                break
+
     # Deregister stale copies
     print("==> Cleaning stale LaunchServices registrations...")
     deregister_stale_apps(APP_NAME, str(DERIVED_DATA))
 
     # Register
-    app_path = str(INSTALL_DIR / f"{APP_NAME}.app")
     print(f"==> Registering {app_path} with LaunchServices...")
     register_app(app_path)
     subprocess.run(["pluginkit", "-e", "use", "-i", WIDGET_ID], capture_output=True)

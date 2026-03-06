@@ -131,3 +131,74 @@ def test_backup_database_rotation(tmp_path, monkeypatch):
     # 11 pre-existing + 1 new = 12 total, rotation keeps 10
     remaining = list(backup_dir.glob("usage_*.db"))
     assert len(remaining) == 10
+
+
+# ---------------------------------------------------------------------------
+# Test 36: register_and_verify — bundle bit check detects missing B
+# ---------------------------------------------------------------------------
+
+def test_bundle_bit_check_detects_missing(tmp_path, monkeypatch):
+    """register_and_verify raises when bundle bit is not set."""
+    app_dir = tmp_path / "Applications"
+    app_dir.mkdir()
+    app = app_dir / "ClaudeUsageTracker.app"
+    app.mkdir()
+
+    monkeypatch.setattr(bai, "INSTALL_DIR", app_dir)
+
+    # Mock GetFileInfo to return lowercase 'b' (bundle bit not set)
+    def mock_run(cmd, **kwargs):
+        if cmd[0] == "GetFileInfo":
+            from unittest.mock import MagicMock
+            result = MagicMock()
+            result.returncode = 0
+            result.stdout = 'directory: "/Applications/ClaudeUsageTracker.app"\nattributes: avbstclinmedz\n'
+            return result
+        from unittest.mock import MagicMock
+        result = MagicMock()
+        result.returncode = 0
+        result.stdout = ""
+        return result
+
+    monkeypatch.setattr(bai.subprocess, "run", mock_run)
+
+    with pytest.raises(RuntimeError, match="Bundle bit not set"):
+        bai.register_and_verify(None)
+
+
+# ---------------------------------------------------------------------------
+# Test 37: register_and_verify — bundle bit check passes with B
+# ---------------------------------------------------------------------------
+
+def test_bundle_bit_check_passes(tmp_path, monkeypatch):
+    """register_and_verify does not raise when bundle bit is set (uppercase B)."""
+    app_dir = tmp_path / "Applications"
+    app_dir.mkdir()
+    app = app_dir / "ClaudeUsageTracker.app"
+    app.mkdir()
+
+    monkeypatch.setattr(bai, "INSTALL_DIR", app_dir)
+
+    calls = []
+
+    def mock_run(cmd, **kwargs):
+        from unittest.mock import MagicMock
+        calls.append(cmd[0] if isinstance(cmd, list) else cmd)
+        result = MagicMock()
+        result.returncode = 0
+        result.stdout = ""
+
+        if cmd[0] == "GetFileInfo":
+            result.stdout = 'directory: "/Applications/ClaudeUsageTracker.app"\nattributes: avBstclinmedz\n'
+        return result
+
+    monkeypatch.setattr(bai.subprocess, "run", mock_run)
+
+    # Mock launchservices functions to no-op
+    monkeypatch.setattr(bai, "deregister_stale_apps", lambda *a: None)
+    monkeypatch.setattr(bai, "register_app", lambda *a: None)
+    monkeypatch.setattr(bai, "dump_widget_registration", lambda *a: "/Applications/ClaudeUsageTracker.app")
+
+    bai.register_and_verify(None)
+
+    assert "GetFileInfo" in calls

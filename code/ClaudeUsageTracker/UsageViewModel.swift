@@ -176,9 +176,17 @@ final class UsageViewModel: ObservableObject, WebViewCoordinatorDelegate {
                 isAutoRefreshEnabled = true
                 startAutoRefresh()
             } catch {
-                self.error = error.localizedDescription
-                if let fetchError = error as? UsageFetchError, fetchError.isAuthError {
-                    isAutoRefreshEnabled = false
+                if let fetchError = error as? UsageFetchError {
+                    NSLog("[ClaudeUsageTracker] fetch error: %@", fetchError.diagnosticMessage)
+                    if fetchError.isAuthError {
+                        isAutoRefreshEnabled = false
+                        isLoggedIn = false
+                        self.error = nil
+                    } else {
+                        self.error = error.localizedDescription
+                    }
+                } else {
+                    self.error = error.localizedDescription
                 }
             }
             isFetching = false
@@ -205,9 +213,11 @@ final class UsageViewModel: ObservableObject, WebViewCoordinatorDelegate {
                 startAutoRefresh()
                 backupSessionCookies()
             } catch {
-                debug("fetchSilently: error=\(error)")
-                if let fetchError = error as? UsageFetchError, fetchError.isAuthError {
-                    isAutoRefreshEnabled = false
+                if let fetchError = error as? UsageFetchError {
+                    debug("fetchSilently: error=\(fetchError.diagnosticMessage)")
+                    if fetchError.isAuthError { isAutoRefreshEnabled = false }
+                } else {
+                    debug("fetchSilently: error=\(error)")
                 }
                 if isLoggedIn {
                     self.error = error.localizedDescription

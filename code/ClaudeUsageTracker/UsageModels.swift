@@ -21,8 +21,23 @@ enum UsageFetchError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .scriptFailed(let msg): return msg
+        case .scriptFailed(let msg):
+            if msg.lowercased().contains("missing organization") {
+                return "Session expired. Please sign in again."
+            }
+            if msg.lowercased().contains("http 401") || msg.lowercased().contains("http 403") {
+                return "Access denied. Please sign in again."
+            }
+            return msg
         case .decodingFailed: return "Failed to decode usage data"
+        }
+    }
+
+    /// Raw diagnostic message for logging (not shown to user)
+    var diagnosticMessage: String {
+        switch self {
+        case .scriptFailed(let msg): return msg
+        case .decodingFailed: return "decodingFailed"
         }
     }
 
