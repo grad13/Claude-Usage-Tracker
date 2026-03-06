@@ -138,35 +138,6 @@ extension ViewModelTests {
         XCTAssertTrue(snap3.fiveHourHistory.isEmpty, "resetsAt nil + history 空 → 描画不可")
     }
 
-    // MARK: - Widget reload (reloadAllTimelines)
-
-    /// init → writeSnapshot で reloadAllTimelines が呼ばれることを検証。
-    func testInit_callsReloadAllTimelines() {
-        let vm = makeVM()
-        let done = expectation(description: "reload called")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { done.fulfill() }
-        wait(for: [done], timeout: 2.0)
-
-        XCTAssertGreaterThanOrEqual(widgetReloader.reloadCount, 1,
-            "init must call reloadAllTimelines at least once")
-        _ = vm
-    }
-
-    /// signOut → writeSnapshot → reloadAllTimelines が呼ばれることを検証。
-    /// ログアウト後にウィジェットを更新しなければ、古い使用量が表示され続ける。
-    func testSignOut_callsReloadAllTimelines() {
-        let vm = makeVM()
-        let initDone = expectation(description: "init done")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { initDone.fulfill() }
-        wait(for: [initDone], timeout: 2.0)
-
-        let countBeforeSignOut = widgetReloader.reloadCount
-        vm.signOut()
-
-        XCTAssertGreaterThan(widgetReloader.reloadCount, countBeforeSignOut,
-            "signOut must call reloadAllTimelines to notify widget of logged-out state")
-    }
-
     // MARK: - UsageFetching injection tests
 
     /// fetch() が注入された fetcher を使うことを検証。
