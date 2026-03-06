@@ -1,0 +1,25 @@
+name: Test
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  swift-test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test
+        run: |
+          xcodebuild test \
+            -project code/ClaudeUsageTracker.xcodeproj \
+            -scheme ClaudeUsageTracker \
+            -destination 'platform=macOS' \
+            -resultBundlePath TestResults.xcresult
+
+  python-test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Python tests
+        run: python3 -m pytest tests/ -v
