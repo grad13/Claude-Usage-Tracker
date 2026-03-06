@@ -193,9 +193,7 @@ extension ViewModelTests {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { done.fulfill() }
         wait(for: [done], timeout: 2.0)
 
-        XCTAssertNotNil(vm.error, "Auth error must surface as vm.error")
-        XCTAssertTrue(vm.error!.contains("401"),
-            "Error message must indicate auth failure")
+        XCTAssertNil(vm.error, "Auth error must not show error text (shows Sign In instead)")
         XCTAssertFalse(vm.isLoggedIn,
             "Auth error must NOT set isLoggedIn to true")
         XCTAssertEqual(vm.fiveHourPercent, 99.0,
@@ -215,7 +213,7 @@ extension ViewModelTests {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { authDone.fulfill() }
         wait(for: [authDone], timeout: 2.0)
 
-        XCTAssertNotNil(vm.error)
+        XCTAssertNil(vm.error, "Auth error clears error (Sign In shown instead)")
         XCTAssertFalse(vm.isLoggedIn)
 
         // Now succeed

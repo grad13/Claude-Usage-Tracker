@@ -11,6 +11,8 @@ Three defense layers:
     3. cp failure detection — raises on disk full / permission errors
 """
 
+from __future__ import annotations
+
 import hashlib
 import shutil
 from contextlib import contextmanager

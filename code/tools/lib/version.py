@@ -1,4 +1,5 @@
 """Version extraction from .app bundles using plistlib."""
+from __future__ import annotations
 
 import plistlib
 from pathlib import Path

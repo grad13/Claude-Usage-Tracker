@@ -3,6 +3,17 @@
 
 ## [Unreleased]
 
+## [0.9.11] - 2026-03-06
+
+### Fixed
+- App shown as folder in Dock after install (bundle bit not set)
+- Auth errors now show "Session expired" instead of raw diagnostic string
+- Auth errors transition to Sign In state instead of showing red error text
+
+### Added
+- Bundle bit verification in deploy script (raises on missing B flag)
+- Tests for bundle bit detection (missing → error, present → pass)
+
 ## [0.9.10] - 2026-03-06
 
 ### Changed

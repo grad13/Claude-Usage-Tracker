@@ -7,6 +7,8 @@ Replaces build-and-install.sh with proper error handling:
 - Structured error handling instead of || true
 """
 
+from __future__ import annotations
+
 import os
 import shutil
 import sqlite3
