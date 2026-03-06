@@ -21,7 +21,7 @@ from pathlib import Path
 # Add lib/ to path
 sys.path.insert(0, str(Path(__file__).parent / "lib"))
 
-from data_protection import protect_files
+from data_protection import protect_files, shelter_file
 from launchservices import (
     LSREGISTER,
     deregister_stale_apps,
@@ -317,8 +317,9 @@ def main() -> None:
     # Phase 1: Backup + protected test
     _pre_count, backup_file = backup_database()
 
-    with protect_files(APPGROUP_SETTINGS, COOKIE_FILE):
-        run_test_gate()
+    with protect_files(APPGROUP_SETTINGS):
+        with shelter_file(COOKIE_FILE):
+            run_test_gate()
     # protect_files guarantees restore even if run_test_gate raises
 
     # Phase 2: Build (after test passes, after files are restored)

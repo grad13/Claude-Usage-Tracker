@@ -202,3 +202,32 @@ def test_bundle_bit_check_passes(tmp_path, monkeypatch):
     bai.register_and_verify(None)
 
     assert "GetFileInfo" in calls
+
+
+# ---------------------------------------------------------------------------
+# Test 38-39: shelter_file — unconditional backup/restore
+# ---------------------------------------------------------------------------
+
+from data_protection import shelter_file
+
+
+def test_shelter_file_restores_unconditionally(tmp_path):
+    """shelter_file restores original content silently even when file is modified."""
+    f = tmp_path / "cookies.json"
+    f.write_text("original")
+
+    with shelter_file(f):
+        f.write_text("modified by test")
+
+    assert f.read_text() == "original"
+    assert not (tmp_path / "cookies.json.shelter").exists()
+
+
+def test_shelter_file_nonexistent(tmp_path):
+    """shelter_file does nothing for a file that doesn't exist."""
+    f = tmp_path / "missing.json"
+
+    with shelter_file(f):
+        f.write_text("created during test")
+
+    assert not f.exists()

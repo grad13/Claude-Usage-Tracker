@@ -99,8 +99,7 @@ def protect_files(*paths: str | Path):
     Stale .backup from crashed previous runs is recovered on entry.
 
     Usage:
-        with protect_files("/path/to/settings.json", "/path/to/cookies.json"):
-            # dangerous operations here
+        with protect_files("/path/to/settings.json"):
             subprocess.run(["xcodebuild", "test", ...])
     """
     files = [Path(p) for p in paths]
@@ -123,3 +122,25 @@ def protect_files(*paths: str | Path):
                 _restore_if_changed(file, snapshots[file])
             except Exception as e:
                 print(f"ERROR: Failed to restore {file.name}: {e}")
+
+
+@contextmanager
+def shelter_file(path: str | Path):
+    """Unconditionally backup and restore a file around a block.
+
+    Unlike protect_files, no hash comparison — always restores silently.
+    Use for files that are expected to be modified (e.g., cookie files during tests).
+    """
+    file = Path(path)
+    backup = file.with_name(file.name + ".shelter")
+    existed = file.exists()
+    if existed:
+        shutil.copy2(str(file), str(backup))
+    try:
+        yield
+    finally:
+        if existed and backup.exists():
+            shutil.copy2(str(backup), str(file))
+            backup.unlink()
+        elif not existed and file.exists():
+            file.unlink()
