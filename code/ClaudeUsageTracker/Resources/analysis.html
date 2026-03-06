@@ -784,6 +784,43 @@ const main = renderMain;
     } else {
       await navigateTo(_navIndex);
     }
+
+    // Re-fetch meta.json when the window regains focus (e.g. after session turnover)
+    document.addEventListener('visibilitychange', async () => {
+      if (document.hidden) return;
+      try {
+        const res = await fetch('cut://meta.json');
+        if (!res.ok) return;
+        const newMeta = await res.json();
+
+        // Only rebuild if sessions changed
+        const oldWeeklyCount = (_meta.weeklySessions || []).length;
+        const newWeeklyCount = (newMeta.weeklySessions || []).length;
+        const oldHourlyCount = (_meta.hourlySessions || []).length;
+        const newHourlyCount = (newMeta.hourlySessions || []).length;
+        if (oldWeeklyCount === newWeeklyCount && oldHourlyCount === newHourlyCount) return;
+
+        _meta = newMeta;
+
+        // Rebuild all session/calendar slots
+        _allSlots.sessionWeekly = buildSessionSlots(_meta.weeklySessions, 7 * 86400,
+          (s, e) => formatDateShort(s) + ' \u2014 ' + formatDateShort(e));
+        _allSlots.sessionHourly = buildSessionSlots(_meta.hourlySessions, 5 * 3600,
+          (s, e) => formatDateTime(s) + ' \u2014 ' + formatDateTime(e));
+        _allSlots.calWeek = buildCalendarSlots(_meta, 7 * 86400, (d, endEpoch) => {
+          return formatDateShort(d) + ' \u2014 ' + formatDateShort(new Date(endEpoch * 1000));
+        });
+        _allSlots.calDay = buildCalendarSlots(_meta, 86400, (d) => formatDateShort(d));
+
+        // Update current mode's slots and navigate to latest
+        _navSlots = _allSlots[_navMode] || [];
+        _navIndex = _navSlots.length - 1;
+        await navigateTo(_navIndex);
+      } catch (e) {
+        console.warn('Failed to refresh meta:', e);
+      }
+    });
+
   } catch (err) {
     document.getElementById('loading').textContent = 'Error: ' + err.message;
     console.error(err);
