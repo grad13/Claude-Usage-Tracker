@@ -12,7 +12,7 @@ body {
   background: #0d1117;
   color: #c9d1d9;
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro', system-ui, sans-serif;
-  padding: 20px;
+  padding: 12px 20px;
 }
 .header-row {
   display: flex;
@@ -36,13 +36,11 @@ h2 {
   background: transparent;
   border: none;
   border-radius: 0;
-  padding: 16px;
-  padding-bottom: 28px;
+  padding: 8px 0 0 0;
   overflow: visible;
 }
 .card.full { grid-column: 1 / -1; }
-.chart-container { position: relative; width: 100%; height: 300px; overflow: visible; }
-.chart-container.tall { height: 400px; }
+.chart-container { position: relative; width: 100%; height: calc(100vh - 100px); overflow: visible; }
 .nav-controls {
   display: flex;
   gap: 12px;
@@ -161,7 +159,7 @@ h2 {
 
 
 <div class="card full">
-<div class="chart-container tall"><canvas id="usageTimeline"></canvas></div>
+<div class="chart-container"><canvas id="usageTimeline"></canvas></div>
 </div>
 
 </div>
@@ -221,44 +219,35 @@ Chart.register({
     const max = xScale.max;
     const shortScale = _navMode === 'sessionHourly' || _navMode === 'calDay';
 
-    // Collect midnight boundaries
-    const midnights = [];
-    const d = new Date(min);
-    d.setHours(0, 0, 0, 0);
-    d.setDate(d.getDate() + 1);
-    while (d.getTime() < max) {
-      midnights.push(d.getTime());
-      d.setDate(d.getDate() + 1);
-    }
-
-    // Draw vertical lines at hour boundaries (short scale only)
+    // Collect boundary edges depending on mode
+    let edges = [];
     if (shortScale) {
+      // Hour boundaries
       const stepH = _navMode === 'sessionHourly' ? 1 : 3;
       const h = new Date(min);
       h.setMinutes(0, 0, 0);
       h.setHours(h.getHours() + stepH);
-      ctx.save();
-      ctx.strokeStyle = 'rgba(255,255,255,0.07)';
-      ctx.lineWidth = 1;
       while (h.getTime() < max) {
-        const hx = xScale.getPixelForValue(h.getTime());
-        if (hx >= left && hx <= right) {
-          ctx.beginPath();
-          ctx.moveTo(hx, top);
-          ctx.lineTo(hx, bottom);
-          ctx.stroke();
-        }
+        edges.push(h.getTime());
         h.setHours(h.getHours() + stepH);
       }
-      ctx.restore();
+    } else {
+      // Midnight boundaries
+      const d = new Date(min);
+      d.setHours(0, 0, 0, 0);
+      d.setDate(d.getDate() + 1);
+      while (d.getTime() < max) {
+        edges.push(d.getTime());
+        d.setDate(d.getDate() + 1);
+      }
     }
 
-    // Draw vertical dashed lines at midnights
+    // Draw boundary lines (top to below chart area)
     ctx.save();
-    ctx.strokeStyle = '#484f58';
+    ctx.strokeStyle = shortScale ? 'rgba(255,255,255,0.07)' : '#484f58';
     ctx.lineWidth = 1;
-    for (const m of midnights) {
-      const x = xScale.getPixelForValue(m);
+    for (const e of edges) {
+      const x = xScale.getPixelForValue(e);
       if (x >= left && x <= right) {
         ctx.beginPath();
         ctx.moveTo(x, top);
@@ -268,19 +257,24 @@ Chart.register({
     }
     ctx.restore();
 
-    // Draw centered date labels below time ticks
-    const edges = [min, ...midnights, max];
+    // Draw centered labels between edges
+    const allEdges = [min, ...edges, max];
     ctx.save();
     ctx.fillStyle = '#8b949e';
     ctx.font = '11px -apple-system, BlinkMacSystemFont, "SF Pro", system-ui, sans-serif';
     ctx.textAlign = 'center';
-    const labelY = xScale.top + (shortScale ? 36 : 26);
-    for (let i = 0; i < edges.length - 1; i++) {
-      const lx = Math.max(xScale.getPixelForValue(edges[i]), left);
-      const rx = Math.min(xScale.getPixelForValue(edges[i + 1]), right);
+    const labelY = xScale.top + 26;
+    for (let i = 0; i < allEdges.length - 1; i++) {
+      const lx = Math.max(xScale.getPixelForValue(allEdges[i]), left);
+      const rx = Math.min(xScale.getPixelForValue(allEdges[i + 1]), right);
       if (rx - lx < 30) continue;
-      const mid = new Date((edges[i] + edges[i + 1]) / 2);
-      const label = (mid.getMonth() + 1) + '/' + String(mid.getDate()).padStart(2, '0');
+      const mid = new Date((allEdges[i] + allEdges[i + 1]) / 2);
+      let label;
+      if (shortScale) {
+        label = String(mid.getHours()).padStart(2, '0');
+      } else {
+        label = (mid.getMonth() + 1) + '/' + String(mid.getDate()).padStart(2, '0');
+      }
       ctx.fillText(label, (lx + rx) / 2, labelY);
     }
     ctx.restore();
@@ -288,27 +282,12 @@ Chart.register({
 });
 
 function timeXScale() {
-  const showTimeTicks = _navMode === 'sessionHourly' || _navMode === 'calDay';
-  const stepHours = _navMode === 'sessionHourly' ? 1 : 3;
   const cfg = {
     type: 'time',
-    ticks: showTimeTicks ? {
-      display: true,
-      color: '#484f58',
-      font: { size: 10 },
-      stepSize: stepHours,
-      maxRotation: 0,
-      callback(value) {
-        const d = new Date(value);
-        return String(d.getHours()).padStart(2, '0') + ':00';
-      },
-    } : { display: false },
+    ticks: { display: false },
     grid: { display: false },
-    afterFit(scale) { scale.height = showTimeTicks ? 50 : 40; },
+    afterFit(scale) { scale.height = 40; },
   };
-  if (showTimeTicks) {
-    cfg.time = { unit: 'hour', stepSize: stepHours };
-  }
   if (_xMin != null) cfg.min = _xMin;
   if (_xMax != null) cfg.max = _xMax;
   return cfg;
@@ -594,6 +573,7 @@ function renderUsageTab() {
     },
     options: {
       responsive: true, maintainAspectRatio: false,
+      layout: { padding: { top: 8 } },
       plugins: {
         legend: {
           labels: { color: '#8b949e', font: { size: 11 }, filter: item => item.text !== '' },
