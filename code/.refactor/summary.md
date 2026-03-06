@@ -1,8 +1,8 @@
 # refactor-code Summary
 
 **Date**: 2026-03-06
-**Target**: code/ (Swift 20/32ファイル分析、優先度順)
-**Result**: must: 0 / should: 2 / clean: 18
+**Target**: code/ (Swift 全32ファイル分析)
+**Result**: must: 0 / should: 2 / clean: 21 / skip: 9 (checked後に変更なし)
 
 ## should (2 files)
 
@@ -33,23 +33,23 @@
 | 36 | ClaudeUsageTracker/ClaudeUsageTrackerApp.swift |
 | 30 | ClaudeUsageTracker/AnalysisWindowView.swift |
 | 18 | ClaudeUsageTracker/AnalysisExporter.swift |
+| 119 | ClaudeUsageTrackerShared/UsageReader.swift |
+| 111 | ClaudeUsageTrackerShared/SQLiteHelper.swift |
+| 9 | ClaudeUsageTrackerShared/ClaudeUsageTrackerShared.swift |
 
-## 未チェック (12 files — 今回の20件上限外)
+## skip (9 files — checked後に変更なし)
 
-| Lines | File | 前回(3/4)判定 |
-|------:|------|--------------|
-| 119 | ClaudeUsageTrackerShared/UsageReader.swift | - |
-| 111 | ClaudeUsageTrackerShared/SQLiteHelper.swift | - |
-| 109 | ClaudeUsageTracker/Protocols.swift | clean |
-| 109 | ClaudeUsageTrackerWidget/WidgetLargeView.swift | clean |
-| 75 | ClaudeUsageTracker/WebViewCoordinator.swift | clean |
-| 73 | ClaudeUsageTrackerWidget/WidgetSmallView.swift | clean |
-| 66 | ClaudeUsageTrackerWidget/UsageWidget.swift | clean |
-| 41 | ClaudeUsageTracker/NotificationManager.swift | clean |
-| 22 | ClaudeUsageTrackerShared/AppGroupConfig.swift | clean |
-| 15 | ClaudeUsageTracker/LoginWebView.swift | clean |
-| 10 | ClaudeUsageTrackerWidget/ClaudeUsageTrackerWidgetBundle.swift | clean |
-| 9 | ClaudeUsageTrackerShared/ClaudeUsageTrackerShared.swift | clean |
+| Lines | File | checked |
+|------:|------|---------|
+| 109 | ClaudeUsageTracker/Protocols.swift | 2026-03-03 |
+| 109 | ClaudeUsageTrackerWidget/WidgetLargeView.swift | 2026-03-03 |
+| 75 | ClaudeUsageTracker/WebViewCoordinator.swift | 2026-02-26 |
+| 73 | ClaudeUsageTrackerWidget/WidgetSmallView.swift | 2026-03-03 |
+| 66 | ClaudeUsageTrackerWidget/UsageWidget.swift | 2026-03-03 |
+| 41 | ClaudeUsageTracker/NotificationManager.swift | 2026-03-03 |
+| 22 | ClaudeUsageTrackerShared/AppGroupConfig.swift | 2026-03-03 |
+| 15 | ClaudeUsageTracker/LoginWebView.swift | 2026-03-03 |
+| 10 | ClaudeUsageTrackerWidget/ClaudeUsageTrackerWidgetBundle.swift | 2026-03-03 |
 
 ## 前回(3/4)→今回(3/6) 変化
 
