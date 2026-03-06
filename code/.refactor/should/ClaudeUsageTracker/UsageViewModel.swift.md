@@ -1,95 +1,40 @@
 ---
 File: ClaudeUsageTracker/UsageViewModel.swift
-Lines: 325
+Lines: 308
 Judgment: should
-Issues: [Cookie/Session management mixed with state management, Auto-refresh timer logic coupled with fetch, WebViewCoordinatorDelegate mixed with ViewModel responsibility, applyResult performs too many side effects across multiple stores]
+Issues: [WebView構築がViewModel内, デバッグログ機構が埋め込み, Cookie/Session管理が混在, applyResultの副作用集中, 初期化の副作用過多]
 ---
 
 # UsageViewModel.swift
 
 ## 問題点
 
-### 1. Cookie/Session管理がViewModelに混在
+### 1. WebView の構築・設定が ViewModel 内にある
 
-**現状**: Lines 149, 154-156, 177, 238
-- `startCookieObservation()`, `restoreSessionCookies()`, `backupSessionCookies()` がViewModel内で直接呼び出される
-- 初期化時にクッキー復元を含む非同期処理をTask内で実行
-- クッキー変更の監視が`cookieObserver`フィールドで保持されている
+**現状**: init() の L114-128 で WKWebViewConfiguration の生成、WKWebsiteDataStore の設定（ハードコードされた UUID）、WKWebView のインスタンス化、coordinator の設定をすべて ViewModel が行っている。
+**本質**: WebView の構築はインフラ層の責務であり、ViewModel が WebKit の詳細（dataStore ID、javaScriptCanOpenWindowsAutomatically など）を知る必要はない。テスト時に WKWebView を差し替えられない。
+**あるべき姿**: WebView の生成は外部から注入するか、ファクトリに委譲する。ViewModel は WebView のインターフェースのみに依存する。
 
-**本質**: セッション管理はクッキー同期の詳細であり、使用量データ取得のViewModelレイヤーに入るべきではない。これはコーディネータ層またはサービス層が担うべき関心事。
+### 2. デバッグログ機構が埋め込まれている
 
-**あるべき姿**: セッション復元・バックアップをSessionCoordinatorなど専用クラスに分離。ViewModelは「セッションが復元された」というイベントを受け取るだけ。
+**現状**: L76-93 で logURL（static let）と debug() メソッドがファイル書き込みまで含めて定義されている。ViewModel の全メソッドから直接呼ばれている。
+**本質**: ログ出力はクロスカッティング関心事であり、特定の ViewModel に属さない。FileHandle 操作という I/O 詳細も ViewModel が持つべきではない。
+**あるべき姿**: Logger プロトコルに抽出し、init で注入する。NSLog + ファイル書き込みの実装は別クラスに分離する。
 
-### 2. Auto-refresh タイマー管理が複数の責務に結合
+### 3. Cookie/Session管理がViewModelに混在
 
-**現状**: Lines 302-323
-- `startAutoRefresh()` はタイマーを開始し、内部で`fetch()`を呼び出し
-- `restartAutoRefresh()` は停止→再開。`isLoggedIn`状態に基づいて条件分岐
-- リフレッシュ間隔は`refreshInterval`で計算。設定変更時の再起動ロジックがない
+**現状**: L136 startCookieObservation()、L141 restoreSessionCookies()、L164 backupSessionCookies() がViewModel内で直接呼び出される。cookieObserver フィールド（L31）で監視を保持。
+**本質**: セッション永続化は認証インフラの責務。ViewModel がいつバックアップし、いつリストアするかを知っている状態は、認証ロジックの変更時に ViewModel を修正する必要が生じる。
+**あるべき姿**: SessionCoordinator に委譲し、ViewModel は「ログイン済みかどうか」だけを受け取る。
 
-**本質**: タイマー管理とフェッチロジックが密結合。設定の動的変更に対応していない。タイマーは再利用可能なユーティリティ（RefreshCoordinator）に分離すべき。
+### 4. handlePageReady() にオーケストレーションロジックが集中
 
-**あるべき姿**: RefreshCoordinatorまたはTimerMangerを分離。ViewModelは「今からリフレッシュを開始したい」という意図を示すだけ。内部の周期実行メカニズムはジョブスケジューラーに委譲。
+**現状**: L150-179 で、セッション確認 → ログイン状態更新 → タイマー停止 → auto-refresh開始 → cookie バックアップ → ページ判定 → リダイレクト判定 → フェッチという複数ステップを1メソッドで実行。リダイレクトのクールダウン（lastRedirectAt, canRedirect()）もViewModel内。
+**本質**: WebViewCoordinatorDelegate のイベントハンドリングとビジネスロジック（リダイレクト判定、クールダウン）が密結合。
+**あるべき姿**: ページ遷移コーディネータに分離。ViewModel は状態更新のみ。
 
-### 3. WebViewCoordinatorDelegate責務がViewModelに混在
+### 5. 初期化時の副作用が多い
 
-**現状**: Lines 9, 163-193
-- `WebViewCoordinatorDelegate` を実装してコーディネータからコールバック受け取り
-- `handlePageReady()` 内で、ページの場所確認→リダイレクト判定→セッション確認→フェッチという複数ステップを実行
-- リダイレクト回避ロジック（`lastRedirectAt`, `canRedirect()`）がViewModelに入っている
-
-**本質**: `handlePageReady()` はコーディネータイベントハンドラであり、ここに「ユーザーが手動で使用量ページへ移動したい」「自動リダイレクトは5秒ごと」などのビジネスロジックが入るべきではない。
-
-**あるべき姿**: PageReadyイベントハンドラーをPageReadyCoordinatorに分離。ViewModelはそこから通知を受け取り、状態更新のみ行う。リダイレクト判定・クールダウンは別のコーディネータが担当。
-
-### 4. applyResult() が多数の副作用を実行
-
-**現状**: Lines 252-272
-```swift
-func applyResult(_ result: UsageResult) {
-    fiveHourPercent = result.fiveHourPercent
-    sevenDayPercent = result.sevenDayPercent
-    fiveHourResetsAt = result.fiveHourResetsAt
-    sevenDayResetsAt = result.sevenDayResetsAt
-    usageStore.save(result)                    // ストレージ
-    alertChecker.checkAlerts(...)              // アラート
-    reloadHistory()                            // UI更新
-    snapshotWriter.saveAfterFetch(...)         // スナップショット
-    widgetReloader.reloadAllTimelines()        // ウィジェット
-    fetchPredict()                             // 予測取得
-}
-```
-
-**本質**: 1つの結果に対して6つの異なるシステムに影響。責務が集中している。UI状態更新 vs 副作用の責務が混在。
-
-**あるべき姿**:
-- `applyResult()` はUI状態のみ更新
-- 副作用（save, alerts, snapshots, widget reload）はPublisherパターンで処理。UsageStore.save()後に自動的にアラート・スナップショット・ウィジェット更新が続く構造に
-- fetchPredict() は独立したタイミングで実行（fetch完了後の自動トリガーではなく、独立した定期タスク）
-
-### 5. 初期化時に多数の非同期処理と副作用がある
-
-**現状**: Lines 104-159
-- コンフィグ生成（WKWebViewConfiguration）
-- ストレージ初期化（設定読み込み）
-- コーディネーター初期化
-- SQLiteバックアップ実行
-- 予測取得開始
-- ログインアイテム同期
-- クッキー観察開始
-- Task内での非同期クッキー復元と初期フェッチ
-
-**本質**: 初期化が順序敏感（クッキー復元→ページロード→ログイン確認→フェッチ）。副作用が多い。テスト困難。初期化失敗時の復旧ロジックが不明確。
-
-**あるべき姿**: 初期化を段階化。初期化メソッドを分割（setupUI, setupStorage, startInitialSync）。各段階で失敗ハンドリング明確化。非同期初期化はStatePattern（initializing → ready → error）で管理。
-
-## 推奨される分離
-
-```
-UsageViewModel (現在 325行 → 150行程度に削減)
-├─ SessionCoordinator (クッキー, セッション復復)
-├─ RefreshCoordinator (タイマー, 周期実行)
-├─ PageReadyCoordinator (ページロード, リダイレクト判定)
-├─ ResultProcessor (副作用パイプライン)
-└─ InitializationCoordinator (段階化初期化)
-```
+**現状**: init() L99-146 で、WebView構築、設定読み込み、coordinator設定、履歴ロード、SQLiteバックアップ実行、ログインアイテム同期、cookie観察開始、非同期cookie復元、ページロード、ログインポーリング開始を一気に行う。
+**本質**: 初期化が順序敏感で副作用が多い。テスト時にすべてが走る。初期化失敗時の復旧パスが不明確。
+**あるべき姿**: 初期化を段階化。構築と起動を分離し、start() メソッドで非同期処理を明示的に開始する。
