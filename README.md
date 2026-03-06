@@ -2,15 +2,16 @@
 
 macOS menu bar app for monitoring Claude Code usage limits — log, track, and analyze your usage trends.
 
-![Menu Bar](docs/images/Menu-Tray.png)
+### Menu Bar
+<img src="docs/images/Menu-Tray.png" width="200">
 
-![Session Weekly](docs/images/Session-Weekly.png)
+### Widget
+<img src="docs/images/Wiget.png" width="360">
 
-![Session Hourly](docs/images/Session-Hourly.png)
-
-![Calendrical Week](docs/images/Calendrical-Week.png)
-
-![Widget](docs/images/Wiget.png)
+### Analysis
+| Session Weekly | Session Hourly | Calendrical Week |
+|:-:|:-:|:-:|
+| <img src="docs/images/Session-Weekly.png" width="300"> | <img src="docs/images/Session-Hourly.png" width="300"> | <img src="docs/images/Calendrical-Week.png" width="300"> |
 
 ## Download
 
