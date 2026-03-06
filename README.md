@@ -2,8 +2,6 @@
 
 macOS menu bar app for monitoring Claude Code usage limits — log, track, and analyze your usage trends.
 
-<img src="docs/images/Screen-1.png" width="800">
-
 <img src="docs/images/Screen-3.png" width="800">
 
 ## Download
