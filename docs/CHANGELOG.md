@@ -3,6 +3,19 @@
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-03-07
+
+### Added
+- Color Theme setting (System/Light/Dark) for menu bar graphs
+- Sync Graph Settings (colors, theme) to Widget and Analysis page
+- Widget reads color presets from shared settings.json via WidgetColorThemeResolver
+- Analysis page applies dynamic chart colors and light/dark theme from settings
+- ChartColorPreset.hexString property for CSS color output
+- AnalysisSchemeHandler settingsProvider DI for testability
+
+### Changed
+- Widget color/theme changes trigger immediate widget reload via WidgetCenter
+
 ## [0.9.12] - 2026-03-07
 
 ### Added
