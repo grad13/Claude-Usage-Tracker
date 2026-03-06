@@ -1,4 +1,4 @@
-// meta: created=2026-02-21 updated=2026-03-06 checked=2026-03-03
+// meta: created=2026-02-21 updated=2026-03-07 checked=2026-03-03
 import SwiftUI
 import ClaudeUsageTrackerShared
 
@@ -10,13 +10,31 @@ struct WidgetMiniGraph: View {
     let areaColor: Color
     let areaOpacity: Double
     let isLoggedIn: Bool
+    let colorScheme: ColorScheme
+
+    private var bgColor: Color {
+        isLoggedIn
+            ? (colorScheme == .dark
+                ? Color(red: 0x12/255, green: 0x12/255, blue: 0x12/255)
+                : Color(red: 0xE8/255, green: 0xE8/255, blue: 0xE8/255))
+            : (colorScheme == .dark
+                ? Color(red: 0x3A/255, green: 0x10/255, blue: 0x10/255)
+                : Color(red: 0xFF/255, green: 0xCC/255, blue: 0xCC/255))
+    }
+    private var tickColor: Color {
+        colorScheme == .dark ? Color.white.opacity(0.07) : Color.black.opacity(0.1)
+    }
+    private var usageLineColor: Color {
+        colorScheme == .dark ? Color.white.opacity(0.3) : Color.black.opacity(0.3)
+    }
+    private var noDataFill: Color {
+        colorScheme == .dark ? Color.white.opacity(0.06) : Color.black.opacity(0.06)
+    }
+    private var textColor: Color {
+        colorScheme == .dark ? .white : .black
+    }
 
     private enum Layout {
-        static let bgColor = Color(red: 0x12/255, green: 0x12/255, blue: 0x12/255)
-        static let bgColorSignedOut = Color(red: 0x3A/255, green: 0x10/255, blue: 0x10/255)
-        static let tickColor = Color.white.opacity(0.07)
-        static let usageLineColor = Color.white.opacity(0.3)
-        static let noDataFill = Color.white.opacity(0.06)
         static let labelFontSize: CGFloat = 9
         static let labelOrigin = CGPoint(x: 4, y: 4)
         static let labelOpacity: Double = 0.5
@@ -76,15 +94,14 @@ struct WidgetMiniGraph: View {
     // MARK: - Drawing Phases
 
     private func drawBackground(_ context: inout GraphicsContext, size: CGSize) {
-        let bg = isLoggedIn ? Layout.bgColor : Layout.bgColorSignedOut
-        context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(bg))
+        context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(bgColor))
     }
 
     private func drawLabel(_ context: inout GraphicsContext) {
         let labelText = context.resolve(
             Text(label)
                 .font(.system(size: Layout.labelFontSize, weight: .medium))
-                .foregroundStyle(.white.opacity(Layout.labelOpacity))
+                .foregroundStyle(textColor.opacity(Layout.labelOpacity))
         )
         context.draw(labelText, at: Layout.labelOrigin, anchor: .topLeading)
     }
@@ -100,7 +117,7 @@ struct WidgetMiniGraph: View {
             var tickPath = Path()
             tickPath.move(to: CGPoint(x: x, y: 0))
             tickPath.addLine(to: CGPoint(x: x, y: h))
-            context.stroke(tickPath, with: .color(Layout.tickColor), lineWidth: Layout.tickLineWidth)
+            context.stroke(tickPath, with: .color(tickColor), lineWidth: Layout.tickLineWidth)
         }
     }
 
@@ -123,7 +140,7 @@ struct WidgetMiniGraph: View {
         if firstX > 1 {
             context.fill(
                 Path(CGRect(x: 0, y: 0, width: firstX, height: h)),
-                with: .color(Layout.noDataFill)
+                with: .color(noDataFill)
             )
         }
     }
@@ -185,7 +202,7 @@ struct WidgetMiniGraph: View {
         usageLine.addLine(to: CGPoint(x: w, y: y))
         context.stroke(
             usageLine,
-            with: .color(Layout.usageLineColor),
+            with: .color(usageLineColor),
             style: StrokeStyle(lineWidth: Layout.usageLineWidth, dash: Layout.usageDash)
         )
     }
@@ -193,18 +210,18 @@ struct WidgetMiniGraph: View {
     private func drawMarker(_ context: inout GraphicsContext, x: CGFloat, y: CGFloat) {
         var innerCircle = Path()
         innerCircle.addArc(center: CGPoint(x: x, y: y), radius: Layout.markerInnerRadius, startAngle: .zero, endAngle: .degrees(360), clockwise: false)
-        context.fill(innerCircle, with: .color(.white))
+        context.fill(innerCircle, with: .color(textColor))
 
         var outerCircle = Path()
         outerCircle.addArc(center: CGPoint(x: x, y: y), radius: Layout.markerOuterRadius, startAngle: .zero, endAngle: .degrees(360), clockwise: false)
-        context.stroke(outerCircle, with: .color(.white.opacity(Layout.markerRingOpacity)), lineWidth: Layout.markerRingWidth)
+        context.stroke(outerCircle, with: .color(textColor.opacity(Layout.markerRingOpacity)), lineWidth: Layout.markerRingWidth)
     }
 
     private func drawPercentText(_ context: inout GraphicsContext, markerX: CGFloat, markerY: CGFloat, lastPercent: Double, h: CGFloat, w: CGFloat) {
         let percentText = context.resolve(
             Text(String(format: "%.0f%%", lastPercent))
                 .font(.system(size: Layout.percentFontSize, weight: .semibold))
-                .foregroundStyle(.white.opacity(Layout.percentOpacity))
+                .foregroundStyle(textColor.opacity(Layout.percentOpacity))
         )
         let showBelow = DisplayHelpers.percentTextShowsBelow(percent: lastPercent)
         let percentY = showBelow ? markerY + Layout.percentBelowOffset : markerY - Layout.percentAboveOffset

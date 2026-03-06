@@ -1,4 +1,4 @@
-// meta: created=2026-02-21 updated=2026-02-24 checked=2026-03-03
+// meta: created=2026-02-21 updated=2026-03-07 checked=2026-03-03
 import Foundation
 
 public enum AppGroupConfig {
@@ -7,6 +7,20 @@ public enum AppGroupConfig {
 
     public static var containerURL: URL? {
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupId)
+    }
+
+    /// Read a string value from settings.json in the App Group container.
+    public static func settingsString(forKey key: String) -> String? {
+        guard let container = containerURL else { return nil }
+        let settingsURL = container
+            .appendingPathComponent("Library/Application Support", isDirectory: true)
+            .appendingPathComponent(appName, isDirectory: true)
+            .appendingPathComponent("settings.json")
+        guard let data = try? Data(contentsOf: settingsURL),
+              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+        return dict[key] as? String
     }
 
     /// SQLite DB path for UsageStore (shared between app and widget).

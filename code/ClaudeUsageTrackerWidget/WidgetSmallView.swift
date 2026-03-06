@@ -1,13 +1,18 @@
-// meta: created=2026-02-21 updated=2026-02-22 checked=2026-03-03
+// meta: created=2026-02-21 updated=2026-03-07 checked=2026-03-03
 import SwiftUI
 import WidgetKit
 import ClaudeUsageTrackerShared
 
 struct WidgetSmallView: View {
     let snapshot: UsageSnapshot?
+    @Environment(\.colorScheme) private var envColorScheme
 
     private static let fiveHourColor = Color(red: 100/255, green: 180/255, blue: 255/255)
     private static let sevenDayColor = Color(red: 255/255, green: 130/255, blue: 180/255)
+
+    private var resolvedColorScheme: ColorScheme {
+        WidgetColorThemeResolver.resolve(environment: envColorScheme)
+    }
 
     var body: some View {
         if let snapshot {
@@ -54,7 +59,8 @@ struct WidgetSmallView: View {
             resetsAt: resetsAt,
             areaColor: color,
             areaOpacity: opacity,
-            isLoggedIn: snapshot?.isLoggedIn ?? true
+            isLoggedIn: snapshot?.isLoggedIn ?? true,
+            colorScheme: resolvedColorScheme
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .clipShape(RoundedRectangle(cornerRadius: 4))
