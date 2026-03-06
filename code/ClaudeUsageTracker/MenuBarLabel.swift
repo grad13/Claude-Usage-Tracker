@@ -5,7 +5,6 @@ import SwiftUI
 
 struct MenuBarLabel: View {
     @ObservedObject var viewModel: UsageViewModel
-    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         let image = renderGraphs()
@@ -19,18 +18,16 @@ struct MenuBarLabel: View {
     private func renderGraphs() -> NSImage {
         let s = viewModel.settings
         let graphCount = Self.graphCount(settings: s)
+        let resolved = s.graphColorTheme.resolvedColorScheme()
 
         let content: AnyView
         if graphCount > 0 {
-            content = AnyView(
-                MenuBarGraphsContent(viewModel: viewModel)
-                    .environment(\.colorScheme, colorScheme)
-            )
+            content = AnyView(MenuBarGraphsContent(viewModel: viewModel, colorScheme: resolved))
         } else {
             content = AnyView(
                 Text(viewModel.statusText)
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(colorScheme == .dark ? .white : .black)
+                    .foregroundColor(resolved == .dark ? .white : .black)
             )
         }
 
@@ -49,6 +46,7 @@ struct MenuBarLabel: View {
 
 struct MenuBarGraphsContent: View {
     @ObservedObject var viewModel: UsageViewModel
+    let colorScheme: ColorScheme
 
     var body: some View {
         let s = viewModel.settings
@@ -63,7 +61,8 @@ struct MenuBarGraphsContent: View {
                     areaOpacity: 0.7,
                     divisions: 5,
                     chartWidth: CGFloat(s.chartWidth),
-                    isLoggedIn: loggedIn
+                    isLoggedIn: loggedIn,
+                    colorScheme: colorScheme
                 )
             }
             if s.showWeeklyGraph {
@@ -75,7 +74,8 @@ struct MenuBarGraphsContent: View {
                     areaOpacity: 0.65,
                     divisions: 7,
                     chartWidth: CGFloat(s.chartWidth),
-                    isLoggedIn: loggedIn
+                    isLoggedIn: loggedIn,
+                    colorScheme: colorScheme
                 )
             }
         }

@@ -10,8 +10,7 @@ struct MiniUsageGraph: View {
     let divisions: Int
     let chartWidth: CGFloat
     let isLoggedIn: Bool
-
-    @Environment(\.colorScheme) private var colorScheme
+    let colorScheme: ColorScheme
 
     private var bgColor: Color {
         isLoggedIn

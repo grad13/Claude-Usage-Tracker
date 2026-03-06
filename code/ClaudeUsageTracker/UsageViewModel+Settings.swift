@@ -1,4 +1,4 @@
-// meta: created=2026-02-26 updated=2026-02-27 checked=2026-02-26
+// meta: created=2026-02-26 updated=2026-03-07 checked=2026-02-26
 import Foundation
 import ServiceManagement
 
@@ -40,6 +40,11 @@ extension UsageViewModel {
 
     func setWeeklyColorPreset(_ preset: ChartColorPreset) {
         settings.weeklyColorPreset = preset
+        settingsStore.save(settings)
+    }
+
+    func setGraphColorTheme(_ theme: GraphColorTheme) {
+        settings.graphColorTheme = theme
         settingsStore.save(settings)
     }
 

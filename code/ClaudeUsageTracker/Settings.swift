@@ -39,6 +39,32 @@ enum ChartColorPreset: String, CaseIterable, Codable {
     }
 }
 
+// MARK: - Graph Color Theme
+
+enum GraphColorTheme: String, Codable, CaseIterable {
+    case system = "system"
+    case light  = "light"
+    case dark   = "dark"
+
+    var displayName: String {
+        switch self {
+        case .system: return "System"
+        case .light:  return "Light"
+        case .dark:   return "Dark"
+        }
+    }
+
+    func resolvedColorScheme() -> ColorScheme {
+        switch self {
+        case .light: return .light
+        case .dark: return .dark
+        case .system:
+            let appearance = NSApp.effectiveAppearance
+            return appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? .dark : .light
+        }
+    }
+}
+
 // MARK: - Daily Alert Definition
 
 enum DailyAlertDefinition: String, Codable, CaseIterable {
@@ -67,6 +93,7 @@ struct AppSettings: Codable {
     var chartWidth: Int = defaultChartWidth
     var hourlyColorPreset: ChartColorPreset = .blue
     var weeklyColorPreset: ChartColorPreset = .pink
+    var graphColorTheme: GraphColorTheme = .dark
 
     // Alert settings
     var weeklyAlertEnabled: Bool = false
@@ -91,6 +118,7 @@ struct AppSettings: Codable {
         chartWidth = try container.decodeIfPresent(Int.self, forKey: .chartWidth) ?? Self.defaultChartWidth
         hourlyColorPreset = try container.decodeIfPresent(ChartColorPreset.self, forKey: .hourlyColorPreset) ?? .blue
         weeklyColorPreset = try container.decodeIfPresent(ChartColorPreset.self, forKey: .weeklyColorPreset) ?? .pink
+        graphColorTheme = try container.decodeIfPresent(GraphColorTheme.self, forKey: .graphColorTheme) ?? .dark
         weeklyAlertEnabled = try container.decodeIfPresent(Bool.self, forKey: .weeklyAlertEnabled) ?? false
         weeklyAlertThreshold = try container.decodeIfPresent(Int.self, forKey: .weeklyAlertThreshold) ?? Self.defaultWeeklyAlertThreshold
         hourlyAlertEnabled = try container.decodeIfPresent(Bool.self, forKey: .hourlyAlertEnabled) ?? false

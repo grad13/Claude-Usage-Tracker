@@ -1,4 +1,4 @@
-// meta: created=2026-02-26 updated=2026-03-04 checked=2026-02-26
+// meta: created=2026-02-26 updated=2026-03-07 checked=2026-02-26
 import SwiftUI
 
 // MARK: - Menu Content
@@ -85,6 +85,15 @@ struct MenuContent: View {
             }
 
             Divider()
+
+            Menu("Color Theme") {
+                ForEach(GraphColorTheme.allCases, id: \.self) { theme in
+                    Button(theme.displayName) {
+                        viewModel.setGraphColorTheme(theme)
+                    }
+                    .badge(viewModel.settings.graphColorTheme == theme ? "✓" : "")
+                }
+            }
 
             Menu("5-hour Color") {
                 ForEach(ChartColorPreset.allCases, id: \.self) { preset in
