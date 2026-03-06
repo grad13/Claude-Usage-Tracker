@@ -34,6 +34,8 @@
 		AA10001A /* WebViewCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00001A /* WebViewCoordinator.swift */; };
 		AA10001B /* NotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00001B /* NotificationManager.swift */; };
 		AA10001C /* AlertChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00001C /* AlertChecker.swift */; };
+		AA10001E /* UsageModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00001E /* UsageModels.swift */; };
+		AA10001F /* UsageViewModel+Debug.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00001F /* UsageViewModel+Debug.swift */; };
 		BB100001 /* SettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000001 /* SettingsTests.swift */; };
 		BB100002 /* FetcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000002 /* FetcherTests.swift */; };
 		BB100003 /* ViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000003 /* ViewModelTests.swift */; };
@@ -171,6 +173,8 @@
 		AA00001A /* WebViewCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebViewCoordinator.swift; sourceTree = "<group>"; };
 		AA00001B /* NotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManager.swift; sourceTree = "<group>"; };
 		AA00001C /* AlertChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertChecker.swift; sourceTree = "<group>"; };
+		AA00001E /* UsageModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageModels.swift; sourceTree = "<group>"; };
+		AA00001F /* UsageViewModel+Debug.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UsageViewModel+Debug.swift"; sourceTree = "<group>"; };
 		AA00001D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		AA000010 /* ClaudeUsageTracker.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ClaudeUsageTracker.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BB000001 /* SettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsTests.swift; sourceTree = "<group>"; };
@@ -302,6 +306,8 @@
 				AA00001A /* WebViewCoordinator.swift */,
 				AA00001B /* NotificationManager.swift */,
 				AA00001C /* AlertChecker.swift */,
+				AA00001E /* UsageModels.swift */,
+				AA00001F /* UsageViewModel+Debug.swift */,
 				AA000005 /* Info.plist */,
 				AA000006 /* ClaudeUsageTracker.entitlements */,
 			);
@@ -646,6 +652,8 @@
 				AA10001A /* WebViewCoordinator.swift in Sources */,
 				AA10001B /* NotificationManager.swift in Sources */,
 				AA10001C /* AlertChecker.swift in Sources */,
+				AA10001E /* UsageModels.swift in Sources */,
+				AA10001F /* UsageViewModel+Debug.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
