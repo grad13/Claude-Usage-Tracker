@@ -198,6 +198,92 @@ Log file details:
 | `lastRedirectAt` | `Date?` | Last redirect time (for 5-second cooldown) |
 | `retryCount` | `Int` (private) | Current retry count for fetchSilently (0 when idle) |
 
+## handlePageReady() Flow
+
+`handlePageReady()` is called by `WebViewCoordinator.didFinish` when the main WebView finishes loading a page on `claude.ai` (see spec/meta/webview-coordinator.md for trigger conditions).
+
+### Overview
+
+Session cookie check → redirect if not on usage page → fetch if on usage page. All steps run inside a `Task` on `@MainActor`.
+
+### Decision Flow
+
+```
+handlePageReady()
+  +-- Task {
+  |     +-- fetcher.hasValidSession(using: webView)
+  |     |     +-- false → return (skip all subsequent steps)
+  |     |     +-- true →
+  |     |           +-- isLoggedIn = true
+  |     |           +-- loginPollTimer?.invalidate() + set nil
+  |     |           +-- startAutoRefresh()
+  |     |           +-- backupSessionCookies()
+  |     |           +-- isOnUsagePage()?
+  |     |                 +-- false → canRedirect()?
+  |     |                 |           +-- false → return (cooldown active)
+  |     |                 |           +-- true →
+  |     |                 |                 +-- lastRedirectAt = Date()
+  |     |                 |                 +-- loadUsagePage()
+  |     |                 |                 +-- return
+  |     |                 +-- true → fetchSilently()
+  |   }
+```
+
+### Decision Table
+
+| Case ID | hasValidSession | isOnUsagePage | canRedirect | Action | Notes |
+|---------|-----------------|---------------|-------------|--------|-------|
+| PR-01 | false | - | - | return (no-op) | No session cookie; skip silently |
+| PR-02 | true | true | - | fetchSilently() | On usage page; proceed to data fetch |
+| PR-03 | true | false | true | loadUsagePage() | Not on usage page; redirect to claude.ai |
+| PR-04 | true | false | false | return (no-op) | Redirect cooldown (5s) still active |
+
+### Common Side Effects (PR-02, PR-03, PR-04)
+
+When `hasValidSession` returns true (all cases except PR-01), the following side effects always execute before branching:
+
+| Order | Side Effect | Description |
+|-------|-------------|-------------|
+| 1 | `isLoggedIn = true` | Update login state |
+| 2 | `loginPollTimer` invalidate + nil | Stop login polling (no longer needed) |
+| 3 | `startAutoRefresh()` | Start periodic auto-refresh timer (no-op if already running) |
+| 4 | `backupSessionCookies()` | Persist session cookies to App Group for recovery |
+
+### Redirect Cooldown (canRedirect)
+
+```swift
+func canRedirect() -> Bool {
+    guard let lastRedirectAt else { return true }
+    return Date().timeIntervalSince(lastRedirectAt) > 5
+}
+```
+
+- **Cooldown duration**: 5 seconds
+- **Purpose**: Prevent infinite redirect loops when WebView navigates away from claude.ai (e.g., OAuth flow landing on a different page)
+- **First call**: Always returns true (`lastRedirectAt` is nil at launch)
+- **Subsequent calls**: Returns true only if more than 5 seconds have elapsed since the last redirect
+- `lastRedirectAt` is set to `Date()` immediately before calling `loadUsagePage()` in the redirect path
+
+### isOnUsagePage Check
+
+```swift
+func isOnUsagePage() -> Bool {
+    guard let url = webView.url else { return false }
+    return url.host == Self.targetHost  // "claude.ai"
+}
+```
+
+- Returns `true` when the WebView's current URL host is exactly `claude.ai`
+- Returns `false` when the URL is nil or the host differs
+
+### isAutoRefreshEnabled Interaction
+
+`handlePageReady()` does not read or write `isAutoRefreshEnabled` directly. However:
+
+- `startAutoRefresh()` (called in the common side effects) creates the timer, whose tick checks `isAutoRefreshEnabled != false`
+- `fetchSilently()` (called in PR-02) sets `isAutoRefreshEnabled = true` on success, or `false` on auth error
+- This means a successful `handlePageReady` → `fetchSilently` cycle establishes the auto-refresh as fully enabled
+
 ## Auto-Refresh Control Flow
 
 ```
