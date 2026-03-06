@@ -5,35 +5,39 @@
 //   2. popup webView → checkPopupLogin()
 //   3. main webView + host "claude.ai" → handlePageReady()
 //   4. main webView + host != "claude.ai" → skip (no delegate calls)
+//
+// Note: WKNavigation cannot be safely instantiated outside WebKit.
+// Its dealloc accesses internal state (CFRetain(NULL) → SIGTRAP).
+// Pass nil for the navigation parameter since the coordinator ignores it.
 
 import XCTest
 import WebKit
 @testable import ClaudeUsageTracker
 
-// MARK: - StubWKWebView
+// MARK: - TestPageSchemeHandler
 
-/// WKWebView subclass that allows controlling the `url` property for testing.
-/// WKWebView.url is read-only and set internally by navigation;
-/// overriding it lets us simulate page loads without async navigation.
-private class StubWKWebView: WKWebView {
-    private let _url: URL?
-    override var url: URL? { _url }
-
-    init(url: URL?) {
-        _url = url
-        super.init(frame: .zero, configuration: WKWebViewConfiguration())
+/// Serves an empty HTML page for any URL requested via the "testpage" scheme.
+/// Used to load a real WKWebView with a controlled URL host (e.g. testpage://claude.ai/usage)
+/// without subclassing WKWebView (which is fragile with WebKit internals).
+private final class TestPageSchemeHandler: NSObject, WKURLSchemeHandler {
+    func webView(_ webView: WKWebView, start task: WKURLSchemeTask) {
+        let url = task.request.url!
+        let response = URLResponse(url: url, mimeType: "text/html",
+                                   expectedContentLength: -1, textEncodingName: "utf-8")
+        task.didReceive(response)
+        task.didReceive("<html></html>".data(using: .utf8)!)
+        task.didFinish()
     }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
+    func webView(_ webView: WKWebView, stop task: WKURLSchemeTask) {}
 }
 
 // MARK: - WebViewCoordinatorDidFinishTests
 
 /// Tests for Section 3.1 didFinish routing logic.
 ///
-/// Reuses MockUsageViewModel and MockWKNavigation from WebViewCoordinatorTests.
-/// The mock is defined in the main test file and shared via the same test target.
+/// Reuses MockUsageViewModel from WebViewCoordinatorTests.
+/// URL-dependent tests use TestPageSchemeHandler to load a real URL into WKWebView.
+/// WKNavigation is NOT instantiated — pass nil since the coordinator ignores it.
 @MainActor
 final class WebViewCoordinatorDidFinishTests: XCTestCase {
 
@@ -55,118 +59,109 @@ final class WebViewCoordinatorDidFinishTests: XCTestCase {
         WebViewCoordinator(viewModel: mockViewModel)
     }
 
+    /// Creates a WKWebView loaded with a URL that has the given host.
+    /// Uses a custom URL scheme handler so no network access is needed.
+    /// After this returns, `webView.url?.host` equals the provided host.
+    func makeWebView(host: String, path: String = "/test") -> WKWebView {
+        let config = WKWebViewConfiguration()
+        let handler = TestPageSchemeHandler()
+        config.setURLSchemeHandler(handler, forURLScheme: "testpage")
+
+        let webView = WKWebView(frame: .zero, configuration: config)
+        let exp = expectation(description: "Page loaded: \(host)")
+        let navDelegate = TestNavDelegate(onFinish: { exp.fulfill() })
+        webView.navigationDelegate = navDelegate
+        objc_setAssociatedObject(webView, "navDelegate", navDelegate, .OBJC_ASSOCIATION_RETAIN)
+
+        webView.load(URLRequest(url: URL(string: "testpage://\(host)\(path)")!))
+        wait(for: [exp], timeout: 5.0)
+        return webView
+    }
+
     // MARK: - Section 3.1: didFinish — viewModel == nil → return
 
-    /// When the weak viewModel reference has been deallocated, didFinish
-    /// must return without calling any delegate methods.
     func testDidFinish_viewModelNil_doesNotCallAnyDelegateMethod() {
-        // Create coordinator with a temporary MockUsageViewModel that will be
-        // released when we nil out the strong reference below.
         var temporaryViewModel: MockUsageViewModel? = MockUsageViewModel()
         let coordinator = WebViewCoordinator(viewModel: temporaryViewModel!)
         let trackingViewModel = temporaryViewModel!
 
-        // Release the strong reference so the weak reference inside coordinator becomes nil
         temporaryViewModel = nil
 
         let webView = WKWebView(frame: .zero)
-        let navigation = MockWKNavigation()
+        coordinator.webView(webView, didFinish: nil)
 
-        coordinator.webView(webView, didFinish: navigation)
-
-        XCTAssertEqual(trackingViewModel.checkPopupLoginCallCount, 0,
-                       "didFinish must not call checkPopupLogin when viewModel is nil")
-        XCTAssertEqual(trackingViewModel.handlePageReadyCallCount, 0,
-                       "didFinish must not call handlePageReady when viewModel is nil")
+        XCTAssertEqual(trackingViewModel.checkPopupLoginCallCount, 0)
+        XCTAssertEqual(trackingViewModel.handlePageReadyCallCount, 0)
     }
 
     // MARK: - Section 3.1: didFinish — popup webView → checkPopupLogin()
 
-    /// When didFinish is called with a webView that matches viewModel.popupWebView
-    /// (identity check via ===), coordinator must call checkPopupLogin().
     func testDidFinish_popupWebView_callsCheckPopupLogin() {
         let coordinator = makeCoordinator()
         let popupWebView = WKWebView(frame: .zero)
         mockViewModel.popupWebView = popupWebView
 
-        let navigation = MockWKNavigation()
-        coordinator.webView(popupWebView, didFinish: navigation)
+        coordinator.webView(popupWebView, didFinish: nil)
 
-        XCTAssertEqual(mockViewModel.checkPopupLoginCallCount, 1,
-                       "didFinish must call checkPopupLogin when webView === popupWebView")
+        XCTAssertEqual(mockViewModel.checkPopupLoginCallCount, 1)
     }
 
-    /// When didFinish is called with the popup webView, handlePageReady must NOT
-    /// be called — the popup path returns after checkPopupLogin.
     func testDidFinish_popupWebView_doesNotCallHandlePageReady() {
         let coordinator = makeCoordinator()
         let popupWebView = WKWebView(frame: .zero)
         mockViewModel.popupWebView = popupWebView
 
-        let navigation = MockWKNavigation()
-        coordinator.webView(popupWebView, didFinish: navigation)
+        coordinator.webView(popupWebView, didFinish: nil)
 
-        XCTAssertEqual(mockViewModel.handlePageReadyCallCount, 0,
-                       "didFinish must not call handlePageReady for popup webView")
+        XCTAssertEqual(mockViewModel.handlePageReadyCallCount, 0)
     }
 
     // MARK: - Section 3.1: didFinish — main webView + host "claude.ai" → handlePageReady()
 
-    /// When didFinish is called with a non-popup webView whose URL host is "claude.ai",
-    /// coordinator must call handlePageReady().
     func testDidFinish_mainWebView_hostClaudeAI_callsHandlePageReady() {
         let coordinator = makeCoordinator()
-        let mainWebView = StubWKWebView(url: URL(string: "https://claude.ai/usage")!)
+        let mainWebView = makeWebView(host: "claude.ai", path: "/usage")
 
-        let navigation = MockWKNavigation()
-        coordinator.webView(mainWebView, didFinish: navigation)
+        XCTAssertEqual(mainWebView.url?.host, "claude.ai", "Precondition")
 
-        XCTAssertEqual(mockViewModel.handlePageReadyCallCount, 1,
-                       "didFinish must call handlePageReady when main webView host is claude.ai")
+        mainWebView.navigationDelegate = nil
+        coordinator.webView(mainWebView, didFinish: nil)
+
+        XCTAssertEqual(mockViewModel.handlePageReadyCallCount, 1)
     }
 
-    /// When didFinish is called with a main webView on claude.ai,
-    /// checkPopupLogin must NOT be called.
     func testDidFinish_mainWebView_hostClaudeAI_doesNotCallCheckPopupLogin() {
         let coordinator = makeCoordinator()
-        let mainWebView = StubWKWebView(url: URL(string: "https://claude.ai/usage")!)
+        let mainWebView = makeWebView(host: "claude.ai", path: "/usage")
 
-        let navigation = MockWKNavigation()
-        coordinator.webView(mainWebView, didFinish: navigation)
+        mainWebView.navigationDelegate = nil
+        coordinator.webView(mainWebView, didFinish: nil)
 
-        XCTAssertEqual(mockViewModel.checkPopupLoginCallCount, 0,
-                       "didFinish must not call checkPopupLogin for main webView")
+        XCTAssertEqual(mockViewModel.checkPopupLoginCallCount, 0)
     }
 
     // MARK: - Section 3.1: didFinish — main webView + host != "claude.ai" → skip
 
-    /// When didFinish is called with a non-popup webView whose URL host is NOT "claude.ai",
-    /// coordinator must not call handlePageReady or checkPopupLogin.
     func testDidFinish_mainWebView_hostNotClaudeAI_doesNotCallHandlePageReady() {
         let coordinator = makeCoordinator()
-        let mainWebView = StubWKWebView(url: URL(string: "https://accounts.google.com/login")!)
+        let mainWebView = makeWebView(host: "accounts.google.com", path: "/login")
 
-        let navigation = MockWKNavigation()
-        coordinator.webView(mainWebView, didFinish: navigation)
+        XCTAssertEqual(mainWebView.url?.host, "accounts.google.com", "Precondition")
 
-        XCTAssertEqual(mockViewModel.handlePageReadyCallCount, 0,
-                       "didFinish must not call handlePageReady when host is not claude.ai")
-        XCTAssertEqual(mockViewModel.checkPopupLoginCallCount, 0,
-                       "didFinish must not call checkPopupLogin for main webView")
+        mainWebView.navigationDelegate = nil
+        coordinator.webView(mainWebView, didFinish: nil)
+
+        XCTAssertEqual(mockViewModel.handlePageReadyCallCount, 0)
+        XCTAssertEqual(mockViewModel.checkPopupLoginCallCount, 0)
     }
 
-    /// When the webView URL is nil (no page loaded), didFinish must skip
-    /// (host is nil, which does not match "claude.ai").
     func testDidFinish_mainWebView_urlNil_doesNotCallHandlePageReady() {
         let coordinator = makeCoordinator()
-        let mainWebView = WKWebView(frame: .zero) // url is nil by default
+        let mainWebView = WKWebView(frame: .zero)
 
-        let navigation = MockWKNavigation()
-        coordinator.webView(mainWebView, didFinish: navigation)
+        coordinator.webView(mainWebView, didFinish: nil)
 
-        XCTAssertEqual(mockViewModel.handlePageReadyCallCount, 0,
-                       "didFinish must not call handlePageReady when webView.url is nil")
-        XCTAssertEqual(mockViewModel.checkPopupLoginCallCount, 0,
-                       "didFinish must not call checkPopupLogin for main webView with nil url")
+        XCTAssertEqual(mockViewModel.handlePageReadyCallCount, 0)
+        XCTAssertEqual(mockViewModel.checkPopupLoginCallCount, 0)
     }
 }
