@@ -1,6 +1,6 @@
 ---
 Created: 2026-02-21
-Updated: 2026-03-03
+Updated: 2026-03-07
 Checked: -
 Deprecated: -
 Format: spec-v2.1
@@ -70,7 +70,7 @@ Test environment (DEBUG + XCTestConfigurationFilePath env var present):
 2. If file does not exist: `save()` a default `AppSettings()` and return it
 3. JSON decoding: `keyDecodingStrategy = .convertFromSnakeCase`
 4. Apply `validated()` to the decoded result before returning
-5. On decode error: `print("[Settings] Parse error, using defaults: \(error)")` and return a default `AppSettings()`
+5. On decode error: log via `NSLog`, rename corrupt file to `.bak`, save defaults, and return `AppSettings()`
 
 ### save() behavior
 
@@ -78,7 +78,7 @@ Test environment (DEBUG + XCTestConfigurationFilePath env var present):
 2. `keyEncodingStrategy = .convertToSnakeCase`
 3. `outputFormatting = [.prettyPrinted, .sortedKeys]`
 4. Atomic write via `data.write(to: fileURL, options: .atomic)`
-5. On error: `print("[Settings] Failed to save: \(error)")` only (no exception thrown)
+5. On error: `NSLog("[ClaudeUsageTracker] Settings save error: ...")` only (no exception thrown)
 
 ## Settings Fields
 
@@ -292,7 +292,7 @@ Validation performed on file load:
 | Condition | Behavior |
 |-----------|----------|
 | File does not exist | Create new file with defaults |
-| JSON parse error (syntax, type mismatch) | Use defaults. Log to console |
+| JSON parse error (syntax, type mismatch) | Rename corrupt file to `.bak`, save defaults, return defaults. Log via NSLog |
 | `refresh_interval_minutes` is negative | Fall back to default (5) |
 | `refresh_interval_minutes` is 0 | Valid (auto-refresh disabled) |
 | `start_at_login` is missing | Use default (false) |

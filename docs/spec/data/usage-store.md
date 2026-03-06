@@ -1,6 +1,6 @@
 ---
 Created: 2026-02-26
-Updated: 2026-03-03
+Updated: 2026-03-07
 Checked: -
 Deprecated: -
 Format: spec-v2.1
@@ -185,6 +185,33 @@ Test environment (DEBUG + XCTestConfigurationFilePath env var present):
 
 - In normal environment, if `AppGroupConfig.containerURL` is nil, crash immediately via `fatalError`
 - In test environment, a temporary directory is used instead of the App Group, avoiding dependency on it
+
+## Database Integrity Check
+
+`UsageStore.init()` runs `checkIntegrity()` to detect and recover from DB corruption.
+
+### Flow
+
+```
+checkIntegrity()
+  +-- DB file does not exist → no-op (will be created on first write)
+  +-- DB file exists →
+      +-- Open DB, run PRAGMA quick_check
+      +-- Result == "ok" → no-op (DB is healthy)
+      +-- Result != "ok" or open failure →
+          +-- Rename DB to .corrupt (remove existing .corrupt first)
+          +-- Delete WAL/SHM auxiliary files (-wal, -shm)
+          +-- NSLog the corruption event
+          +-- Next withDatabase call creates a fresh DB via CREATE TABLE IF NOT EXISTS
+```
+
+### Edge cases
+
+| Scenario | Behavior |
+|----------|----------|
+| `.corrupt` already exists | Removed before rename (`removeItem` + `moveItem`) |
+| Rename fails (permissions) | NSLog only; no fallback path created |
+| WAL/SHM files present | Deleted alongside the corrupt DB |
 
 ## Static convenience methods
 

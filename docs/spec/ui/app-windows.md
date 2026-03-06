@@ -1,6 +1,6 @@
 ---
 Created: 2026-02-26
-Updated: 2026-03-06
+Updated: 2026-03-07
 Checked: -
 Deprecated: -
 Format: spec-v2.1
@@ -73,6 +73,18 @@ func applicationDidFinishLaunching(_ notification: Notification) {
 }
 ```
 
+## Initial Login Check
+
+`MenuBarLabel` performs a one-time login check on app launch via `.task`:
+
+1. Wait 2 seconds (allows cookie restoration + login polling to complete)
+2. If `viewModel.isLoggedIn` is still `false`, open the Sign In window via `openWindow(id: "login")` and activate the app
+3. The check runs only once (`@State hasCheckedInitialLogin` guard)
+
+This ensures first-time users see the login window automatically instead of a blank `"5h: -- / 7d: --"` menu bar label with no guidance.
+
+If cookies are successfully restored during the 2-second wait, `isLoggedIn` becomes `true` and the window is not shown.
+
 ## LoginWindowView Error Display UI
 
 `LoginWindowView` displays an error message above the WebView when `viewModel.error` is non-nil.
@@ -143,7 +155,7 @@ graphCount == 0 → Text(statusText) (text display)
 ### Text Fallback Display
 
 - Font: `.system(size: 11, weight: .medium)`
-- Color: `.white`
+- Color: `colorScheme == .dark ? .white : .black` (adapts to system appearance)
 
 ## Graph-Related Settings (AppSettings)
 
@@ -177,12 +189,15 @@ Defined as `enum ChartColorPreset: String, CaseIterable, Codable` with 7 color p
 
 ```
 SwiftUI View (MenuBarGraphsContent or Text)
+  → .environment(\.colorScheme, colorScheme)  ← explicit injection (ImageRenderer does not auto-propagate)
   → ImageRenderer(content:)
   → renderer.scale = 2.0 (Retina support)
   → renderer.cgImage
   → NSImage(cgImage:, size:)  ※ size = cgImage width/height divided by 2.0
   → Image(nsImage:) displayed in MenuBarExtra label
 ```
+
+Note: `ImageRenderer` renders outside the SwiftUI view hierarchy, so `@Environment` values are not automatically propagated. `MenuBarLabel` explicitly reads `@Environment(\.colorScheme)` and injects it into the content via `.environment(\.colorScheme, colorScheme)`.
 
 ### Scale Configuration
 

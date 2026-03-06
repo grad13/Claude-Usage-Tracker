@@ -1,6 +1,6 @@
 ---
 Created: 2026-02-26
-Updated: 2026-03-06
+Updated: 2026-03-07
 Checked: -
 Deprecated: -
 Format: spec-v2.1
@@ -80,7 +80,25 @@ Both methods call `fetcher.fetch(from: webView)`, but differ in the following wa
 | **Additional processing on success** | None | Calls `backupSessionCookies()` |
 | **Error display** | Always sets `self.error` | Sets `self.error` only when `isLoggedIn == true` |
 | **On auth error** | `isAutoRefreshEnabled = false` | Same |
-| **Debug logging** | None | Logs start, success, and errors |
+| **Retry on failure** | No | Yes (non-auth errors only, exponential backoff) |
+| **Debug logging** | None | Logs start, success, errors, and retries |
+
+### fetchSilently() Retry Logic
+
+On non-auth errors, `fetchSilently()` automatically retries with exponential backoff:
+
+| Retry # | Delay | Total elapsed |
+|---------|-------|---------------|
+| 1 | 30s | 30s |
+| 2 | 60s | 1m 30s |
+| 3 | 120s | 3m 30s |
+
+- **Max retries**: 3 (`maxRetries`)
+- **Auth errors**: No retry (user must re-authenticate)
+- **On success**: `retryCount` reset to 0
+- **After max retries**: `retryCount` reset to 0, error remains displayed
+- **Concurrency**: `isFetching` is set to `false` before the sleep, so manual `fetch()` can proceed. However, `fetchSilently()` re-checks `isFetching` guard on retry.
+- **Task cancellation**: `Task.sleep` respects cancellation (e.g., app backgrounding)
 
 Shared success processing (within `applyResult`, 4 phases):
 1. Update `@Published` properties (5h/7d percent, resetsAt)
@@ -178,6 +196,7 @@ Log file details:
 | `loginPollTimer` | `Timer?` | Login polling timer (3-second interval) |
 | `isAutoRefreshEnabled` | `Bool?` | Auto-refresh state (nil=undetermined, true=enabled, false=disabled) |
 | `lastRedirectAt` | `Date?` | Last redirect time (for 5-second cooldown) |
+| `retryCount` | `Int` (private) | Current retry count for fetchSilently (0 when idle) |
 
 ## Auto-Refresh Control Flow
 

@@ -1,6 +1,6 @@
 ---
 Created: 2026-02-26
-Updated: 2026-03-06
+Updated: 2026-03-07
 Checked: -
 Deprecated: -
 Format: spec-v2.1
@@ -37,12 +37,15 @@ struct MiniUsageGraph: View {
     let chartWidth: CGFloat               // Chart width
     let isLoggedIn: Bool                  // Login state (affects background color)
 
-    // --- Static constants ---
-    // bgColor:            #121212 (logged-in background)
-    // bgColorSignedOut:   #3A1010 (signed-out background)
-    // tickColor:          white 0.07 (division lines)
-    // usageLineColor:     white 0.3 (current usage horizontal dashed line)
-    // noDataFill:         white 0.06 (fill for no-data intervals)
+    // --- Environment ---
+    @Environment(\.colorScheme) private var colorScheme
+
+    // --- Computed color properties (colorScheme-dependent) ---
+    // bgColor:          dark=#121212, light=#E8E8E8 (logged-in)
+    //                   dark=#3A1010, light=#FFCCCC (signed-out)
+    // tickColor:        dark=white 0.07, light=black 0.1
+    // usageLineColor:   dark=white 0.3,  light=black 0.3
+    // noDataFill:       dark=white 0.06, light=black 0.06
 
     // --- Output ---
     // body: Canvas (.frame(width: chartWidth, height: 18))
@@ -101,10 +104,12 @@ No state transitions. MiniUsageGraph is a pure rendering view with no internal s
 
 ### 3.4 Background Color Selection
 
-| Case ID | isLoggedIn | Expected bg | Notes |
-|---------|------------|-------------|-------|
-| BG-01 | true | #121212 (bgColor) | Normal state |
-| BG-02 | false | #3A1010 (bgColorSignedOut) | Signed-out warning color |
+| Case ID | isLoggedIn | colorScheme | Expected bg | Notes |
+|---------|------------|-------------|-------------|-------|
+| BG-01 | true | dark | #121212 | Normal dark |
+| BG-02 | true | light | #E8E8E8 | Normal light |
+| BG-03 | false | dark | #3A1010 | Signed-out dark |
+| BG-04 | false | light | #FFCCCC | Signed-out light |
 
 ### 3.5 Canvas Drawing Elements
 
