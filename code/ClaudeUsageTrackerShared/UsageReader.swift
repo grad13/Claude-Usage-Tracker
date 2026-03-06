@@ -50,9 +50,7 @@ public enum UsageReader {
                 sevenDayResetsAt: state.sevenDayResetsAt,
                 fiveHourHistory: fiveHourHistory,
                 sevenDayHistory: sevenDayHistory,
-                isLoggedIn: isLoggedIn,
-                predictFiveHourCost: nil,
-                predictSevenDayCost: nil
+                isLoggedIn: isLoggedIn
             )
         } ?? nil
     }

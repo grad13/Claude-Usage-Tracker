@@ -25,15 +25,13 @@ final class AnalysisSchemeHandlerSQLiteTests: XCTestCase {
 
     func testUsageJson_returnsCorrectData() {
         let usagePath = tmpDir.appendingPathComponent("usage.db").path
-        let tokensPath = tmpDir.appendingPathComponent("tokens.db").path
         AnalysisTestDB.createUsageDb(at: usagePath, rows: [
             (1771927200, 25.5, 12.3),
             (1771927500, 80.0, 45.0),
         ])
-        AnalysisTestDB.createTokensDb(at: tokensPath, rows: [])
 
         let handler = AnalysisSchemeHandler(
-            usageDbPath: usagePath, tokensDbPath: tokensPath,
+            usageDbPath: usagePath,
             htmlProvider: { "<html></html>" }
         )
         let task = MockSchemeTask(url: URL(string: "cut://usage.json")!)
@@ -48,44 +46,14 @@ final class AnalysisSchemeHandlerSQLiteTests: XCTestCase {
         XCTAssertEqual(json[1]["weekly_percent"] as! Double, 45.0, accuracy: 0.01)
     }
 
-    func testTokensJson_returnsCorrectData() {
-        let usagePath = tmpDir.appendingPathComponent("usage.db").path
-        let tokensPath = tmpDir.appendingPathComponent("tokens.db").path
-        AnalysisTestDB.createUsageDb(at: usagePath, rows: [])
-        AnalysisTestDB.createTokensDb(at: tokensPath, rows: [
-            ("req-1", "2026-02-24T10:00:00.000Z", "claude-sonnet-4-20250514", 1000, 500, 200, 100),
-            ("req-2", "2026-02-24T10:01:00.000Z", "claude-opus-4-20250514", 2000, 800, 0, 0),
-        ])
-
-        let handler = AnalysisSchemeHandler(
-            usageDbPath: usagePath, tokensDbPath: tokensPath,
-            htmlProvider: { "<html></html>" }
-        )
-        let task = MockSchemeTask(url: URL(string: "cut://tokens.json")!)
-        handler.webView(WKWebView(), start: task)
-
-        let json = try! JSONSerialization.jsonObject(with: task.receivedData!) as! [[String: Any]]
-        XCTAssertEqual(json.count, 2)
-        XCTAssertEqual(json[0]["model"] as? String, "claude-sonnet-4-20250514")
-        XCTAssertEqual(json[0]["input_tokens"] as? Int, 1000)
-        XCTAssertEqual(json[0]["output_tokens"] as? Int, 500)
-        XCTAssertEqual(json[0]["cache_read_tokens"] as? Int, 200)
-        XCTAssertEqual(json[0]["cache_creation_tokens"] as? Int, 100)
-        XCTAssertEqual(json[1]["model"] as? String, "claude-opus-4-20250514")
-        XCTAssertEqual(json[1]["input_tokens"] as? Int, 2000)
-        XCTAssertEqual(json[1]["output_tokens"] as? Int, 800)
-    }
-
     // MARK: - Empty DB returns empty JSON array
 
     func testEmptyDb_returnsEmptyJsonArray() {
         let usagePath = tmpDir.appendingPathComponent("usage.db").path
-        let tokensPath = tmpDir.appendingPathComponent("tokens.db").path
         AnalysisTestDB.createUsageDb(at: usagePath, rows: [])
-        AnalysisTestDB.createTokensDb(at: tokensPath, rows: [])
 
         let handler = AnalysisSchemeHandler(
-            usageDbPath: usagePath, tokensDbPath: tokensPath,
+            usageDbPath: usagePath,
             htmlProvider: { "<html></html>" }
         )
         let task = MockSchemeTask(url: URL(string: "cut://usage.json")!)
@@ -99,12 +67,10 @@ final class AnalysisSchemeHandlerSQLiteTests: XCTestCase {
 
     func testHandler_servesRealHtmlTemplate() {
         let usagePath = tmpDir.appendingPathComponent("usage.db").path
-        let tokensPath = tmpDir.appendingPathComponent("tokens.db").path
         AnalysisTestDB.createUsageDb(at: usagePath, rows: [])
-        AnalysisTestDB.createTokensDb(at: tokensPath, rows: [])
 
         let handler = AnalysisSchemeHandler(
-            usageDbPath: usagePath, tokensDbPath: tokensPath,
+            usageDbPath: usagePath,
             htmlProvider: { AnalysisExporter.htmlTemplate }
         )
         let task = MockSchemeTask(url: URL(string: "cut://analysis.html")!)
@@ -129,7 +95,6 @@ final class AnalysisSchemeHandlerSQLiteTests: XCTestCase {
 
     func testUsageJson_largeDataset_returnsAllRows() {
         let usagePath = tmpDir.appendingPathComponent("usage.db").path
-        let tokensPath = tmpDir.appendingPathComponent("tokens.db").path
 
         // Create 1000 rows — similar to real production data (5-min intervals)
         let baseEpoch = 1771927200
@@ -138,10 +103,9 @@ final class AnalysisSchemeHandlerSQLiteTests: XCTestCase {
             rows.append((baseEpoch + i * 300, Double(i % 100), Double(i % 50)))
         }
         AnalysisTestDB.createUsageDb(at: usagePath, rows: rows)
-        AnalysisTestDB.createTokensDb(at: tokensPath, rows: [])
 
         let handler = AnalysisSchemeHandler(
-            usageDbPath: usagePath, tokensDbPath: tokensPath,
+            usageDbPath: usagePath,
             htmlProvider: { "<html></html>" }
         )
         let task = MockSchemeTask(url: URL(string: "cut://usage.json")!)

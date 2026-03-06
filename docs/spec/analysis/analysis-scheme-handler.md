@@ -30,10 +30,9 @@ final class AnalysisSchemeHandler: NSObject, WKURLSchemeHandler {
     static let scheme: String  // = "cut"
 
     private let usageDbPath: String
-    private let tokensDbPath: String
     private let htmlProvider: () -> String
 
-    init(usageDbPath: String, tokensDbPath: String, htmlProvider: @escaping () -> String)
+    init(usageDbPath: String, htmlProvider: @escaping () -> String)
 
     // WKURLSchemeHandler protocol
     func webView(_ webView: WKWebView, start urlSchemeTask: WKURLSchemeTask)
@@ -41,7 +40,6 @@ final class AnalysisSchemeHandler: NSObject, WKURLSchemeHandler {
 
     // SQLite Queries (private)
     private func queryUsageJSON(from: String?, to: String?) -> Data?
-    private func queryTokensJSON(from: String?, to: String?) -> Data?
     private func queryMetaJSON() -> Data?
 
     // Helpers (private)
@@ -70,7 +68,6 @@ stateDiagram-v2
     ExtractPath --> SwitchPath: path = url.host ?? url.path
     SwitchPath --> ServeHTML: "analysis.html"
     SwitchPath --> QueryUsage: "usage.json"
-    SwitchPath --> QueryTokens: "tokens.json"
     SwitchPath --> QueryMeta: "meta.json"
     SwitchPath --> Fail404: Other
     ServeHTML --> Serve200: htmlProvider() -> Data
@@ -82,14 +79,6 @@ stateDiagram-v2
     StepUsageRows --> SerializeJSON: All rows fetched
     SerializeJSON --> Serve200
     ReturnEmptyArray --> Serve200: Return "[]" as Data
-    QueryTokens --> OpenTokensDB: sqlite3_open_v2(readonly)
-    OpenTokensDB --> ReturnEmptyArray2: open fails
-    OpenTokensDB --> PrepareTokensSQL: open succeeds
-    PrepareTokensSQL --> ReturnEmptyArray2: prepare fails
-    PrepareTokensSQL --> StepTokensRows: prepare succeeds
-    StepTokensRows --> SerializeJSON2: All rows fetched
-    SerializeJSON2 --> Serve200
-    ReturnEmptyArray2 --> Serve200: Return "[]" as Data
     QueryMeta --> OpenUsageDB2: sqlite3_open_v2(readonly)
     OpenUsageDB2 --> ReturnEmptyObject: open fails
     OpenUsageDB2 --> PrepareMetaSQL: open succeeds
@@ -118,13 +107,11 @@ stateDiagram-v2
 |---------|-----|------|----------|-------|
 | UT-01 | `cut://analysis.html` | `"analysis.html"` | 200 + Content-Type: `text/html` | Serves htmlProvider() result |
 | UT-02 | `cut://usage.json` | `"usage.json"` | 200 + Content-Type: `application/json` | Serves SQLite query result as JSON |
-| UT-03 | `cut://tokens.json` | `"tokens.json"` | 200 + Content-Type: `application/json` | Serves SQLite query result as JSON |
 | UT-03b | `cut://meta.json` | `"meta.json"` | 200 + Content-Type: `application/json` | Serves aggregate query result from usage_log + weekly_sessions as JSON |
 | UT-03c | `cut://meta.json` (DB absent) | `"meta.json"` | 200 + body: `{}` | Returns empty object JSON on DB open failure |
 | UT-04 | `cut://unknown.txt` | `"unknown.txt"` | 404 + body: `"Not found: unknown.txt"` | Unregistered path |
 | UT-05 | nil | - | 400 + body: `"Missing URL"` | URL missing |
 | UT-06 | `cut://usage.json` | `"usage.json"` (DB absent) | 200 + body: `[]` | Returns empty array JSON on DB open failure (not 404) |
-| UT-07 | `cut://tokens.json` | `"tokens.json"` (DB absent) | 200 + body: `[]` | Same as above |
 
 ### queryUsageJSON
 
@@ -146,23 +133,6 @@ LEFT JOIN hourly_sessions hs ON u.hourly_session_id = hs.id
 LEFT JOIN weekly_sessions ws ON u.weekly_session_id = ws.id
 [WHERE u.timestamp >= ? AND u.timestamp <= ?]
 ORDER BY u.timestamp ASC
-```
-
-### queryTokensJSON
-
-| Case ID | Condition | Expected | Notes |
-|---------|-----------|----------|-------|
-| UT-13 | DB open fails | `"[]"` (Data) | Same as above |
-| UT-14 | SQL prepare fails | `"[]"` (Data) | Same as above |
-| UT-15 | 0 rows | `"[]"` (Data) | Table is empty |
-| UT-16 | N rows present | JSON array (N elements) | Each element: `timestamp`, `model`, `input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_creation_tokens`, `speed`, `web_search_requests` |
-
-**SQL:**
-```sql
-SELECT timestamp, model, input_tokens, output_tokens,
-       cache_read_tokens, cache_creation_tokens,
-       speed, web_search_requests
-FROM token_records ORDER BY timestamp ASC
 ```
 
 ### queryMetaJSON
@@ -194,7 +164,7 @@ All columns are read via `columnInt`; nil values are converted to `NSNull()` for
 
 ### Date Range Filter (from / to Parameters)
 
-`queryUsageJSON` and `queryTokensJSON` support filtering via the `from` and `to` query parameters.
+`queryUsageJSON` supports filtering via the `from` and `to` query parameters.
 
 **Parameter extraction:** `parseQueryParams(_ url: URL)` parses the URL query string and extracts `from` and `to`.
 
@@ -207,15 +177,6 @@ All columns are read via `columnInt`; nil values are converted to `NSNull()` for
 
 Binding: Uses `sqlite3_bind_int64`. Type is `Int64`.
 
-**queryTokensJSON filter behavior:**
-
-| Condition | Behavior |
-|-----------|----------|
-| Both `from` and `to` are present | `WHERE timestamp >= ? AND timestamp <= ?` |
-| Either is missing | No WHERE clause (returns all records) |
-
-Binding: Uses `sqlite3_bind_text` (token_records timestamp is TEXT type). Type is `String`.
-
 **Decision Table (with filter):**
 
 | Case ID | URL | Condition | Expected | Notes |
@@ -223,7 +184,6 @@ Binding: Uses `sqlite3_bind_text` (token_records timestamp is TEXT type). Type i
 | UT-F01 | `cut://usage.json?from=1700000000&to=1700003600` | from/to convertible to Int64 | Returns only rows in specified range | WHERE clause present |
 | UT-F02 | `cut://usage.json?from=abc&to=1700003600` | from is non-numeric | Returns all rows | No WHERE clause |
 | UT-F03 | `cut://usage.json` | No parameters | Returns all rows | No WHERE clause |
-| UT-F04 | `cut://tokens.json?from=2026-01-01T00:00:00Z&to=2026-01-31T23:59:59Z` | TEXT comparison | Returns only rows in specified range | bind_text used |
 
 ### columnInt Helper
 
@@ -256,7 +216,7 @@ private func parseQueryParams(_ url: URL) -> [String: String]
 
 | Case ID | Input | Expected | Notes |
 |---------|-------|----------|-------|
-| UT-19 | Valid paths + htmlProvider | `usageDbPath`, `tokensDbPath`, `htmlProvider` are stored | No `fileMap` construction |
+| UT-19 | Valid paths + htmlProvider | `usageDbPath`, `htmlProvider` are stored | No `fileMap` construction |
 
 ### Response Headers (Success 200)
 
@@ -285,7 +245,7 @@ private func parseQueryParams(_ url: URL) -> [String: String]
 
 | Type | Description |
 |------|-------------|
-| SQLite | Opens `usageDbPath` and `tokensDbPath` READONLY via `SQLiteHelper.withDatabase(path:flags:)` |
+| SQLite | Opens `usageDbPath` READONLY via `SQLiteHelper.withDatabase(path:flags:)` |
 | SQLite | `SQLiteHelper.withStatement(db:sql:)` -> `sqlite3_step` -> `SQLiteHelper.columnText/columnDouble/columnInt` to read rows |
 | SQLite | DB/Statement lifecycle is automatically managed by SQLiteHelper via defer |
 | WKWebView | Calls `WKURLSchemeTask.didReceive(URLResponse)`, `.didReceive(Data)`, `.didFinish()` |
@@ -302,6 +262,5 @@ private func parseQueryParams(_ url: URL) -> [String: String]
 - `SQLiteHelper.columnText`, `SQLiteHelper.columnDouble`, `SQLiteHelper.columnInt` include `SQLITE_NULL` checks. NULL columns return `nil`
 - SQLite operations are abstracted through the `SQLiteHelper` enum (`code/ClaudeUsageTrackerShared/SQLiteHelper.swift`). `withDatabase`/`withStatement` automatically manage the open/prepare/close/finalize lifecycle
 - `queryUsageJSON` reads epoch timestamps as `Int64` from SQLite, converts to `Int`, and includes them in the JSON
-- `queryTokensJSON` reads timestamps as TEXT type (ISO 8601 strings)
 - Without filters, all records are SELECTed (performance depends on data volume)
 - `queryMetaJSON` always returns either a single row (aggregate query) or `{}` on failure

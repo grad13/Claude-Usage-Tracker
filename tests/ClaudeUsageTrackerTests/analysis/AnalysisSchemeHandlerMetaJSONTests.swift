@@ -32,7 +32,6 @@ final class AnalysisSchemeHandlerMetaJSONTests: XCTestCase {
     func testMetaJson_dbOpenFailure_returnsEmptyObject() {
         let handler = AnalysisSchemeHandler(
             usageDbPath: "/nonexistent/no-such.db",
-            tokensDbPath: "/nonexistent/no-such-tokens.db",
             htmlProvider: { "<html></html>" }
         )
         let task = MockSchemeTask(url: URL(string: "cut://meta.json")!)
@@ -53,17 +52,14 @@ final class AnalysisSchemeHandlerMetaJSONTests: XCTestCase {
     /// meta.json returns 200 with body `{}`.
     func testMetaJson_prepareFails_returnsEmptyObject() {
         let usagePath = tmpDir.appendingPathComponent("usage-no-schema.db").path
-        let tokensPath = tmpDir.appendingPathComponent("tokens.db").path
 
         // Create DB with no tables — prepare_v2 will fail
         var db: OpaquePointer?
         sqlite3_open(usagePath, &db)
         sqlite3_close(db)
-        AnalysisTestDB.createTokensDb(at: tokensPath, rows: [])
 
         let handler = AnalysisSchemeHandler(
             usageDbPath: usagePath,
-            tokensDbPath: tokensPath,
             htmlProvider: { "<html></html>" }
         )
         let task = MockSchemeTask(url: URL(string: "cut://meta.json")!)
@@ -84,13 +80,10 @@ final class AnalysisSchemeHandlerMetaJSONTests: XCTestCase {
     /// and meta.json returns 200 with body `{}`.
     func testMetaJson_emptyUsageLog_returnsEmptyObject() {
         let usagePath = tmpDir.appendingPathComponent("usage-empty.db").path
-        let tokensPath = tmpDir.appendingPathComponent("tokens.db").path
         AnalysisTestDB.createUsageDb(at: usagePath, rows: [])
-        AnalysisTestDB.createTokensDb(at: tokensPath, rows: [])
 
         let handler = AnalysisSchemeHandler(
             usageDbPath: usagePath,
-            tokensDbPath: tokensPath,
             htmlProvider: { "<html></html>" }
         )
         let task = MockSchemeTask(url: URL(string: "cut://meta.json")!)
@@ -111,8 +104,6 @@ final class AnalysisSchemeHandlerMetaJSONTests: XCTestCase {
     /// meta.json returns 200 with a JSON object containing all three integer keys.
     func testMetaJson_withData_returnsCorrectJsonKeys() {
         let usagePath = tmpDir.appendingPathComponent("usage-data.db").path
-        let tokensPath = tmpDir.appendingPathComponent("tokens.db").path
-        AnalysisTestDB.createTokensDb(at: tokensPath, rows: [])
 
         // Create usage.db with sessions and usage_log rows
         var db: OpaquePointer?
@@ -145,7 +136,6 @@ final class AnalysisSchemeHandlerMetaJSONTests: XCTestCase {
 
         let handler = AnalysisSchemeHandler(
             usageDbPath: usagePath,
-            tokensDbPath: tokensPath,
             htmlProvider: { "<html></html>" }
         )
         let task = MockSchemeTask(url: URL(string: "cut://meta.json")!)
@@ -181,8 +171,6 @@ final class AnalysisSchemeHandlerMetaJSONTests: XCTestCase {
     /// latestTimestamp and oldestTimestamp must still be present as integers.
     func testMetaJson_noWeeklySessions_latestSevenDayResetsAtIsNull() {
         let usagePath = tmpDir.appendingPathComponent("usage-no-weekly.db").path
-        let tokensPath = tmpDir.appendingPathComponent("tokens.db").path
-        AnalysisTestDB.createTokensDb(at: tokensPath, rows: [])
 
         // Insert usage_log rows WITHOUT weekly_session_id (NULL)
         var db: OpaquePointer?
@@ -214,7 +202,6 @@ final class AnalysisSchemeHandlerMetaJSONTests: XCTestCase {
 
         let handler = AnalysisSchemeHandler(
             usageDbPath: usagePath,
-            tokensDbPath: tokensPath,
             htmlProvider: { "<html></html>" }
         )
         let task = MockSchemeTask(url: URL(string: "cut://meta.json")!)
@@ -245,8 +232,6 @@ final class AnalysisSchemeHandlerMetaJSONTests: XCTestCase {
     /// Guarantees: meta.json successful response has Content-Type: application/json.
     func testMetaJson_withData_hasApplicationJsonContentType() {
         let usagePath = tmpDir.appendingPathComponent("usage-ct.db").path
-        let tokensPath = tmpDir.appendingPathComponent("tokens.db").path
-        AnalysisTestDB.createTokensDb(at: tokensPath, rows: [])
 
         var db: OpaquePointer?
         sqlite3_open(usagePath, &db)
@@ -265,7 +250,6 @@ final class AnalysisSchemeHandlerMetaJSONTests: XCTestCase {
 
         let handler = AnalysisSchemeHandler(
             usageDbPath: usagePath,
-            tokensDbPath: tokensPath,
             htmlProvider: { "<html></html>" }
         )
         let task = MockSchemeTask(url: URL(string: "cut://meta.json")!)

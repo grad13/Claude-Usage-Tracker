@@ -34,17 +34,6 @@ extension ViewModelTests {
         XCTAssertFalse(vm.isLoggedIn, "signOut should set isLoggedIn to false")
     }
 
-    // MARK: - signOut clears predict
-
-    func testSignOut_clearsPredictCost() {
-        let vm = makeVM()
-        vm.predictFiveHourCost = 1.23
-        vm.predictSevenDayCost = 4.56
-        vm.signOut()
-        XCTAssertNil(vm.predictFiveHourCost, "signOut should clear predictFiveHourCost")
-        XCTAssertNil(vm.predictSevenDayCost, "signOut should clear predictSevenDayCost")
-    }
-
     // MARK: - remainingTimeText
 
     func testRemainingTimeText_nilReturnsNil() {
@@ -118,7 +107,7 @@ extension ViewModelTests {
             fiveHourHistory: [HistoryPoint(timestamp: now, percent: 20.0)],
             sevenDayHistory: [],
             isLoggedIn: true,
-            predictFiveHourCost: nil, predictSevenDayCost: nil
+
         )
         XCTAssertNotNil(snap1.fiveHourResetsAt, "resetsAt あり → windowStart 決定可能")
         XCTAssertFalse(snap1.fiveHourHistory.isEmpty, "history あり → points 生成可能")
@@ -131,7 +120,7 @@ extension ViewModelTests {
             fiveHourHistory: [HistoryPoint(timestamp: now, percent: 20.0)],
             sevenDayHistory: [],
             isLoggedIn: true,
-            predictFiveHourCost: nil, predictSevenDayCost: nil
+
         )
         XCTAssertNil(snap2.fiveHourResetsAt)
         XCTAssertFalse(snap2.fiveHourHistory.isEmpty, "history fallback で描画可能")
@@ -143,7 +132,7 @@ extension ViewModelTests {
             fiveHourResetsAt: nil, sevenDayResetsAt: nil,
             fiveHourHistory: [], sevenDayHistory: [],
             isLoggedIn: false,
-            predictFiveHourCost: nil, predictSevenDayCost: nil
+
         )
         XCTAssertNil(snap3.fiveHourResetsAt)
         XCTAssertTrue(snap3.fiveHourHistory.isEmpty, "resetsAt nil + history 空 → 描画不可")
@@ -151,8 +140,7 @@ extension ViewModelTests {
 
     // MARK: - Widget reload (reloadAllTimelines)
 
-    /// init → fetchPredict → writeSnapshot で reloadAllTimelines が呼ばれることを検証。
-    /// これが呼ばれなければウィジェットは更新されず、古い/空の表示のまま放置される。
+    /// init → writeSnapshot で reloadAllTimelines が呼ばれることを検証。
     func testInit_callsReloadAllTimelines() {
         let vm = makeVM()
         let done = expectation(description: "reload called")
@@ -160,7 +148,7 @@ extension ViewModelTests {
         wait(for: [done], timeout: 2.0)
 
         XCTAssertGreaterThanOrEqual(widgetReloader.reloadCount, 1,
-            "init must call reloadAllTimelines at least once (via fetchPredict → writeSnapshot)")
+            "init must call reloadAllTimelines at least once")
         _ = vm
     }
 

@@ -23,7 +23,6 @@ struct WidgetLargeView: View {
                     windowSeconds: 5 * 3600,
                     color: Self.fiveHourColor,
                     opacity: 0.7,
-                    predictCost: snapshot.predictFiveHourCost
                 )
 
                 usageBlock(
@@ -33,8 +32,7 @@ struct WidgetLargeView: View {
                     history: snapshot.sevenDayHistory,
                     windowSeconds: 7 * 24 * 3600,
                     color: Self.sevenDayColor,
-                    opacity: 0.65,
-                    predictCost: snapshot.predictSevenDayCost
+                    opacity: 0.65
                 )
 
                 Spacer(minLength: 0)
@@ -53,8 +51,7 @@ struct WidgetLargeView: View {
         history: [HistoryPoint],
         windowSeconds: TimeInterval,
         color: Color,
-        opacity: Double,
-        predictCost: Double?
+        opacity: Double
     ) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
@@ -86,11 +83,6 @@ struct WidgetLargeView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                if let cost = predictCost {
-                    Text(String(format: "Est. $%.2f", cost))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
             }
         }
     }

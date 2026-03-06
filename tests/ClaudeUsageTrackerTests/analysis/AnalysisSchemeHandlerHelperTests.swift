@@ -34,16 +34,13 @@ final class AnalysisSchemeHandlerHelperTests: XCTestCase {
     /// returns an empty dictionary, causing no filter to be applied (all rows returned).
     func testParseQueryParams_noQueryString_returnsAllRows() {
         let usagePath = tmpDir.appendingPathComponent("usage.db").path
-        let tokensPath = tmpDir.appendingPathComponent("tokens.db").path
         AnalysisTestDB.createUsageDb(at: usagePath, rows: [
             (1700000000, 10.0, 5.0),
             (1700003600, 20.0, 8.0),
         ])
-        AnalysisTestDB.createTokensDb(at: tokensPath, rows: [])
 
         let handler = AnalysisSchemeHandler(
-            usageDbPath: usagePath, tokensDbPath: tokensPath,
-            htmlProvider: { "<html></html>" }
+            usageDbPath: usagePath,            htmlProvider: { "<html></html>" }
         )
         // URL with no query string
         let task = MockSchemeTask(url: URL(string: "cut://usage.json")!)
@@ -65,17 +62,14 @@ final class AnalysisSchemeHandlerHelperTests: XCTestCase {
     /// Observable effect: missing 'from' means no filter applied, all rows returned.
     func testParseQueryParams_keyOnlyItem_isSkippedAndNoFilterApplied() {
         let usagePath = tmpDir.appendingPathComponent("usage.db").path
-        let tokensPath = tmpDir.appendingPathComponent("tokens.db").path
         AnalysisTestDB.createUsageDb(at: usagePath, rows: [
             (1700000000, 10.0, 5.0),
             (1700003600, 20.0, 8.0),
             (1700007200, 30.0, 12.0),
         ])
-        AnalysisTestDB.createTokensDb(at: tokensPath, rows: [])
 
         let handler = AnalysisSchemeHandler(
-            usageDbPath: usagePath, tokensDbPath: tokensPath,
-            htmlProvider: { "<html></html>" }
+            usageDbPath: usagePath,            htmlProvider: { "<html></html>" }
         )
         // 'from' has no value — spec says key-only items are skipped
         let task = MockSchemeTask(url: URL(string: "cut://usage.json?from&to=1700003600")!)
@@ -97,8 +91,6 @@ final class AnalysisSchemeHandlerHelperTests: XCTestCase {
     /// Observable: meta.json latestSevenDayResetsAt is null when no weekly_sessions are linked.
     func testColumnInt_nullColumn_isJsonNull() {
         let usagePath = tmpDir.appendingPathComponent("usage-null.db").path
-        let tokensPath = tmpDir.appendingPathComponent("tokens.db").path
-        AnalysisTestDB.createTokensDb(at: tokensPath, rows: [])
 
         var db: OpaquePointer?
         sqlite3_open(usagePath, &db)
@@ -118,8 +110,7 @@ final class AnalysisSchemeHandlerHelperTests: XCTestCase {
         sqlite3_exec(db, schema, nil, nil, nil)
 
         let handler = AnalysisSchemeHandler(
-            usageDbPath: usagePath, tokensDbPath: tokensPath,
-            htmlProvider: { "<html></html>" }
+            usageDbPath: usagePath,            htmlProvider: { "<html></html>" }
         )
         let task = MockSchemeTask(url: URL(string: "cut://meta.json")!)
         handler.webView(WKWebView(), start: task)
@@ -140,8 +131,6 @@ final class AnalysisSchemeHandlerHelperTests: XCTestCase {
     /// Observable: meta.json latestTimestamp matches the inserted epoch value.
     func testColumnInt_integerColumn_returnsCorrectInt() {
         let usagePath = tmpDir.appendingPathComponent("usage-int.db").path
-        let tokensPath = tmpDir.appendingPathComponent("tokens.db").path
-        AnalysisTestDB.createTokensDb(at: tokensPath, rows: [])
 
         var db: OpaquePointer?
         sqlite3_open(usagePath, &db)
@@ -160,8 +149,7 @@ final class AnalysisSchemeHandlerHelperTests: XCTestCase {
         sqlite3_exec(db, schema, nil, nil, nil)
 
         let handler = AnalysisSchemeHandler(
-            usageDbPath: usagePath, tokensDbPath: tokensPath,
-            htmlProvider: { "<html></html>" }
+            usageDbPath: usagePath,            htmlProvider: { "<html></html>" }
         )
         let task = MockSchemeTask(url: URL(string: "cut://meta.json")!)
         handler.webView(WKWebView(), start: task)
@@ -184,8 +172,6 @@ final class AnalysisSchemeHandlerHelperTests: XCTestCase {
     /// Observable: usage.json with NULL hourly_resets_at/weekly_resets_at yields null in response.
     func testSerializeJson_nilValues_becomeJsonNull() {
         let usagePath = tmpDir.appendingPathComponent("usage-nil.db").path
-        let tokensPath = tmpDir.appendingPathComponent("tokens.db").path
-        AnalysisTestDB.createTokensDb(at: tokensPath, rows: [])
 
         // AnalysisTestDB.createUsageDb inserts rows WITHOUT session IDs → LEFT JOIN → null resets_at
         AnalysisTestDB.createUsageDb(at: usagePath, rows: [
@@ -193,8 +179,7 @@ final class AnalysisSchemeHandlerHelperTests: XCTestCase {
         ])
 
         let handler = AnalysisSchemeHandler(
-            usageDbPath: usagePath, tokensDbPath: tokensPath,
-            htmlProvider: { "<html></html>" }
+            usageDbPath: usagePath,            htmlProvider: { "<html></html>" }
         )
         let task = MockSchemeTask(url: URL(string: "cut://usage.json")!)
         handler.webView(WKWebView(), start: task)
@@ -218,13 +203,10 @@ final class AnalysisSchemeHandlerHelperTests: XCTestCase {
     /// Observable: usage.json with empty usage_log returns `[]`.
     func testSerializeJson_emptyArray_returnsEmptyJsonArray() {
         let usagePath = tmpDir.appendingPathComponent("usage-empty-sj.db").path
-        let tokensPath = tmpDir.appendingPathComponent("tokens.db").path
         AnalysisTestDB.createUsageDb(at: usagePath, rows: [])
-        AnalysisTestDB.createTokensDb(at: tokensPath, rows: [])
 
         let handler = AnalysisSchemeHandler(
-            usageDbPath: usagePath, tokensDbPath: tokensPath,
-            htmlProvider: { "<html></html>" }
+            usageDbPath: usagePath,            htmlProvider: { "<html></html>" }
         )
         let task = MockSchemeTask(url: URL(string: "cut://usage.json")!)
         handler.webView(WKWebView(), start: task)
@@ -250,13 +232,10 @@ final class AnalysisSchemeHandlerErrorHeaderTests: XCTestCase {
         try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
 
         let usagePath = tmpDir.appendingPathComponent("usage.db").path
-        let tokensPath = tmpDir.appendingPathComponent("tokens.db").path
         AnalysisTestDB.createUsageDb(at: usagePath, rows: [])
-        AnalysisTestDB.createTokensDb(at: tokensPath, rows: [])
 
         handler = AnalysisSchemeHandler(
-            usageDbPath: usagePath, tokensDbPath: tokensPath,
-            htmlProvider: { "<html></html>" }
+            usageDbPath: usagePath,            htmlProvider: { "<html></html>" }
         )
     }
 
@@ -315,8 +294,6 @@ final class AnalysisSchemeHandlerErrorHeaderTests: XCTestCase {
     /// This covers meta.json specifically (which existing tests do not verify for CORS).
     func testMetaJson_success_hasCORSHeader() {
         let usagePath = tmpDir.appendingPathComponent("usage-cors.db").path
-        let tokensPath = tmpDir.appendingPathComponent("tokens.db").path
-        AnalysisTestDB.createTokensDb(at: tokensPath, rows: [])
 
         var db: OpaquePointer?
         sqlite3_open(usagePath, &db)
@@ -334,8 +311,7 @@ final class AnalysisSchemeHandlerErrorHeaderTests: XCTestCase {
         sqlite3_exec(db, schema, nil, nil, nil)
 
         let corsHandler = AnalysisSchemeHandler(
-            usageDbPath: usagePath, tokensDbPath: tokensPath,
-            htmlProvider: { "<html></html>" }
+            usageDbPath: usagePath,            htmlProvider: { "<html></html>" }
         )
         let task = MockSchemeTask(url: URL(string: "cut://meta.json")!)
         corsHandler.webView(WKWebView(), start: task)

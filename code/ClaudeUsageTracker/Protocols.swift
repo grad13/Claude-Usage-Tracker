@@ -72,15 +72,6 @@ struct DefaultLoginItemManager: LoginItemManaging {
     }
 }
 
-// MARK: - Token (JSONL cost estimation)
-
-protocol TokenSyncing: Sendable {
-    func sync(directories: [URL])
-    func loadRecords(since cutoff: Date) -> [TokenRecord]
-}
-
-extension TokenStore: TokenSyncing {}
-
 // MARK: - WebView Coordinator Delegate
 
 /// Interface used by WebViewCoordinator to communicate with its owner.

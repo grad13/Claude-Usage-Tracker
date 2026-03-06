@@ -15,7 +15,6 @@ spec/
 │   ├── settings.md
 │   ├── usage-store.md
 │   ├── usage-fetcher.md
-│   ├── token-store.md
 │   └── alert.md
 ├── ui/                # UI components
 │   ├── app-windows.md
@@ -25,8 +24,6 @@ spec/
 │   ├── overview.md
 │   ├── analysis-scheme-handler.md
 │   └── analysis-exporter.md
-├── predict/           # Cost estimation
-│   └── jsonl-cost.md
 ├── widget/            # Widget
 │   └── design.md
 └── tools/             # Tools & scripts
@@ -49,7 +46,6 @@ spec/
 | [data/settings.md](data/settings.md) | Settings spec (JSON persistence) |
 | [data/usage-store.md](data/usage-store.md) | UsageStore spec-v2.1 (SQLite usage history storage) |
 | [data/usage-fetcher.md](data/usage-fetcher.md) | UsageFetcher spec-v2.1 (JS 1-script fetch, org ID retrieval, session detection) |
-| [data/token-store.md](data/token-store.md) | TokenStore spec-v2.1 (SQLite token DB, incremental sync, upsert) |
 | [data/alert.md](data/alert.md) | Alert spec-v2.1 (AlertChecker + NotificationManager, threshold evaluation, duplicate notification prevention) |
 
 ## UI Components
@@ -60,18 +56,12 @@ spec/
 | [ui/menu-content.md](ui/menu-content.md) | MenuContent spec-v2.1 (dropdown menu UI) |
 | [ui/mini-usage-graph.md](ui/mini-usage-graph.md) | MiniUsageGraph spec-v2.1 (Canvas graph drawing, step interpolation, area fill) |
 
-## Cost Estimation
-
-| File | Description |
-|------|-------------|
-| [predict/jsonl-cost.md](predict/jsonl-cost.md) | JSONL estimation (Predict) spec |
-
 ## Analysis
 
 | File | Description |
 |------|-------------|
-| [analysis/overview.md](analysis/overview.md) | Analysis page overview (data sources, tabs, empty states) |
-| [analysis/analysis-exporter.md](analysis/analysis-exporter.md) | AnalysisExporter spec-v2.1 (HTML/JS template, 12 Decision Tables, 62 cases) |
+| [analysis/overview.md](analysis/overview.md) | Analysis page overview (data sources, usage chart, session navigation) |
+| [analysis/analysis-exporter.md](analysis/analysis-exporter.md) | AnalysisExporter spec-v2.1 (HTML/JS template, usage chart rendering) |
 | [analysis/analysis-scheme-handler.md](analysis/analysis-scheme-handler.md) | AnalysisSchemeHandler spec-v2.1 (cut:// scheme handler) |
 
 ## Widget

@@ -13,12 +13,10 @@ final class AnalysisSchemeHandler: NSObject, WKURLSchemeHandler {
     static let scheme = "cut"
 
     private let usageDbPath: String
-    private let tokensDbPath: String
     private let htmlProvider: () -> String
 
-    init(usageDbPath: String, tokensDbPath: String, htmlProvider: @escaping () -> String) {
+    init(usageDbPath: String, htmlProvider: @escaping () -> String) {
         self.usageDbPath = usageDbPath
-        self.tokensDbPath = tokensDbPath
         self.htmlProvider = htmlProvider
     }
 
@@ -38,8 +36,6 @@ final class AnalysisSchemeHandler: NSObject, WKURLSchemeHandler {
             serve(urlSchemeTask, url: url, data: htmlProvider().data(using: .utf8), mime: "text/html")
         case "usage.json":
             serve(urlSchemeTask, url: url, data: queryUsageJSON(from: from, to: to), mime: "application/json")
-        case "tokens.json":
-            serve(urlSchemeTask, url: url, data: queryTokensJSON(from: from, to: to), mime: "application/json")
         case "meta.json":
             serve(urlSchemeTask, url: url, data: queryMetaJSON(), mime: "application/json")
         default:
@@ -83,45 +79,6 @@ final class AnalysisSchemeHandler: NSObject, WKURLSchemeHandler {
                         "weekly_percent": SQLiteHelper.columnDouble(stmt, 2),
                         "hourly_resets_at": SQLiteHelper.columnInt(stmt, 3),
                         "weekly_resets_at": SQLiteHelper.columnInt(stmt, 4),
-                    ])
-                }
-                return serializeJSON(rows)
-            } ?? fallback
-        } ?? fallback
-    }
-
-    private func queryTokensJSON(from: String?, to: String?) -> Data? {
-        let fallback = "[]".data(using: .utf8)
-        return SQLiteHelper.withDatabase(path: tokensDbPath, flags: SQLITE_OPEN_READONLY) { db in
-            var sql = """
-                SELECT timestamp, model, input_tokens, output_tokens,
-                       cache_read_tokens, cache_creation_tokens,
-                       speed, web_search_requests
-                FROM token_records
-                """
-            var bindings: [String] = []
-            if let from = from, let to = to {
-                sql += " WHERE timestamp >= ? AND timestamp <= ?"
-                bindings = [from, to]
-            }
-            sql += " ORDER BY timestamp ASC"
-
-            return SQLiteHelper.withStatement(db: db, sql: sql) { stmt in
-                for (i, value) in bindings.enumerated() {
-                    SQLiteHelper.bindText(stmt, Int32(i + 1), value)
-                }
-
-                var rows: [[String: Any?]] = []
-                while sqlite3_step(stmt) == SQLITE_ROW {
-                    rows.append([
-                        "timestamp": SQLiteHelper.columnText(stmt, 0),
-                        "model": SQLiteHelper.columnText(stmt, 1),
-                        "input_tokens": SQLiteHelper.columnInt(stmt, 2),
-                        "output_tokens": SQLiteHelper.columnInt(stmt, 3),
-                        "cache_read_tokens": SQLiteHelper.columnInt(stmt, 4),
-                        "cache_creation_tokens": SQLiteHelper.columnInt(stmt, 5),
-                        "speed": SQLiteHelper.columnText(stmt, 6),
-                        "web_search_requests": SQLiteHelper.columnInt(stmt, 7),
                     ])
                 }
                 return serializeJSON(rows)

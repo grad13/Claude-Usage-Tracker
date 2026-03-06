@@ -26,7 +26,6 @@ final class AnalysisSchemeHandlerQueryFilterTests: XCTestCase {
         try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
 
         let usagePath = tmpDir.appendingPathComponent("usage.db").path
-        let tokensPath = tmpDir.appendingPathComponent("tokens.db").path
 
         // Three usage rows at different timestamps
         AnalysisTestDB.createUsageDb(at: usagePath, rows: [
@@ -35,16 +34,8 @@ final class AnalysisSchemeHandlerQueryFilterTests: XCTestCase {
             (1700007200, 30.0, 12.0),  // epoch3 — outside range when to=epoch2
         ])
 
-        // Three token rows at different ISO 8601 timestamps
-        AnalysisTestDB.createTokensDb(at: tokensPath, rows: [
-            ("req-1", "2026-01-01T00:00:00Z", "claude-sonnet-4-20250514", 100, 50, 0, 0),
-            ("req-2", "2026-01-15T12:00:00Z", "claude-sonnet-4-20250514", 200, 80, 0, 0),
-            ("req-3", "2026-01-31T23:59:59Z", "claude-sonnet-4-20250514", 300, 90, 0, 0),
-        ])
-
         handler = AnalysisSchemeHandler(
             usageDbPath: usagePath,
-            tokensDbPath: tokensPath,
             htmlProvider: { "<html></html>" }
         )
     }
@@ -114,45 +105,4 @@ final class AnalysisSchemeHandlerQueryFilterTests: XCTestCase {
                        "UT-F03: All 3 rows must be returned when no filter parameters are present")
     }
 
-    // MARK: UT-F04: tokens.json with ISO 8601 from/to → filtered rows (TEXT comparison)
-
-    /// Guarantees: when from and to are ISO 8601 strings,
-    /// token_records are filtered using sqlite3_bind_text (TEXT comparison).
-    func testTokensJson_iso8601FromTo_returnsFilteredRows() {
-        let from = "2026-01-01T00:00:00Z"
-        let to = "2026-01-31T23:59:59Z"
-        let encodedFrom = from.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
-        let encodedTo = to.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
-        let url = URL(string: "cut://tokens.json?from=\(encodedFrom)&to=\(encodedTo)")!
-        let task = MockSchemeTask(url: url)
-        handler.webView(WKWebView(), start: task)
-
-        XCTAssertTrue(task.didFinishCalled)
-        guard let data = task.receivedData,
-              let json = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
-            XCTFail("UT-F04: Response must be a valid JSON array")
-            return
-        }
-        XCTAssertEqual(json.count, 3,
-                       "UT-F04: All 3 rows must be returned (all timestamps fall within Jan 2026 range)")
-    }
-
-    // MARK: UT-F04b: tokens.json with only-from parameter → all rows (missing to → no filter)
-
-    /// Guarantees: when only `from` is supplied (to is missing),
-    /// the WHERE clause is omitted and all rows are returned.
-    func testTokensJson_onlyFrom_returnsAllRows() {
-        let url = URL(string: "cut://tokens.json?from=2026-01-01T00:00:00Z")!
-        let task = MockSchemeTask(url: url)
-        handler.webView(WKWebView(), start: task)
-
-        XCTAssertTrue(task.didFinishCalled)
-        guard let data = task.receivedData,
-              let json = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
-            XCTFail("UT-F04b: Response must be a valid JSON array")
-            return
-        }
-        XCTAssertEqual(json.count, 3,
-                       "UT-F04b: All rows must be returned when only 'from' is supplied (missing 'to' disables filter)")
-    }
 }

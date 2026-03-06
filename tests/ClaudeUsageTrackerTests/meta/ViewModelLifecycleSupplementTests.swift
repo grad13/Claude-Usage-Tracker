@@ -16,7 +16,6 @@ final class ViewModelLifecycleSupplementTests: XCTestCase {
     var settingsStore: InMemorySettingsStore!
     var usageStore: InMemoryUsageStore!
     var widgetReloader: InMemoryWidgetReloader!
-    var tokenSync: InMemoryTokenSync!
     var loginItemManager: InMemoryLoginItemManager!
     var alertChecker: MockAlertChecker!
 
@@ -26,7 +25,6 @@ final class ViewModelLifecycleSupplementTests: XCTestCase {
         settingsStore = InMemorySettingsStore()
         usageStore = InMemoryUsageStore()
         widgetReloader = InMemoryWidgetReloader()
-        tokenSync = InMemoryTokenSync()
         loginItemManager = InMemoryLoginItemManager()
         alertChecker = MockAlertChecker()
     }
@@ -37,7 +35,6 @@ final class ViewModelLifecycleSupplementTests: XCTestCase {
             settingsStore: settingsStore,
             usageStore: usageStore,
             widgetReloader: widgetReloader,
-            tokenSync: tokenSync,
             loginItemManager: loginItemManager,
             alertChecker: alertChecker
         )

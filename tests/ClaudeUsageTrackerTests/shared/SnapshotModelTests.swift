@@ -25,9 +25,7 @@ final class SnapshotModelTests: XCTestCase {
             sevenDayResetsAt: now.addingTimeInterval(86400),
             fiveHourHistory: [HistoryPoint(timestamp: now, percent: 42.5)],
             sevenDayHistory: [HistoryPoint(timestamp: now, percent: 18.2)],
-            isLoggedIn: true,
-            predictFiveHourCost: 1.23,
-            predictSevenDayCost: 4.56
+            isLoggedIn: true
         )
 
         let data = try makeEncoder().encode(snapshot)
@@ -39,8 +37,6 @@ final class SnapshotModelTests: XCTestCase {
         XCTAssertEqual(decoded.fiveHourHistory.count, 1)
         XCTAssertEqual(decoded.sevenDayHistory.count, 1)
         XCTAssertTrue(decoded.isLoggedIn)
-        XCTAssertEqual(decoded.predictFiveHourCost, 1.23)
-        XCTAssertEqual(decoded.predictSevenDayCost, 4.56)
     }
 
     func testCodableWithNils() throws {
@@ -53,9 +49,7 @@ final class SnapshotModelTests: XCTestCase {
             sevenDayResetsAt: nil,
             fiveHourHistory: [],
             sevenDayHistory: [],
-            isLoggedIn: false,
-            predictFiveHourCost: nil,
-            predictSevenDayCost: nil
+            isLoggedIn: false
         )
 
         let data = try makeEncoder().encode(snapshot)
@@ -67,7 +61,6 @@ final class SnapshotModelTests: XCTestCase {
         XCTAssertNil(decoded.sevenDayResetsAt)
         XCTAssertEqual(decoded.fiveHourHistory.count, 0)
         XCTAssertFalse(decoded.isLoggedIn)
-        XCTAssertNil(decoded.predictFiveHourCost)
     }
 
     func testHistoryPointRoundTrip() throws {
@@ -81,28 +74,6 @@ final class SnapshotModelTests: XCTestCase {
         XCTAssertEqual(decoded.percent, 55.5)
     }
 
-    func testBackwardCompatibility() throws {
-        // JSON without predict fields (simulating old format)
-        let json = """
-        {
-            "timestamp": "2026-02-20T00:00:00Z",
-            "fiveHourPercent": 10.0,
-            "sevenDayPercent": 20.0,
-            "fiveHourHistory": [],
-            "sevenDayHistory": [],
-            "isLoggedIn": true
-        }
-        """
-        let data = json.data(using: .utf8)!
-        let decoded = try makeDecoder().decode(UsageSnapshot.self, from: data)
-
-        XCTAssertEqual(decoded.fiveHourPercent, 10.0)
-        XCTAssertEqual(decoded.sevenDayPercent, 20.0)
-        XCTAssertTrue(decoded.isLoggedIn)
-        XCTAssertNil(decoded.predictFiveHourCost)
-        XCTAssertNil(decoded.predictSevenDayCost)
-    }
-
     // MARK: - Placeholder
 
     func testPlaceholder_hasExpectedValues() {
@@ -114,8 +85,6 @@ final class SnapshotModelTests: XCTestCase {
         XCTAssertNotNil(p.sevenDayResetsAt)
         XCTAssertEqual(p.fiveHourHistory.count, 0)
         XCTAssertEqual(p.sevenDayHistory.count, 0)
-        XCTAssertNil(p.predictFiveHourCost)
-        XCTAssertNil(p.predictSevenDayCost)
     }
 
     // MARK: - Forward Compatibility (extra unknown keys ignored)
@@ -203,9 +172,7 @@ final class SnapshotModelTests: XCTestCase {
             sevenDayResetsAt: nil,
             fiveHourHistory: points,
             sevenDayHistory: points,
-            isLoggedIn: true,
-            predictFiveHourCost: nil,
-            predictSevenDayCost: nil
+            isLoggedIn: true
         )
 
         let data = try makeEncoder().encode(snapshot)

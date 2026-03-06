@@ -41,11 +41,6 @@ final class StubUsageFetcher: UsageFetching {
     }
 }
 
-final class InMemoryTokenSync: TokenSyncing, @unchecked Sendable {
-    func sync(directories: [URL]) {}
-    func loadRecords(since cutoff: Date) -> [TokenRecord] { [] }
-}
-
 final class InMemoryLoginItemManager: LoginItemManaging {
     var enabledCallCount = 0
     var disabledCallCount = 0
@@ -117,7 +112,6 @@ enum ViewModelTestFactory {
         settingsStore: InMemorySettingsStore = InMemorySettingsStore(),
         usageStore: InMemoryUsageStore = InMemoryUsageStore(),
         widgetReloader: InMemoryWidgetReloader = InMemoryWidgetReloader(),
-        tokenSync: InMemoryTokenSync = InMemoryTokenSync(),
         loginItemManager: InMemoryLoginItemManager = InMemoryLoginItemManager(),
         alertChecker: MockAlertChecker = MockAlertChecker()
     ) -> UsageViewModel {
@@ -126,7 +120,6 @@ enum ViewModelTestFactory {
             settingsStore: settingsStore,
             usageStore: usageStore,
             widgetReloader: widgetReloader,
-            tokenSync: tokenSync,
             loginItemManager: loginItemManager,
             alertChecker: alertChecker
         )

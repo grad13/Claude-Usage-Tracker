@@ -24,12 +24,11 @@ final class AnalysisWebViewIntegrationTests: XCTestCase {
 
     /// Helper: create WKWebView with scheme handler, load page, wait for navigation to finish.
     private func loadWebView(
-        usagePath: String, tokensPath: String,
+        usagePath: String,
         html: @escaping () -> String
     ) -> (WKWebView, XCTestExpectation) {
         let handler = AnalysisSchemeHandler(
-            usageDbPath: usagePath, tokensDbPath: tokensPath,
-            htmlProvider: html
+            usageDbPath: usagePath,            htmlProvider: html
         )
         let config = WKWebViewConfiguration()
         config.setURLSchemeHandler(handler, forURLScheme: AnalysisSchemeHandler.scheme)
@@ -49,14 +48,12 @@ final class AnalysisWebViewIntegrationTests: XCTestCase {
     /// This is the actual runtime path. If this test passes, the Analysis window works.
     func testWKWebView_canFetchJsonViaSchemeHandler() {
         let usagePath = tmpDir.appendingPathComponent("usage.db").path
-        let tokensPath = tmpDir.appendingPathComponent("tokens.db").path
         AnalysisTestDB.createUsageDb(at: usagePath, rows: [
             (1771927200, 42.5, 15.0),
             (1771927500, 55.0, 20.0),
         ])
-        AnalysisTestDB.createTokensDb(at: tokensPath)
 
-        let (webView, navExp) = loadWebView(usagePath: usagePath, tokensPath: tokensPath) {
+        let (webView, navExp) = loadWebView(usagePath: usagePath) {
             "<!DOCTYPE html><html><body></body></html>"
         }
         if XCTWaiter.wait(for: [navExp], timeout: 5.0) == .timedOut {
@@ -96,11 +93,9 @@ final class AnalysisWebViewIntegrationTests: XCTestCase {
     /// This matches the actual runtime behavior — the HTML template's fetchJSON() uses try/catch → null.
     func testWKWebView_unknownPath_fetchThrows() {
         let usagePath = tmpDir.appendingPathComponent("usage.db").path
-        let tokensPath = tmpDir.appendingPathComponent("tokens.db").path
         AnalysisTestDB.createUsageDb(at: usagePath, rows: [])
-        AnalysisTestDB.createTokensDb(at: tokensPath)
 
-        let (webView, navExp) = loadWebView(usagePath: usagePath, tokensPath: tokensPath) {
+        let (webView, navExp) = loadWebView(usagePath: usagePath) {
             "<!DOCTYPE html><html><body></body></html>"
         }
         if XCTWaiter.wait(for: [navExp], timeout: 5.0) == .timedOut {

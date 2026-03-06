@@ -18,9 +18,6 @@ final class UsageViewModel: ObservableObject, WebViewCoordinatorDelegate {
     @Published var popupWebView: WKWebView?
     @Published var fiveHourHistory: [UsageStore.DataPoint] = []
     @Published var sevenDayHistory: [UsageStore.DataPoint] = []
-    @Published var predictFiveHourCost: Double?
-    @Published var predictSevenDayCost: Double?
-
     static let usageURL = URL(string: "https://claude.ai")!
     static let targetHost = "claude.ai"
     let webView: WKWebView
@@ -28,7 +25,6 @@ final class UsageViewModel: ObservableObject, WebViewCoordinatorDelegate {
     let settingsStore: any SettingsStoring
     let usageStore: any UsageStoring
     let widgetReloader: any WidgetReloading
-    let tokenSync: any TokenSyncing
     let loginItemManager: any LoginItemManaging
     let alertChecker: any AlertChecking
     var coordinator: WebViewCoordinator?
@@ -105,7 +101,6 @@ final class UsageViewModel: ObservableObject, WebViewCoordinatorDelegate {
         settingsStore: any SettingsStoring = SettingsStore.shared,
         usageStore: any UsageStoring = UsageStore.shared,
         widgetReloader: any WidgetReloading = DefaultWidgetReloader(),
-        tokenSync: any TokenSyncing = TokenStore.shared,
         loginItemManager: any LoginItemManaging = DefaultLoginItemManager(),
         alertChecker: any AlertChecking = DefaultAlertChecker()
     ) {
@@ -113,7 +108,6 @@ final class UsageViewModel: ObservableObject, WebViewCoordinatorDelegate {
         self.settingsStore = settingsStore
         self.usageStore = usageStore
         self.widgetReloader = widgetReloader
-        self.tokenSync = tokenSync
         self.loginItemManager = loginItemManager
         self.alertChecker = alertChecker
 
@@ -138,7 +132,6 @@ final class UsageViewModel: ObservableObject, WebViewCoordinatorDelegate {
         // Daily backups (3-day retention) for SQLite databases
         SQLiteBackup.perform(dbPath: (usageStore as? UsageStore)?.dbPath ?? "")
 
-        fetchPredict()
         syncLoginItem()
         startCookieObservation()
 
@@ -260,8 +253,6 @@ final class UsageViewModel: ObservableObject, WebViewCoordinatorDelegate {
         // Phase 4: Notify widget to reload (reads from same usage.db)
         widgetReloader.reloadAllTimelines()
 
-        // Phase 5: Update predict cost estimation
-        fetchPredict()
     }
 
     // MARK: - Navigation

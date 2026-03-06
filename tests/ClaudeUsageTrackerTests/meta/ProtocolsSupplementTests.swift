@@ -5,7 +5,6 @@
 // Covers:
 //   - DI-01: SettingsStore conforms to SettingsStoring
 //   - DI-02: UsageStore conforms to UsageStoring
-//   - DI-07: TokenStore conforms to TokenSyncing
 //
 // Not covered (source type absent):
 //   - DI-08: DefaultAlertChecker — type does not exist in source at time of generation.
@@ -78,34 +77,3 @@ final class UsageStoringConformanceTests: XCTestCase {
     }
 }
 
-// MARK: - DI-07: TokenStore conforms to TokenSyncing
-
-final class TokenSyncingConformanceTests: XCTestCase {
-
-    private func makeTempDbPath() -> String {
-        FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-tokens-\(UUID().uuidString).sqlite").path
-    }
-
-    func test_tokenStore_isAssignableToTokenSyncing() {
-        let store = TokenStore(dbPath: makeTempDbPath())
-        let _: any TokenSyncing = store
-    }
-
-    func test_tokenStore_sync_acceptsEmptyDirectories() {
-        let store: any TokenSyncing = TokenStore(dbPath: makeTempDbPath())
-        store.sync(directories: [])
-    }
-
-    func test_tokenStore_loadRecords_returnsArray() {
-        let store: any TokenSyncing = TokenStore(dbPath: makeTempDbPath())
-        let cutoff = Date(timeIntervalSinceNow: -3600)
-        let records = store.loadRecords(since: cutoff)
-        XCTAssertNotNil(records)
-    }
-
-    func test_tokenStore_satisfiesSendableConstraint() {
-        let store = TokenStore(dbPath: makeTempDbPath())
-        let _: any TokenSyncing & Sendable = store
-    }
-}

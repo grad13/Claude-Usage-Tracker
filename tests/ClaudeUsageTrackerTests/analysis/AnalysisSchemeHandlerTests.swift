@@ -17,7 +17,6 @@ final class AnalysisSchemeHandlerTests: XCTestCase {
 
         // Create real SQLite databases with normalized 3-table schema
         let usageDbPath = tmpDir.appendingPathComponent("usage.db").path
-        let tokensDbPath = tmpDir.appendingPathComponent("tokens.db").path
         createDb(at: usageDbPath, sql: """
             CREATE TABLE hourly_sessions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -41,25 +40,9 @@ final class AnalysisSchemeHandlerTests: XCTestCase {
             INSERT INTO usage_log (timestamp, hourly_percent, weekly_percent, hourly_session_id, weekly_session_id)
             VALUES (1771927200, 42.5, 15.0, 1, 1);
             """)
-        createDb(at: tokensDbPath, sql: """
-            CREATE TABLE token_records (
-                request_id TEXT PRIMARY KEY,
-                timestamp TEXT NOT NULL,
-                model TEXT NOT NULL,
-                input_tokens INTEGER NOT NULL DEFAULT 0,
-                output_tokens INTEGER NOT NULL DEFAULT 0,
-                cache_read_tokens INTEGER NOT NULL DEFAULT 0,
-                cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
-                speed TEXT NOT NULL DEFAULT 'standard',
-                web_search_requests INTEGER NOT NULL DEFAULT 0
-            );
-            INSERT INTO token_records (request_id, timestamp, model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens)
-            VALUES ('req-1', '2026-02-24T10:00:00.000Z', 'claude-sonnet-4-20250514', 1000, 500, 200, 100);
-            """)
 
         handler = AnalysisSchemeHandler(
             usageDbPath: usageDbPath,
-            tokensDbPath: tokensDbPath,
             htmlProvider: { "<html>test</html>" }
         )
     }
@@ -104,7 +87,6 @@ final class AnalysisSchemeHandlerTests: XCTestCase {
         var callCount = 0
         let dynamicHandler = AnalysisSchemeHandler(
             usageDbPath: tmpDir.appendingPathComponent("usage.db").path,
-            tokensDbPath: tmpDir.appendingPathComponent("tokens.db").path,
             htmlProvider: {
                 callCount += 1
                 return "<html>call-\(callCount)</html>"
@@ -135,24 +117,10 @@ final class AnalysisSchemeHandlerTests: XCTestCase {
         XCTAssertEqual(httpResponse?.value(forHTTPHeaderField: "Content-Type"), "application/json")
     }
 
-    func testStart_tokensJson_servesJSON() {
-        let task = MockSchemeTask(url: URL(string: "cut://tokens.json")!)
-        handler.webView(WKWebView(), start: task)
-
-        XCTAssertTrue(task.didFinishCalled)
-        let json = try! JSONSerialization.jsonObject(with: task.receivedData!) as! [[String: Any]]
-        XCTAssertEqual(json.count, 1)
-        XCTAssertEqual(json[0]["model"] as? String, "claude-sonnet-4-20250514")
-
-        let httpResponse = task.receivedResponse as? HTTPURLResponse
-        XCTAssertEqual(httpResponse?.statusCode, 200)
-        XCTAssertEqual(httpResponse?.value(forHTTPHeaderField: "Content-Type"), "application/json")
-    }
-
     // MARK: - HTTP status codes (200 for all valid paths)
 
     func testStart_successResponses_areHTTPWith200() {
-        for path in ["analysis.html", "usage.json", "tokens.json"] {
+        for path in ["analysis.html", "usage.json"] {
             let task = MockSchemeTask(url: URL(string: "cut://\(path)")!)
             handler.webView(WKWebView(), start: task)
             let httpResponse = task.receivedResponse as? HTTPURLResponse
@@ -165,7 +133,7 @@ final class AnalysisSchemeHandlerTests: XCTestCase {
     // MARK: - CORS headers
 
     func testStart_successResponses_haveCORSHeader() {
-        for path in ["analysis.html", "usage.json", "tokens.json"] {
+        for path in ["analysis.html", "usage.json"] {
             let task = MockSchemeTask(url: URL(string: "cut://\(path)")!)
             handler.webView(WKWebView(), start: task)
             let httpResponse = task.receivedResponse as? HTTPURLResponse
@@ -177,7 +145,7 @@ final class AnalysisSchemeHandlerTests: XCTestCase {
     // MARK: - Content-Length header
 
     func testStart_contentLengthMatchesActualData() {
-        for path in ["analysis.html", "usage.json", "tokens.json"] {
+        for path in ["analysis.html", "usage.json"] {
             let task = MockSchemeTask(url: URL(string: "cut://\(path)")!)
             handler.webView(WKWebView(), start: task)
             let httpResponse = task.receivedResponse as? HTTPURLResponse
@@ -249,25 +217,9 @@ final class AnalysisSchemeHandlerTests: XCTestCase {
     func testStart_missingUsageDb_returnsEmptyJsonArray() {
         let badHandler = AnalysisSchemeHandler(
             usageDbPath: "/nonexistent/path/usage.db",
-            tokensDbPath: "/nonexistent/path/tokens.db",
             htmlProvider: { "<html>test</html>" }
         )
         let task = MockSchemeTask(url: URL(string: "cut://usage.json")!)
-        badHandler.webView(WKWebView(), start: task)
-
-        XCTAssertTrue(task.didFinishCalled)
-        let httpResponse = task.receivedResponse as? HTTPURLResponse
-        XCTAssertEqual(httpResponse?.statusCode, 200)
-        XCTAssertEqual(String(data: task.receivedData!, encoding: .utf8), "[]")
-    }
-
-    func testStart_missingTokensDb_returnsEmptyJsonArray() {
-        let badHandler = AnalysisSchemeHandler(
-            usageDbPath: "/nonexistent/path/usage.db",
-            tokensDbPath: "/nonexistent/path/tokens.db",
-            htmlProvider: { "<html>test</html>" }
-        )
-        let task = MockSchemeTask(url: URL(string: "cut://tokens.json")!)
         badHandler.webView(WKWebView(), start: task)
 
         XCTAssertTrue(task.didFinishCalled)
@@ -280,7 +232,6 @@ final class AnalysisSchemeHandlerTests: XCTestCase {
         // Even if DB files are missing, HTML should still serve
         let badHandler = AnalysisSchemeHandler(
             usageDbPath: "/nonexistent/path/usage.db",
-            tokensDbPath: "/nonexistent/path/tokens.db",
             htmlProvider: { "<html>still works</html>" }
         )
         let task = MockSchemeTask(url: URL(string: "cut://analysis.html")!)
@@ -302,7 +253,7 @@ final class AnalysisSchemeHandlerTests: XCTestCase {
     // MARK: - Response URL matches request URL
 
     func testStart_responseURL_matchesRequestURL() {
-        for path in ["analysis.html", "usage.json", "tokens.json"] {
+        for path in ["analysis.html", "usage.json"] {
             let requestURL = URL(string: "cut://\(path)")!
             let task = MockSchemeTask(url: requestURL)
             handler.webView(WKWebView(), start: task)

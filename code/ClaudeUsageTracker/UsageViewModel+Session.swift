@@ -174,8 +174,6 @@ extension UsageViewModel {
         sevenDayPercent = nil
         fiveHourResetsAt = nil
         sevenDayResetsAt = nil
-        predictFiveHourCost = nil
-        predictSevenDayCost = nil
         error = nil
 
         widgetReloader.reloadAllTimelines()

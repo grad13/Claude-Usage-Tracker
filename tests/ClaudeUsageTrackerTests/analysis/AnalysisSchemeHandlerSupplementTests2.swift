@@ -3,7 +3,6 @@
 // Covers spec cases not present in the main test file:
 //   UT-05: URL nil → 400 + body "Missing URL"
 //   UT-09: queryUsageJSON SQL prepare failure → "[]"
-//   UT-14: queryTokensJSON SQL prepare failure → "[]"
 //   UT-20: serve method data=nil → 500 + body "Failed to generate response"
 
 import XCTest
@@ -81,7 +80,6 @@ final class AnalysisSchemeHandlerSupplementTests2: XCTestCase {
     func testStart_nilURL_returns400WithMissingURLBody() {
         let handler = AnalysisSchemeHandler(
             usageDbPath: "/nonexistent/usage.db",
-            tokensDbPath: "/nonexistent/tokens.db",
             htmlProvider: { "<html></html>" }
         )
         let task = NilURLMockSchemeTask()
@@ -109,16 +107,13 @@ final class AnalysisSchemeHandlerSupplementTests2: XCTestCase {
     /// fails. The handler must return 200 with body "[]" (spec UT-09).
     func testStart_usageDb_noTables_returnEmptyJsonArray() {
         let usagePath = tmpDir.appendingPathComponent("usage_no_tables.db").path
-        let tokensPath = tmpDir.appendingPathComponent("tokens.db").path
 
         // Create a valid SQLite DB with NO tables — open succeeds, prepare fails
         createDb(at: usagePath, sql: "SELECT 1;")
         // Create a normal tokens DB (not under test here)
-        AnalysisTestDB.createTokensDb(at: tokensPath, rows: [])
 
         let handler = AnalysisSchemeHandler(
             usageDbPath: usagePath,
-            tokensDbPath: tokensPath,
             htmlProvider: { "<html></html>" }
         )
         let task = MockSchemeTask(url: URL(string: "cut://usage.json")!)
@@ -136,40 +131,6 @@ final class AnalysisSchemeHandlerSupplementTests2: XCTestCase {
                        "SQL prepare failure must return empty JSON array '[]' per spec UT-09")
     }
 
-    // MARK: - UT-14: queryTokensJSON SQL prepare failure → "[]"
-
-    /// When the tokens DB exists and opens successfully, but lacks the
-    /// token_records table, sqlite3_prepare_v2 fails. The handler must
-    /// return 200 with body "[]" (spec UT-14).
-    func testStart_tokensDb_noTables_returnEmptyJsonArray() {
-        let usagePath = tmpDir.appendingPathComponent("usage.db").path
-        let tokensPath = tmpDir.appendingPathComponent("tokens_no_tables.db").path
-
-        // Create a normal usage DB (not under test here)
-        AnalysisTestDB.createUsageDb(at: usagePath, rows: [])
-        // Create a valid SQLite DB with NO tables — open succeeds, prepare fails
-        createDb(at: tokensPath, sql: "SELECT 1;")
-
-        let handler = AnalysisSchemeHandler(
-            usageDbPath: usagePath,
-            tokensDbPath: tokensPath,
-            htmlProvider: { "<html></html>" }
-        )
-        let task = MockSchemeTask(url: URL(string: "cut://tokens.json")!)
-        handler.webView(WKWebView(), start: task)
-
-        XCTAssertTrue(task.didFinishCalled)
-
-        let httpResponse = task.receivedResponse as? HTTPURLResponse
-        XCTAssertEqual(httpResponse?.statusCode, 200,
-                       "SQL prepare failure must still return 200 (not 500)")
-        XCTAssertEqual(httpResponse?.value(forHTTPHeaderField: "Content-Type"), "application/json")
-
-        let body = String(data: task.receivedData ?? Data(), encoding: .utf8)
-        XCTAssertEqual(body, "[]",
-                       "SQL prepare failure must return empty JSON array '[]' per spec UT-14")
-    }
-
     // MARK: - UT-20: serve with data=nil → 500
 
     /// When serializeJSON returns nil (JSONSerialization failure), the serve
@@ -181,7 +142,6 @@ final class AnalysisSchemeHandlerSupplementTests2: XCTestCase {
     /// JSONSerialization.data() which throws for NaN → returns nil → serve gets nil.
     func testStart_serializeFailure_returns500() {
         let usagePath = tmpDir.appendingPathComponent("usage_nan.db").path
-        let tokensPath = tmpDir.appendingPathComponent("tokens.db").path
 
         // Create usage DB with NaN value in hourly_percent.
         // SQLite does not reject NaN on INSERT; it stores IEEE 754 NaN.
@@ -222,11 +182,8 @@ final class AnalysisSchemeHandlerSupplementTests2: XCTestCase {
         sqlite3_finalize(stmt)
         sqlite3_close(db)
 
-        AnalysisTestDB.createTokensDb(at: tokensPath, rows: [])
-
         let handler = AnalysisSchemeHandler(
             usageDbPath: usagePath,
-            tokensDbPath: tokensPath,
             htmlProvider: { "<html></html>" }
         )
         let task = MockSchemeTask(url: URL(string: "cut://usage.json")!)

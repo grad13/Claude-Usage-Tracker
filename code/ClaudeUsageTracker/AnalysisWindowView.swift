@@ -11,12 +11,11 @@ struct AnalysisWindowView: View {
 }
 
 /// WKWebView configured with AnalysisSchemeHandler.
-/// JS fetches cut://usage.json and cut://tokens.json (Swift-side SQLite → JSON).
+/// JS fetches cut://usage.json (Swift-side SQLite → JSON).
 struct AnalysisWebView: NSViewRepresentable {
     func makeNSView(context: Context) -> WKWebView {
         let handler = AnalysisSchemeHandler(
             usageDbPath: UsageStore.shared.dbPath,
-            tokensDbPath: TokenStore.shared.dbPath,
             htmlProvider: { AnalysisExporter.htmlTemplate }
         )
         let config = WKWebViewConfiguration()

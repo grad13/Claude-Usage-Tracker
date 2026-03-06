@@ -96,54 +96,6 @@ enum AnalysisTestDB {
         }
     }
 
-    /// Create a real SQLite tokens.db with the same schema as TokenStore.
-    static func createTokensDb(at path: String, rows: [(String, String, String, Int, Int, Int, Int)]) {
-        var db: OpaquePointer?
-        guard sqlite3_open(path, &db) == SQLITE_OK else {
-            XCTFail("Failed to create test tokens.db")
-            return
-        }
-        defer { sqlite3_close(db) }
-
-        let createSQL = """
-            CREATE TABLE IF NOT EXISTS token_records (
-                request_id TEXT PRIMARY KEY,
-                timestamp TEXT NOT NULL,
-                model TEXT NOT NULL,
-                input_tokens INTEGER NOT NULL,
-                output_tokens INTEGER NOT NULL,
-                cache_read_tokens INTEGER NOT NULL,
-                cache_creation_tokens INTEGER NOT NULL,
-                speed TEXT NOT NULL DEFAULT 'standard',
-                web_search_requests INTEGER NOT NULL DEFAULT 0
-            );
-            """
-        sqlite3_exec(db, createSQL, nil, nil, nil)
-
-        for (reqId, ts, model, inp, out, cacheR, cacheW) in rows {
-            let insertSQL = """
-                INSERT INTO token_records (request_id, timestamp, model, input_tokens, output_tokens,
-                    cache_read_tokens, cache_creation_tokens)
-                VALUES (?, ?, ?, ?, ?, ?, ?);
-                """
-            var stmt: OpaquePointer?
-            sqlite3_prepare_v2(db, insertSQL, -1, &stmt, nil)
-            sqlite3_bind_text(stmt, 1, (reqId as NSString).utf8String, -1, nil)
-            sqlite3_bind_text(stmt, 2, (ts as NSString).utf8String, -1, nil)
-            sqlite3_bind_text(stmt, 3, (model as NSString).utf8String, -1, nil)
-            sqlite3_bind_int(stmt, 4, Int32(inp))
-            sqlite3_bind_int(stmt, 5, Int32(out))
-            sqlite3_bind_int(stmt, 6, Int32(cacheR))
-            sqlite3_bind_int(stmt, 7, Int32(cacheW))
-            sqlite3_step(stmt)
-            sqlite3_finalize(stmt)
-        }
-    }
-
-    /// Create a real SQLite tokens.db with schema only (no rows).
-    static func createTokensDb(at path: String) {
-        createTokensDb(at: path, rows: [])
-    }
 }
 
 // MARK: - AnalysisJSTestCase
@@ -251,33 +203,7 @@ enum TemplateTestHelper {
                 <button id="applyGlobal">Apply</button>
             </div>
             <div class="stats" id="stats"></div>
-            <div class="tab-bar">
-                <button class="tab-btn active" data-tab="usage">Usage</button>
-                <button class="tab-btn" data-tab="cost">Cost</button>
-                <button class="tab-btn" data-tab="scatter">Scatter</button>
-                <button class="tab-btn" data-tab="kde">KDE</button>
-                <button class="tab-btn" data-tab="heatmap">Heatmap</button>
-                <button class="tab-btn" data-tab="cumulative">Cumulative</button>
-            </div>
-            <div class="tab-content active" id="tab-usage">
-                <canvas id="usageTimeline"></canvas>
-            </div>
-            <div class="tab-content" id="tab-cost">
-                <canvas id="costTimeline"></canvas>
-                <canvas id="costScatter"></canvas>
-            </div>
-            <div class="tab-content" id="tab-scatter">
-                <canvas id="effScatter"></canvas>
-            </div>
-            <div class="tab-content" id="tab-kde">
-                <canvas id="kdeChart"></canvas>
-            </div>
-            <div class="tab-content" id="tab-heatmap">
-                <div id="heatmap"></div>
-            </div>
-            <div class="tab-content" id="tab-cumulative">
-                <canvas id="cumulativeCost"></canvas>
-            </div>
+            <canvas id="usageTimeline"></canvas>
         </div>
         <script>
         // Stub Chart.js — captures chart configurations for test assertions
