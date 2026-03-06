@@ -22,11 +22,21 @@ struct MiniUsageGraph: View {
         return min(max(elapsed / windowSeconds, 0.0), 1.0)
     }
 
-    private func usageValue(from point: UsageStore.DataPoint) -> Double? {
+    func usageValue(from point: UsageStore.DataPoint) -> Double? {
         if windowSeconds <= 5 * 3600 + 1 {
             return point.fiveHourPercent
         } else {
             return point.sevenDayPercent
+        }
+    }
+
+    func fillEndFrac(resetsAt: Date?, windowStart: Date, now: Date, lastPointFrac: Double) -> Double {
+        if let resetsAt {
+            let resetFrac = min(max(resetsAt.timeIntervalSince(windowStart) / windowSeconds, 0.0), 1.0)
+            return max(resetFrac, lastPointFrac)
+        } else {
+            let nowFrac = min(max(now.timeIntervalSince(windowStart) / windowSeconds, 0.0), 1.0)
+            return max(nowFrac, lastPointFrac)
         }
     }
 
@@ -85,15 +95,8 @@ struct MiniUsageGraph: View {
             let nowX = CGFloat(nowXFrac) * w
 
             // Usage persists until reset — extend area to reset time
-            let fillEndX: CGFloat
-            if let resetsAt {
-                let resetElapsed = resetsAt.timeIntervalSince(windowStart)
-                let resetXFrac = min(max(resetElapsed / windowSeconds, 0.0), 1.0)
-                let resetX = CGFloat(resetXFrac) * w
-                fillEndX = max(resetX, points.last!.x)
-            } else {
-                fillEndX = max(nowX, points.last!.x)
-            }
+            let lastPointXFrac = Double(points.last!.x / w)
+            let fillEndX = CGFloat(fillEndFrac(resetsAt: resetsAt, windowStart: windowStart, now: now, lastPointFrac: lastPointXFrac)) * w
 
             // Area fill — past region (solid, up to nowX)
             let effectiveNowX = max(min(nowX, fillEndX), points.last!.x)

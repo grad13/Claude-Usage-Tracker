@@ -77,6 +77,13 @@
 		BB100049 /* ArchitectureViewModelStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000049 /* ArchitectureViewModelStateTests.swift */; };
 		BB10004A /* UsageFetchErrorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00004A /* UsageFetchErrorTests.swift */; };
 		BB10004B /* AnalysisSchemeHandlerSQLiteTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00004B /* AnalysisSchemeHandlerSQLiteTests.swift */; };
+		BB800009 /* ProtocolsSupplementTests2.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB800008 /* ProtocolsSupplementTests2.swift */; };
+		BB80000B /* ProtocolsSupplementTests3.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB80000A /* ProtocolsSupplementTests3.swift */; };
+		BB80000D /* WebViewCoordinatorSupplementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB80000C /* WebViewCoordinatorSupplementTests.swift */; };
+		BB80000F /* AnalysisSchemeHandlerSupplementTests2.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB80000E /* AnalysisSchemeHandlerSupplementTests2.swift */; };
+		BB800011 /* AnalysisSchemeHandlerMetaJSONSupplementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB800010 /* AnalysisSchemeHandlerMetaJSONSupplementTests.swift */; };
+		BB800013 /* AnalysisExporterJSLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB800012 /* AnalysisExporterJSLogicTests.swift */; };
+		BB800015 /* MiniUsageGraphLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB800014 /* MiniUsageGraphLogicTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -218,6 +225,13 @@
 		BB000049 /* ArchitectureViewModelStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchitectureViewModelStateTests.swift; sourceTree = "<group>"; };
 		BB00004A /* UsageFetchErrorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageFetchErrorTests.swift; sourceTree = "<group>"; };
 		BB00004B /* AnalysisSchemeHandlerSQLiteTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisSchemeHandlerSQLiteTests.swift; sourceTree = "<group>"; };
+		BB800008 /* ProtocolsSupplementTests2.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtocolsSupplementTests2.swift; sourceTree = "<group>"; };
+		BB80000A /* ProtocolsSupplementTests3.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtocolsSupplementTests3.swift; sourceTree = "<group>"; };
+		BB80000C /* WebViewCoordinatorSupplementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebViewCoordinatorSupplementTests.swift; sourceTree = "<group>"; };
+		BB80000E /* AnalysisSchemeHandlerSupplementTests2.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisSchemeHandlerSupplementTests2.swift; sourceTree = "<group>"; };
+		BB800010 /* AnalysisSchemeHandlerMetaJSONSupplementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisSchemeHandlerMetaJSONSupplementTests.swift; sourceTree = "<group>"; };
+		BB800012 /* AnalysisExporterJSLogicTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisExporterJSLogicTests.swift; sourceTree = "<group>"; };
+		BB800014 /* MiniUsageGraphLogicTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniUsageGraphLogicTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -368,6 +382,9 @@
 				BB000048 /* ArchitectureWebViewStructureTests.swift */,
 				BB00003A /* WebViewCoordinatorTests.swift */,
 				BB000033 /* ProtocolsSupplementTests.swift */,
+							BB800008 /* ProtocolsSupplementTests2.swift */,
+							BB80000A /* ProtocolsSupplementTests3.swift */,
+							BB80000C /* WebViewCoordinatorSupplementTests.swift */,
 			);
 			path = meta;
 			sourceTree = "<group>";
@@ -396,6 +413,7 @@
 			children = (
 				BB000031 /* MenuContentSupplementTests.swift */,
 				BB00002F /* AppWindowsSupplementTests.swift */,
+							BB800014 /* MiniUsageGraphLogicTests.swift */,
 			);
 			path = ui;
 			sourceTree = "<group>";
@@ -412,6 +430,9 @@
 				BB00004B /* AnalysisSchemeHandlerSQLiteTests.swift */,
 				BB000025 /* AnalysisSQLQueryTests.swift */,
 				BB000022 /* AnalysisWebViewIntegrationTests.swift */,
+							BB80000E /* AnalysisSchemeHandlerSupplementTests2.swift */,
+							BB800010 /* AnalysisSchemeHandlerMetaJSONSupplementTests.swift */,
+							BB800012 /* AnalysisExporterJSLogicTests.swift */,
 			);
 			path = analysis;
 			sourceTree = "<group>";
@@ -694,6 +715,13 @@
 				BB10002F /* AppWindowsSupplementTests.swift in Sources */,
 				BB100031 /* MenuContentSupplementTests.swift in Sources */,
 				BB100033 /* ProtocolsSupplementTests.swift in Sources */,
+				BB800015 /* MiniUsageGraphLogicTests.swift in Sources */,
+				BB800013 /* AnalysisExporterJSLogicTests.swift in Sources */,
+				BB800011 /* AnalysisSchemeHandlerMetaJSONSupplementTests.swift in Sources */,
+				BB80000F /* AnalysisSchemeHandlerSupplementTests2.swift in Sources */,
+				BB80000D /* WebViewCoordinatorSupplementTests.swift in Sources */,
+				BB80000B /* ProtocolsSupplementTests3.swift in Sources */,
+				BB800009 /* ProtocolsSupplementTests2.swift in Sources */,
 				BB100034 /* SettingsSupplementTests.swift in Sources */,
 				BB100036 /* UsageFetcherSupplementTests.swift in Sources */,
 				BB100037 /* UsageStoreSupplementTests.swift in Sources */,

@@ -1,6 +1,6 @@
 ---
 Created: 2026-02-26
-Updated: 2026-03-04
+Updated: 2026-03-06
 Checked: -
 Deprecated: -
 Format: spec-v2.1
@@ -17,7 +17,7 @@ Source: code/ClaudeUsageTracker/Protocols.swift
 
 | Field | Value |
 |-------|-------|
-| Related | spec/meta/architecture.md, spec/data/settings-store.md, spec/data/usage-store.md, spec/data/snapshot-store.md, spec/data/token-store.md |
+| Related | spec/meta/architecture.md, spec/data/settings.md, spec/data/usage-store.md |
 | Test Type | Unit |
 
 ## 1. Contract (Swift)
@@ -44,22 +44,13 @@ protocol UsageStoring {
 
 // UsageStore conforms to UsageStoring (extension declaration only, no additional methods)
 
-// MARK: - Widget Snapshot
-
-protocol SnapshotWriting {
-    func saveAfterFetch(
-        timestamp: Date,
-        fiveHourPercent: Double?, sevenDayPercent: Double?,
-        fiveHourResetsAt: Date?, sevenDayResetsAt: Date?,
-        isLoggedIn: Bool
-    )
-    func updatePredict(fiveHourCost: Double?, sevenDayCost: Double?)
-    func clearOnSignOut()
-}
-
-struct DefaultSnapshotWriter: SnapshotWriting {
-    // All methods delegate to SnapshotStore's static methods
-}
+// MARK: - Widget Data Sharing (note: no dedicated protocol)
+//
+// The widget reads usage data directly from usage.db via UsageReader (ClaudeUsageTrackerShared).
+// The main app writes via UsageStore (UsageStoring protocol), and the widget reads via
+// UsageReader.load() → UsageSnapshot. No SnapshotWriting protocol is needed because
+// the write side is already covered by UsageStoring, and the read side (UsageReader)
+// is a read-only utility in the Shared framework.
 
 // MARK: - Usage Fetching
 
@@ -91,15 +82,6 @@ protocol LoginItemManaging {
 struct DefaultLoginItemManager: LoginItemManaging {
     // Delegates to SMAppService.mainApp.register() / unregister()
 }
-
-// MARK: - Token (JSONL cost estimation)
-
-protocol TokenSyncing: Sendable {
-    func sync(directories: [URL])
-    func loadRecords(since cutoff: Date) -> [TokenRecord]
-}
-
-// TokenStore conforms to TokenSyncing (extension declaration only, no additional methods)
 
 // MARK: - Alert Checking
 
@@ -157,14 +139,14 @@ Each default implementation is a thin wrapper with no logic. During testing, moc
 |---------|----------|----------------------|-------------------|-------------------|
 | DI-01 | SettingsStoring | None (extension conformance) | SettingsStore | Extension declaration only |
 | DI-02 | UsageStoring | None (extension conformance) | UsageStore | Extension declaration only |
-| DI-03 | SnapshotWriting | DefaultSnapshotWriter | SnapshotStore (static) | Struct wrapper |
 | DI-04 | UsageFetching | DefaultUsageFetcher | UsageFetcher (static) | Struct wrapper |
 | DI-05 | WidgetReloading | DefaultWidgetReloader | WidgetCenter.shared | Struct wrapper |
 | DI-06 | LoginItemManaging | DefaultLoginItemManager | SMAppService.mainApp | Struct wrapper |
-| DI-07 | TokenSyncing | None (extension conformance) | TokenStore | Extension declaration only |
 | DI-08 | AlertChecking | DefaultAlertChecker | AlertChecker.shared | Struct wrapper |
 | DI-09 | NotificationSending | DefaultNotificationSender | NotificationManager.shared | Struct wrapper |
 | DI-10 | WebViewCoordinatorDelegate | None (conformance) | UsageViewModel | Existing type conforms |
+
+Note: DI-03 (SnapshotWriting) was removed — widget data sharing uses UsageReader directly reading usage.db written by UsageStore. DI-07 (TokenSyncing) was removed — JSONL cost estimation feature is omitted.
 
 ### 3.2 LoginItemManaging.setEnabled Branching
 
@@ -182,12 +164,10 @@ Each default implementation is a thin wrapper with no logic. During testing, moc
 | Type | Description | Related Protocol |
 |------|-------------|-----------------|
 | Store | Read/write AppSettings (UserDefaults / Keychain) | SettingsStoring |
-| Store | Persist UsageResult | UsageStoring |
-| Store | Write state to SnapshotStore (shared with widget via Keychain) | SnapshotWriting |
+| Store | Persist UsageResult (widget reads via UsageReader from same DB) | UsageStoring |
 | Network | Fetch usage API via WKWebView | UsageFetching |
 | System | WidgetCenter.shared.reloadAllTimelines() — reload widget timelines | WidgetReloading |
 | System | SMAppService.mainApp.register() / unregister() — login item registration | LoginItemManaging |
-| Store | Sync/load JSONL records to/from TokenStore | TokenSyncing |
 | System | UNUserNotificationCenter.requestAuthorization + add(UNNotificationRequest) | NotificationSending |
 | Logic | AlertChecker threshold evaluation + duplicate notification prevention | AlertChecking |
 | Navigation | WKWebView delegate (navigation + UI) via WebViewCoordinator | WebViewCoordinatorDelegate |
@@ -197,9 +177,8 @@ Each default implementation is a thin wrapper with no logic. During testing, moc
 
 - The purpose of this file is to abstract UsageViewModel's dependencies, enabling mock injection during testing.
 - There are two conformance styles:
-  - **Extension declaration only**: Existing concrete types (SettingsStore, UsageStore, TokenStore) already satisfy the protocol's method signatures, so they conform via a simple extension declaration.
-  - **Struct wrapper**: When the delegation target uses static methods or singletons (SnapshotStore, UsageFetcher, WidgetCenter.shared, SMAppService.mainApp), instance methods wrap them to enable DI.
-- DefaultSnapshotWriter.saveAfterFetch forwards all arguments directly to SnapshotStore.saveAfterFetch.
+  - **Extension declaration only**: Existing concrete types (SettingsStore, UsageStore) already satisfy the protocol's method signatures, so they conform via a simple extension declaration.
+  - **Struct wrapper**: When the delegation target uses static methods or singletons (UsageFetcher, WidgetCenter.shared, SMAppService.mainApp), instance methods wrap them to enable DI.
 - UsageFetching methods have a `@MainActor` constraint because WKWebView can only be operated on the main thread.
-- TokenSyncing conforms to `Sendable` to support calls from background threads.
+- Widget data sharing: The main app writes usage data via `UsageStoring` (UsageStore), and the widget reads via `UsageReader.load()` (ClaudeUsageTrackerShared). No separate protocol is needed for the read side.
 - WebViewCoordinatorDelegate is a protocol that decouples communication between WebViewCoordinator and UsageViewModel. The `@MainActor` constraint ensures WKWebView thread safety. It can be mocked in tests to verify popup event sequences.
