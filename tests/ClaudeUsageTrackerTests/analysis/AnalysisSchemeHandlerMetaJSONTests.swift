@@ -106,35 +106,14 @@ final class AnalysisSchemeHandlerMetaJSONTests: XCTestCase {
     /// meta.json returns 200 with a JSON object containing all three integer keys.
     func testMetaJson_withData_returnsCorrectJsonKeys() {
         let usagePath = tmpDir.appendingPathComponent("usage-data.db").path
-
-        // Create usage.db with sessions and usage_log rows
-        var db: OpaquePointer?
-        sqlite3_open(usagePath, &db)
-        defer { sqlite3_close(db) }
-        let schema = """
-            CREATE TABLE hourly_sessions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                resets_at INTEGER NOT NULL UNIQUE
-            );
-            CREATE TABLE weekly_sessions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                resets_at INTEGER NOT NULL UNIQUE
-            );
-            CREATE TABLE usage_log (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp INTEGER NOT NULL,
-                hourly_percent REAL,
-                weekly_percent REAL,
-                hourly_session_id INTEGER REFERENCES hourly_sessions(id),
-                weekly_session_id INTEGER REFERENCES weekly_sessions(id)
-            );
-            INSERT INTO weekly_sessions (resets_at) VALUES (1772532000);
-            INSERT INTO usage_log (timestamp, hourly_percent, weekly_percent, weekly_session_id)
-            VALUES (1771900000, 10.0, 5.0, 1);
-            INSERT INTO usage_log (timestamp, hourly_percent, weekly_percent, weekly_session_id)
-            VALUES (1771990000, 20.0, 8.0, 1);
-            """
-        sqlite3_exec(db, schema, nil, nil, nil)
+        AnalysisTestDB.createUsageDbWithSessions(
+            at: usagePath,
+            weeklySessions: [(id: 1, resetsAt: 1772532000)],
+            rows: [
+                (timestamp: 1771900000, hourly: 10.0, weekly: 5.0, weeklySessionId: 1),
+                (timestamp: 1771990000, hourly: 20.0, weekly: 8.0, weeklySessionId: 1),
+            ]
+        )
 
         let handler = AnalysisSchemeHandler(
             usageDbPath: usagePath,
@@ -173,34 +152,13 @@ final class AnalysisSchemeHandlerMetaJSONTests: XCTestCase {
     /// latestTimestamp and oldestTimestamp must still be present as integers.
     func testMetaJson_noWeeklySessions_latestSevenDayResetsAtIsNull() {
         let usagePath = tmpDir.appendingPathComponent("usage-no-weekly.db").path
-
-        // Insert usage_log rows WITHOUT weekly_session_id (NULL)
-        var db: OpaquePointer?
-        sqlite3_open(usagePath, &db)
-        defer { sqlite3_close(db) }
-        let schema = """
-            CREATE TABLE hourly_sessions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                resets_at INTEGER NOT NULL UNIQUE
-            );
-            CREATE TABLE weekly_sessions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                resets_at INTEGER NOT NULL UNIQUE
-            );
-            CREATE TABLE usage_log (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp INTEGER NOT NULL,
-                hourly_percent REAL,
-                weekly_percent REAL,
-                hourly_session_id INTEGER REFERENCES hourly_sessions(id),
-                weekly_session_id INTEGER REFERENCES weekly_sessions(id)
-            );
-            INSERT INTO usage_log (timestamp, hourly_percent, weekly_percent, weekly_session_id)
-            VALUES (1771800000, 30.0, 12.0, NULL);
-            INSERT INTO usage_log (timestamp, hourly_percent, weekly_percent, weekly_session_id)
-            VALUES (1771850000, 50.0, 20.0, NULL);
-            """
-        sqlite3_exec(db, schema, nil, nil, nil)
+        AnalysisTestDB.createUsageDbWithSessions(
+            at: usagePath,
+            rows: [
+                (timestamp: 1771800000, hourly: 30.0, weekly: 12.0, weeklySessionId: nil),
+                (timestamp: 1771850000, hourly: 50.0, weekly: 20.0, weeklySessionId: nil),
+            ]
+        )
 
         let handler = AnalysisSchemeHandler(
             usageDbPath: usagePath,
@@ -234,21 +192,10 @@ final class AnalysisSchemeHandlerMetaJSONTests: XCTestCase {
     /// Guarantees: meta.json successful response has Content-Type: application/json.
     func testMetaJson_withData_hasApplicationJsonContentType() {
         let usagePath = tmpDir.appendingPathComponent("usage-ct.db").path
-
-        var db: OpaquePointer?
-        sqlite3_open(usagePath, &db)
-        defer { sqlite3_close(db) }
-        let schema = """
-            CREATE TABLE hourly_sessions (id INTEGER PRIMARY KEY AUTOINCREMENT, resets_at INTEGER NOT NULL UNIQUE);
-            CREATE TABLE weekly_sessions (id INTEGER PRIMARY KEY AUTOINCREMENT, resets_at INTEGER NOT NULL UNIQUE);
-            CREATE TABLE usage_log (
-                id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL,
-                hourly_percent REAL, weekly_percent REAL,
-                hourly_session_id INTEGER, weekly_session_id INTEGER
-            );
-            INSERT INTO usage_log (timestamp, hourly_percent, weekly_percent) VALUES (1771900000, 10.0, 5.0);
-            """
-        sqlite3_exec(db, schema, nil, nil, nil)
+        AnalysisTestDB.createUsageDbWithSessions(
+            at: usagePath,
+            rows: [(timestamp: 1771900000, hourly: 10.0, weekly: 5.0, weeklySessionId: nil)]
+        )
 
         let handler = AnalysisSchemeHandler(
             usageDbPath: usagePath,

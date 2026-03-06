@@ -5,7 +5,6 @@
 
 import XCTest
 import WebKit
-import SQLite3
 @testable import ClaudeUsageTracker
 
 // MARK: - Helper Unit Tests (parseQueryParams, columnInt, serializeJSON)
@@ -91,23 +90,10 @@ final class AnalysisSchemeHandlerHelperTests: XCTestCase {
     /// Observable: meta.json latestSevenDayResetsAt is null when no weekly_sessions are linked.
     func testColumnInt_nullColumn_isJsonNull() {
         let usagePath = tmpDir.appendingPathComponent("usage-null.db").path
-
-        var db: OpaquePointer?
-        sqlite3_open(usagePath, &db)
-        defer { sqlite3_close(db) }
-        // Insert usage_log row with NULL weekly_session_id → LEFT JOIN → ws.resets_at is NULL
-        let schema = """
-            CREATE TABLE hourly_sessions (id INTEGER PRIMARY KEY AUTOINCREMENT, resets_at INTEGER NOT NULL UNIQUE);
-            CREATE TABLE weekly_sessions (id INTEGER PRIMARY KEY AUTOINCREMENT, resets_at INTEGER NOT NULL UNIQUE);
-            CREATE TABLE usage_log (
-                id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL,
-                hourly_percent REAL, weekly_percent REAL,
-                hourly_session_id INTEGER, weekly_session_id INTEGER
-            );
-            INSERT INTO usage_log (timestamp, hourly_percent, weekly_percent, weekly_session_id)
-            VALUES (1771900000, 10.0, 5.0, NULL);
-            """
-        sqlite3_exec(db, schema, nil, nil, nil)
+        AnalysisTestDB.createUsageDbWithSessions(
+            at: usagePath,
+            rows: [(timestamp: 1771900000, hourly: 10.0, weekly: 5.0, weeklySessionId: nil)]
+        )
 
         let handler = AnalysisSchemeHandler(
             usageDbPath: usagePath,            htmlProvider: { "<html></html>" }
@@ -131,22 +117,10 @@ final class AnalysisSchemeHandlerHelperTests: XCTestCase {
     /// Observable: meta.json latestTimestamp matches the inserted epoch value.
     func testColumnInt_integerColumn_returnsCorrectInt() {
         let usagePath = tmpDir.appendingPathComponent("usage-int.db").path
-
-        var db: OpaquePointer?
-        sqlite3_open(usagePath, &db)
-        defer { sqlite3_close(db) }
-        let schema = """
-            CREATE TABLE hourly_sessions (id INTEGER PRIMARY KEY AUTOINCREMENT, resets_at INTEGER NOT NULL UNIQUE);
-            CREATE TABLE weekly_sessions (id INTEGER PRIMARY KEY AUTOINCREMENT, resets_at INTEGER NOT NULL UNIQUE);
-            CREATE TABLE usage_log (
-                id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL,
-                hourly_percent REAL, weekly_percent REAL,
-                hourly_session_id INTEGER, weekly_session_id INTEGER
-            );
-            INSERT INTO usage_log (timestamp, hourly_percent, weekly_percent)
-            VALUES (1700000000, 55.0, 20.0);
-            """
-        sqlite3_exec(db, schema, nil, nil, nil)
+        AnalysisTestDB.createUsageDbWithSessions(
+            at: usagePath,
+            rows: [(timestamp: 1700000000, hourly: 55.0, weekly: 20.0, weeklySessionId: nil)]
+        )
 
         let handler = AnalysisSchemeHandler(
             usageDbPath: usagePath,            htmlProvider: { "<html></html>" }
@@ -294,21 +268,10 @@ final class AnalysisSchemeHandlerErrorHeaderTests: XCTestCase {
     /// This covers meta.json specifically (which existing tests do not verify for CORS).
     func testMetaJson_success_hasCORSHeader() {
         let usagePath = tmpDir.appendingPathComponent("usage-cors.db").path
-
-        var db: OpaquePointer?
-        sqlite3_open(usagePath, &db)
-        defer { sqlite3_close(db) }
-        let schema = """
-            CREATE TABLE hourly_sessions (id INTEGER PRIMARY KEY AUTOINCREMENT, resets_at INTEGER NOT NULL UNIQUE);
-            CREATE TABLE weekly_sessions (id INTEGER PRIMARY KEY AUTOINCREMENT, resets_at INTEGER NOT NULL UNIQUE);
-            CREATE TABLE usage_log (
-                id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL,
-                hourly_percent REAL, weekly_percent REAL,
-                hourly_session_id INTEGER, weekly_session_id INTEGER
-            );
-            INSERT INTO usage_log (timestamp, hourly_percent, weekly_percent) VALUES (1771900000, 10.0, 5.0);
-            """
-        sqlite3_exec(db, schema, nil, nil, nil)
+        AnalysisTestDB.createUsageDbWithSessions(
+            at: usagePath,
+            rows: [(timestamp: 1771900000, hourly: 10.0, weekly: 5.0, weeklySessionId: nil)]
+        )
 
         let corsHandler = AnalysisSchemeHandler(
             usageDbPath: usagePath,            htmlProvider: { "<html></html>" }

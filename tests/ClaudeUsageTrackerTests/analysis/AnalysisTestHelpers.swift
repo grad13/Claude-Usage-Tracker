@@ -96,6 +96,68 @@ enum AnalysisTestDB {
         }
     }
 
+    /// Create a usage.db with session tables populated.
+    /// Allows inserting rows with specific weekly_session_id (including NULL).
+    static func createUsageDbWithSessions(
+        at path: String,
+        weeklySessions: [(id: Int, resetsAt: Int)] = [],
+        rows: [(timestamp: Int, hourly: Double, weekly: Double, weeklySessionId: Int?)]
+    ) {
+        var db: OpaquePointer?
+        guard sqlite3_open(path, &db) == SQLITE_OK else {
+            XCTFail("Failed to create test usage.db")
+            return
+        }
+        defer { sqlite3_close(db) }
+
+        let createSQL = """
+            CREATE TABLE IF NOT EXISTS hourly_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                resets_at INTEGER NOT NULL UNIQUE
+            );
+            CREATE TABLE IF NOT EXISTS weekly_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                resets_at INTEGER NOT NULL UNIQUE
+            );
+            CREATE TABLE IF NOT EXISTS usage_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp INTEGER NOT NULL,
+                hourly_percent REAL,
+                weekly_percent REAL,
+                hourly_session_id INTEGER REFERENCES hourly_sessions(id),
+                weekly_session_id INTEGER REFERENCES weekly_sessions(id),
+                CHECK (hourly_percent IS NOT NULL OR weekly_percent IS NOT NULL)
+            );
+            """
+        sqlite3_exec(db, createSQL, nil, nil, nil)
+
+        for ws in weeklySessions {
+            let sql = "INSERT INTO weekly_sessions (id, resets_at) VALUES (?, ?);"
+            var stmt: OpaquePointer?
+            sqlite3_prepare_v2(db, sql, -1, &stmt, nil)
+            sqlite3_bind_int64(stmt, 1, Int64(ws.id))
+            sqlite3_bind_int64(stmt, 2, Int64(ws.resetsAt))
+            sqlite3_step(stmt)
+            sqlite3_finalize(stmt)
+        }
+
+        for row in rows {
+            let sql = "INSERT INTO usage_log (timestamp, hourly_percent, weekly_percent, weekly_session_id) VALUES (?, ?, ?, ?);"
+            var stmt: OpaquePointer?
+            sqlite3_prepare_v2(db, sql, -1, &stmt, nil)
+            sqlite3_bind_int64(stmt, 1, Int64(row.timestamp))
+            sqlite3_bind_double(stmt, 2, row.hourly)
+            sqlite3_bind_double(stmt, 3, row.weekly)
+            if let wsId = row.weeklySessionId {
+                sqlite3_bind_int64(stmt, 4, Int64(wsId))
+            } else {
+                sqlite3_bind_null(stmt, 4)
+            }
+            sqlite3_step(stmt)
+            sqlite3_finalize(stmt)
+        }
+    }
+
 }
 
 // MARK: - AnalysisJSTestCase
