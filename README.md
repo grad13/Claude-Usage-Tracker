@@ -2,6 +2,16 @@
 
 macOS menu bar app for monitoring Claude Code usage limits — log, track, and analyze your usage trends.
 
+![Menu Bar](docs/images/Menu-Tray.png)
+
+![Session Weekly](docs/images/Session-Weekly.png)
+
+![Session Hourly](docs/images/Session-Hourly.png)
+
+![Calendrical Week](docs/images/Calendrical-Week.png)
+
+![Widget](docs/images/Wiget.png)
+
 ## Download
 
 **[Download the latest release](https://github.com/grad13/Claude-Usage-Tracker/releases/latest)** — download `ClaudeUsageTracker.app.zip`, unzip, and move to `/Applications`.
