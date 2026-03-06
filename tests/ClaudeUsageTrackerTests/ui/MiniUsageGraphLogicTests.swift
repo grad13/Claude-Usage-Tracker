@@ -22,7 +22,8 @@ final class MiniUsageGraphUsageValueTests: XCTestCase {
             areaOpacity: 0.5,
             divisions: 4,
             chartWidth: 100,
-            isLoggedIn: true
+            isLoggedIn: true,
+            colorScheme: .dark
         )
     }
 
@@ -92,7 +93,8 @@ final class MiniUsageGraphFillEndFracTests: XCTestCase {
             areaOpacity: 0.5,
             divisions: 4,
             chartWidth: 100,
-            isLoggedIn: true
+            isLoggedIn: true,
+            colorScheme: .dark
         )
     }
 
