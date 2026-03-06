@@ -1,4 +1,4 @@
-// meta: created=2026-02-21 updated=2026-03-03 checked=2026-03-03
+// meta: created=2026-02-21 updated=2026-03-06 checked=2026-03-03
 import SwiftUI
 import WidgetKit
 import ClaudeUsageTrackerShared
@@ -62,7 +62,7 @@ struct WidgetMediumView: View {
 
             if let resetsAt {
                 GeometryReader { geo in
-                    let xFrac = nowXFraction(resetsAt: resetsAt, windowSeconds: windowSeconds)
+                    let xFrac = GraphCalc.nowXFraction(resetsAt: resetsAt, windowSeconds: windowSeconds)
                     Text(DisplayHelpers.remainingText(until: resetsAt))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
@@ -87,8 +87,6 @@ struct WidgetMediumView: View {
     }
 
     private func nowXFraction(resetsAt: Date, windowSeconds: TimeInterval) -> CGFloat {
-        let windowStart = resetsAt.addingTimeInterval(-windowSeconds)
-        let nowElapsed = Date().timeIntervalSince(windowStart)
-        return CGFloat(min(max(nowElapsed / windowSeconds, 0.0), 1.0))
+        CGFloat(GraphCalc.nowXFraction(resetsAt: resetsAt, windowSeconds: windowSeconds))
     }
 }

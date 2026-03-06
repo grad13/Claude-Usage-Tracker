@@ -1,4 +1,4 @@
-// meta: created=2026-02-21 updated=2026-03-04 checked=2026-03-03
+// meta: created=2026-02-21 updated=2026-03-06 checked=2026-03-03
 import SwiftUI
 import ClaudeUsageTrackerShared
 
@@ -90,16 +90,11 @@ struct WidgetMiniGraph: View {
     }
 
     private func resolveWindowStart() -> Date? {
-        if let resetsAt {
-            return resetsAt.addingTimeInterval(-windowSeconds)
-        } else if let first = history.first {
-            return first.timestamp
-        }
-        return nil
+        GraphCalc.resolveWindowStart(resetsAt: resetsAt, windowSeconds: windowSeconds, history: history)
     }
 
     private func drawTicks(_ context: inout GraphicsContext, w: CGFloat, h: CGFloat) {
-        let divisions = windowSeconds <= Layout.fiveHourWindowThreshold ? 5 : 7
+        let divisions = GraphCalc.tickDivisions(windowSeconds: windowSeconds)
         for i in 1..<divisions {
             let x = CGFloat(i) / CGFloat(divisions) * w
             var tickPath = Path()

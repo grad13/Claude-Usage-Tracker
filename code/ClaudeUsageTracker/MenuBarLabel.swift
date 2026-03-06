@@ -1,4 +1,4 @@
-// meta: created=2026-02-26 updated=2026-02-26 checked=2026-02-26
+// meta: created=2026-02-26 updated=2026-03-06 checked=2026-02-26
 import SwiftUI
 
 // MARK: - Menu Bar Label (mini graphs)
@@ -11,9 +11,13 @@ struct MenuBarLabel: View {
         Image(nsImage: image)
     }
 
+    static func graphCount(settings: AppSettings) -> Int {
+        (settings.showHourlyGraph ? 1 : 0) + (settings.showWeeklyGraph ? 1 : 0)
+    }
+
     private func renderGraphs() -> NSImage {
         let s = viewModel.settings
-        let graphCount = (s.showHourlyGraph ? 1 : 0) + (s.showWeeklyGraph ? 1 : 0)
+        let graphCount = Self.graphCount(settings: s)
 
         let content: AnyView
         if graphCount > 0 {

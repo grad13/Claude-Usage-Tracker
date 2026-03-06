@@ -1,4 +1,4 @@
-// meta: created=2026-02-21 updated=2026-02-21 checked=2026-03-03
+// meta: created=2026-02-21 updated=2026-03-06 checked=2026-03-03
 import SwiftUI
 import WidgetKit
 import ClaudeUsageTrackerShared
@@ -103,7 +103,6 @@ struct WidgetLargeView: View {
     }
 
     private func remainingText(_ date: Date) -> String {
-        let text = DisplayHelpers.remainingText(until: date)
-        return text == "expired" ? text : "in " + text
+        GraphCalc.remainingTextWithPrefix(DisplayHelpers.remainingText(until: date))
     }
 }
