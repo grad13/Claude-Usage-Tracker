@@ -36,16 +36,19 @@ extension UsageViewModel {
     func setHourlyColorPreset(_ preset: ChartColorPreset) {
         settings.hourlyColorPreset = preset
         settingsStore.save(settings)
+        widgetReloader.reloadAllTimelines()
     }
 
     func setWeeklyColorPreset(_ preset: ChartColorPreset) {
         settings.weeklyColorPreset = preset
         settingsStore.save(settings)
+        widgetReloader.reloadAllTimelines()
     }
 
     func setGraphColorTheme(_ theme: GraphColorTheme) {
         settings.graphColorTheme = theme
         settingsStore.save(settings)
+        widgetReloader.reloadAllTimelines()
     }
 
     // MARK: - Alert Settings

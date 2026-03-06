@@ -392,4 +392,37 @@ final class SettingsTests: XCTestCase {
         XCTAssertFalse(jsonString.contains("weeklyAlertEnabled"))
         XCTAssertFalse(jsonString.contains("dailyAlertDefinition"))
     }
+
+    // MARK: - ChartColorPreset.hexString
+
+    func testHexString_allPresets() {
+        XCTAssertEqual(ChartColorPreset.blue.hexString, "#64b4ff")
+        XCTAssertEqual(ChartColorPreset.pink.hexString, "#ff82b4")
+        XCTAssertEqual(ChartColorPreset.green.hexString, "#46d250")
+        XCTAssertEqual(ChartColorPreset.teal.hexString, "#00d2be")
+        XCTAssertEqual(ChartColorPreset.purple.hexString, "#966eff")
+        XCTAssertEqual(ChartColorPreset.orange.hexString, "#ffa03c")
+        XCTAssertEqual(ChartColorPreset.white.hexString, "#e6e6e6")
+    }
+
+    func testHexString_format() {
+        for preset in ChartColorPreset.allCases {
+            let hex = preset.hexString
+            XCTAssertTrue(hex.hasPrefix("#"), "\(preset) hexString must start with #")
+            XCTAssertEqual(hex.count, 7, "\(preset) hexString must be 7 chars (#rrggbb)")
+        }
+    }
+
+    // MARK: - GraphColorTheme
+
+    func testGraphColorTheme_rawValues() {
+        XCTAssertEqual(GraphColorTheme.system.rawValue, "system")
+        XCTAssertEqual(GraphColorTheme.light.rawValue, "light")
+        XCTAssertEqual(GraphColorTheme.dark.rawValue, "dark")
+    }
+
+    func testGraphColorTheme_defaultIsDark() {
+        let settings = AppSettings()
+        XCTAssertEqual(settings.graphColorTheme, .dark)
+    }
 }

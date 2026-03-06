@@ -14,10 +14,28 @@ final class AnalysisSchemeHandler: NSObject, WKURLSchemeHandler {
 
     private let usageDbPath: String
     private let htmlProvider: () -> String
+    private let settingsProvider: () -> [String: String]
 
-    init(usageDbPath: String, htmlProvider: @escaping () -> String) {
+    init(usageDbPath: String, htmlProvider: @escaping () -> String,
+         settingsProvider: @escaping () -> [String: String] = {
+             let s = SettingsStore.load()
+             let resolved: String
+             switch s.graphColorTheme {
+             case .system:
+                 let isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                 resolved = isDark ? "dark" : "light"
+             case .light: resolved = "light"
+             case .dark: resolved = "dark"
+             }
+             return [
+                 "hourly_color": s.hourlyColorPreset.hexString,
+                 "weekly_color": s.weeklyColorPreset.hexString,
+                 "color_theme": resolved,
+             ]
+         }) {
         self.usageDbPath = usageDbPath
         self.htmlProvider = htmlProvider
+        self.settingsProvider = settingsProvider
     }
 
     func webView(_ webView: WKWebView, start urlSchemeTask: WKURLSchemeTask) {
@@ -126,6 +144,7 @@ final class AnalysisSchemeHandler: NSObject, WKURLSchemeHandler {
             }
 
             if result.isEmpty { return fallback }
+            result["settings"] = settingsProvider()
             return try? JSONSerialization.data(withJSONObject: result)
         } ?? fallback
     }

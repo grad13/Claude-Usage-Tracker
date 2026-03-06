@@ -273,7 +273,8 @@ final class AnalysisSchemeHandlerMetaJSONSupplementTests: XCTestCase {
 
         let handler = AnalysisSchemeHandler(
             usageDbPath: usagePath,
-            htmlProvider: { "<html></html>" }
+            htmlProvider: { "<html></html>" },
+            settingsProvider: { [:] }
         )
         let task = MockSchemeTask(url: URL(string: "cut://meta.json")!)
         handler.webView(WKWebView(), start: task)

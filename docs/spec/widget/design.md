@@ -1,10 +1,10 @@
 ---
 Created: 2026-02-22
-Updated: 2026-03-06
+Updated: 2026-03-07
 Checked: -
 Deprecated: -
 Format: spec-v2.1
-Source: code/ClaudeUsageTrackerWidget/UsageWidget.swift, code/ClaudeUsageTrackerWidget/WidgetSmallView.swift, code/ClaudeUsageTrackerWidget/WidgetMediumView.swift, code/ClaudeUsageTrackerWidget/WidgetLargeView.swift, code/ClaudeUsageTrackerWidget/WidgetMiniGraph.swift
+Source: code/ClaudeUsageTrackerWidget/UsageWidget.swift, code/ClaudeUsageTrackerWidget/WidgetSmallView.swift, code/ClaudeUsageTrackerWidget/WidgetMediumView.swift, code/ClaudeUsageTrackerWidget/WidgetLargeView.swift, code/ClaudeUsageTrackerWidget/WidgetMiniGraph.swift, code/ClaudeUsageTrackerWidget/WidgetColorThemeResolver.swift
 ---
 
 # Widget Design Specification
@@ -59,8 +59,9 @@ Each section is a VStack (spacing: 3pt):
 - Step interpolation (staircase) -- usage rate is constant between measurements
 - Extends horizontally from the last data point to `min(current time, reset time)` (usage is monotonically non-decreasing until reset, so the last fetched value persists)
 - If `resetsAt == nil`, extends to the current time
-- 5h: `rgba(100, 180, 255)` opacity 0.7
-- 7d: `rgba(255, 130, 180)` opacity 0.65
+- 5h: Resolved from `settings.json` `hourly_color_preset` (default: blue = `rgba(100, 180, 255)`) opacity 0.7
+- 7d: Resolved from `settings.json` `weekly_color_preset` (default: pink = `rgba(255, 130, 180)`) opacity 0.65
+- Color resolution is handled by `WidgetColorThemeResolver.resolveChartColor(forKey:default:)`
 
 ### Usage Rate Line (Dashed)
 
@@ -212,7 +213,7 @@ Fallback for unsupported sizes (`.systemExtraLarge`, etc.) is Small.
 | `resetsAt` | `snapshot.fiveHourResetsAt` | `snapshot.sevenDayResetsAt` |
 | `history` | `snapshot.fiveHourHistory` | `snapshot.sevenDayHistory` |
 | `windowSeconds` | `5 * 3600` | `7 * 24 * 3600` |
-| `color` | `Color(100/255, 180/255, 255/255)` | `Color(255/255, 130/255, 180/255)` |
+| `color` | `WidgetColorThemeResolver.resolveChartColor(forKey: "hourly_color_preset", default: blue)` | `WidgetColorThemeResolver.resolveChartColor(forKey: "weekly_color_preset", default: pink)` |
 | `opacity` | `0.7` | `0.65` |
 
 ### notFetchedView (When snapshot is nil)
@@ -223,6 +224,24 @@ Fallback for unsupported sizes (`.systemExtraLarge`, etc.) is Small.
 ```
 
 VStack(spacing: 4)
+
+## WidgetColorThemeResolver
+
+`code/ClaudeUsageTrackerWidget/WidgetColorThemeResolver.swift`
+
+Resolves chart color presets from `settings.json` via App Group for the Widget target. Since `SwiftUI.Color` cannot be shared via the Shared framework (it's a View type), the RGB mapping is duplicated in the Widget target.
+
+```swift
+enum WidgetColorThemeResolver {
+    static func resolveChartColor(forKey key: String, default fallback: Color) -> Color
+}
+```
+
+- Reads the preset string from `AppGroupConfig.settingsString(forKey:)` (e.g., `"blue"`, `"pink"`)
+- Looks up the preset in an internal `colorMap` dictionary mapping preset names to RGB tuples
+- Returns the matching `Color`, or `fallback` if the preset is unknown or the key is absent
+
+Supported presets: `blue`, `pink`, `green`, `teal`, `purple`, `orange`, `white` (same as `ChartColorPreset`).
 
 ## WidgetMediumView
 
@@ -304,7 +323,7 @@ Used to calculate the x-coordinate for the remaining time text (multiplied by `G
 | `resetsAt` | `snapshot.fiveHourResetsAt` | `snapshot.sevenDayResetsAt` |
 | `history` | `snapshot.fiveHourHistory` | `snapshot.sevenDayHistory` |
 | `windowSeconds` | `5 * 3600` | `7 * 24 * 3600` |
-| `color` | `Color(100/255, 180/255, 255/255)` | `Color(255/255, 130/255, 180/255)` |
+| `color` | `WidgetColorThemeResolver.resolveChartColor(forKey: "hourly_color_preset", default: blue)` | `WidgetColorThemeResolver.resolveChartColor(forKey: "weekly_color_preset", default: pink)` |
 | `opacity` | `0.7` | `0.65` |
 | `predictCost` | `snapshot.predictFiveHourCost` | `snapshot.predictSevenDayCost` |
 

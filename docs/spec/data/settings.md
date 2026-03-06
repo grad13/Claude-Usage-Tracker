@@ -91,6 +91,7 @@ Test environment (DEBUG + XCTestConfigurationFilePath env var present):
 | `chart_width` | int | `48` | Width of each menu bar graph (pt) |
 | `hourly_color_preset` | string | `"blue"` | Color preset name for the 5-hour graph |
 | `weekly_color_preset` | string | `"pink"` | Color preset name for the 7-day graph |
+| `graph_color_theme` | string | `"dark"` | Color theme for graphs. `"system"`, `"light"`, or `"dark"` |
 | `weekly_alert_enabled` | bool | `false` | Weekly alert ON/OFF |
 | `weekly_alert_threshold` | int | `20` | Weekly alert threshold (remaining %). Range: 1-100 |
 | `hourly_alert_enabled` | bool | `false` | Hourly alert ON/OFF |
@@ -118,6 +119,7 @@ Note: JSON keys are stored in snake_case via `convertToSnakeCase` / `convertFrom
   "daily_alert_threshold" : 15,
   "hourly_alert_enabled" : false,
   "hourly_alert_threshold" : 20,
+  "graph_color_theme" : "dark",
   "hourly_color_preset" : "blue",
   "refresh_interval_minutes" : 5,
   "show_hourly_graph" : true,
@@ -264,10 +266,27 @@ static let chartWidthPresets = [12, 24, 36, 48, 60, 72]
 Properties:
 - `color: Color` -- returns a SwiftUI Color
 - `displayName: String` -- English display name for UI (capitalized case name)
+- `hexString: String` -- returns a CSS hex color string (e.g., `"#64b4ff"` for blue)
 
 Encoded as a raw value string (e.g., `"blue"`) when saved to JSON.
 
-ViewModel methods: `setHourlyColorPreset(_:)`, `setWeeklyColorPreset(_:)`.
+ViewModel methods: `setHourlyColorPreset(_:)`, `setWeeklyColorPreset(_:)`. Both trigger `widgetReloader.reloadAllTimelines()` to immediately update the Widget.
+
+## GraphColorTheme enum
+
+`GraphColorTheme` is an `enum` defined in `Settings.swift`. It has a `String` raw value and conforms to `CaseIterable` and `Codable`.
+
+| case | raw value | Description |
+|------|-----------|-------------|
+| `.system` | `"system"` | Follows macOS system appearance |
+| `.light` | `"light"` | Light theme |
+| `.dark` | `"dark"` | Dark theme |
+
+Properties:
+- `displayName: String` -- English display name for UI ("System", "Light", "Dark")
+- `resolvedColorScheme() -> ColorScheme` -- resolves `.system` to `.light` or `.dark` based on `NSApp.effectiveAppearance`
+
+ViewModel method: `setGraphColorTheme(_:)`. Triggers `widgetReloader.reloadAllTimelines()` to immediately update the Widget.
 
 ## Validation
 
@@ -302,6 +321,7 @@ Validation performed on file load:
 | `chart_width` is below 12 or above 120 | Fall back to default (48) |
 | `hourly_color_preset` is missing or invalid string | Use default (`"blue"`) |
 | `weekly_color_preset` is missing or invalid string | Use default (`"pink"`) |
+| `graph_color_theme` is missing or invalid string | Use default (`"dark"`) |
 | `weekly_alert_enabled` is missing | Use default (false) |
 | `weekly_alert_threshold` below 1 | Clamp to 1 |
 | `weekly_alert_threshold` above 100 | Clamp to 100 |

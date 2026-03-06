@@ -1,6 +1,6 @@
 ---
 Created: 2026-02-26
-Updated: 2026-03-06
+Updated: 2026-03-07
 Checked: -
 Deprecated: -
 Format: spec-v2.1
@@ -31,8 +31,10 @@ final class AnalysisSchemeHandler: NSObject, WKURLSchemeHandler {
 
     private let usageDbPath: String
     private let htmlProvider: () -> String
+    private let settingsProvider: () -> [String: String]
 
-    init(usageDbPath: String, htmlProvider: @escaping () -> String)
+    init(usageDbPath: String, htmlProvider: @escaping () -> String,
+         settingsProvider: @escaping () -> [String: String] = { /* reads from SettingsStore */ })
 
     // WKURLSchemeHandler protocol
     func webView(_ webView: WKWebView, start urlSchemeTask: WKURLSchemeTask)
@@ -149,6 +151,8 @@ ORDER BY u.timestamp ASC
 | UT-M08 | usage_log empty, sessions tables have data | `{ weeklySessions: [...], hourlySessions: [...] }` | hasUsageData=false but sessions non-empty |
 | UT-M09 | usage_log empty, sessions tables empty | `{}` | All empty → result is empty |
 | UT-M10 | sessions id or resets_at is NULL | Key omitted from session object | `if let` guard skips nil keys |
+| UT-M11 | Normal data present | `settings` key present in JSON | Contains `hourly_color`, `weekly_color`, `color_theme` from `settingsProvider()` |
+| UT-M12 | settingsProvider returns empty dict | `settings` key present as `{}` | Empty dict is still included when result has other data |
 
 **SQL:**
 ```sql
@@ -210,6 +214,20 @@ Each session element contains `id` (Int?) and `resets_at` (Int?, epoch). Keys wi
 
 Condition: `hasUsageData || !sessions.isEmpty`
 
+### queryMetaJSON: Settings
+
+After the session list queries, if the result dict is non-empty (i.e., there is usage data or sessions), `settingsProvider()` is called and its return value is added as `result["settings"]`.
+
+The default `settingsProvider` reads from `SettingsStore.load()` and returns:
+
+| Key | Value | Source |
+|-----|-------|--------|
+| `hourly_color` | hex string (e.g., `"#64b4ff"`) | `settings.hourlyColorPreset.hexString` |
+| `weekly_color` | hex string (e.g., `"#ff82b4"`) | `settings.weeklyColorPreset.hexString` |
+| `color_theme` | `"light"` or `"dark"` | `settings.graphColorTheme` resolved (system → light/dark via `NSApp.effectiveAppearance`) |
+
+Settings are only added when `result` is non-empty (after the `result.isEmpty` check). When DB has no data and no sessions, the response remains `{}`.
+
 ### Date Range Filter (from / to Parameters)
 
 `queryUsageJSON` supports filtering via the `from` and `to` query parameters.
@@ -264,7 +282,7 @@ private func parseQueryParams(_ url: URL) -> [String: String]
 
 | Case ID | Input | Expected | Notes |
 |---------|-------|----------|-------|
-| UT-19 | Valid paths + htmlProvider | `usageDbPath`, `htmlProvider` are stored | No `fileMap` construction |
+| UT-19 | Valid paths + htmlProvider + settingsProvider | `usageDbPath`, `htmlProvider`, `settingsProvider` are stored | `settingsProvider` has a default value that reads from SettingsStore |
 
 ### Response Headers (Success 200)
 

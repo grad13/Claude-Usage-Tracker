@@ -85,6 +85,7 @@
 		BB800011 /* AnalysisSchemeHandlerMetaJSONSupplementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB800010 /* AnalysisSchemeHandlerMetaJSONSupplementTests.swift */; };
 		BB800013 /* AnalysisExporterJSLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB800012 /* AnalysisExporterJSLogicTests.swift */; };
 		BB800015 /* MiniUsageGraphLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB800014 /* MiniUsageGraphLogicTests.swift */; };
+		BB800017 /* AnalysisSchemeHandlerSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB800016 /* AnalysisSchemeHandlerSettingsTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -234,6 +235,7 @@
 		BB800010 /* AnalysisSchemeHandlerMetaJSONSupplementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisSchemeHandlerMetaJSONSupplementTests.swift; sourceTree = "<group>"; };
 		BB800012 /* AnalysisExporterJSLogicTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisExporterJSLogicTests.swift; sourceTree = "<group>"; };
 		BB800014 /* MiniUsageGraphLogicTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniUsageGraphLogicTests.swift; sourceTree = "<group>"; };
+		BB800016 /* AnalysisSchemeHandlerSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisSchemeHandlerSettingsTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -436,6 +438,7 @@
 							BB80000E /* AnalysisSchemeHandlerSupplementTests2.swift */,
 							BB800010 /* AnalysisSchemeHandlerMetaJSONSupplementTests.swift */,
 							BB800012 /* AnalysisExporterJSLogicTests.swift */,
+							BB800016 /* AnalysisSchemeHandlerSettingsTests.swift */,
 			);
 			path = analysis;
 			sourceTree = "<group>";
@@ -722,6 +725,7 @@
 				BB800015 /* MiniUsageGraphLogicTests.swift in Sources */,
 				BB800013 /* AnalysisExporterJSLogicTests.swift in Sources */,
 				BB800011 /* AnalysisSchemeHandlerMetaJSONSupplementTests.swift in Sources */,
+				BB800017 /* AnalysisSchemeHandlerSettingsTests.swift in Sources */,
 				BB80000F /* AnalysisSchemeHandlerSupplementTests2.swift in Sources */,
 				BB80000D /* WebViewCoordinatorSupplementTests.swift in Sources */,
 				BB80000B /* ProtocolsSupplementTests3.swift in Sources */,

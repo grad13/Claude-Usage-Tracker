@@ -234,13 +234,14 @@ Methods without side effects complete after saving (saving is the only side effe
 
 | Method | Modified Field | Side Effect |
 |--------|---------------|-------------|
+| `setGraphColorTheme(_:)` | `graphColorTheme` | Calls `widgetReloader.reloadAllTimelines()` |
 | `setRefreshInterval(minutes:)` | `refreshIntervalMinutes` | Calls `restartAutoRefresh()` |
 | `toggleStartAtLogin()` | `startAtLogin` (toggled) | Calls `syncLoginItem()` |
 | `setShowHourlyGraph(_:)` | `showHourlyGraph` | None |
 | `setShowWeeklyGraph(_:)` | `showWeeklyGraph` | None |
 | `setChartWidth(_:)` | `chartWidth` | None |
-| `setHourlyColorPreset(_:)` | `hourlyColorPreset` | None |
-| `setWeeklyColorPreset(_:)` | `weeklyColorPreset` | None |
+| `setHourlyColorPreset(_:)` | `hourlyColorPreset` | Calls `widgetReloader.reloadAllTimelines()` |
+| `setWeeklyColorPreset(_:)` | `weeklyColorPreset` | Calls `widgetReloader.reloadAllTimelines()` |
 | `setWeeklyAlertEnabled(_:)` | `weeklyAlertEnabled` | None |
 | `setWeeklyAlertThreshold(_:)` | `weeklyAlertThreshold` | None |
 | `setHourlyAlertEnabled(_:)` | `hourlyAlertEnabled` | None |

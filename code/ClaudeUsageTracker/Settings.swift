@@ -37,6 +37,21 @@ enum ChartColorPreset: String, CaseIterable, Codable {
         case .white:  return "White"
         }
     }
+
+    var hexString: String {
+        let (r, g, b): (Int, Int, Int) = {
+            switch self {
+            case .blue:   return (100, 180, 255)
+            case .pink:   return (255, 130, 180)
+            case .green:  return (70, 210, 80)
+            case .teal:   return (0, 210, 190)
+            case .purple: return (150, 110, 255)
+            case .orange: return (255, 160, 60)
+            case .white:  return (230, 230, 230)
+            }
+        }()
+        return String(format: "#%02x%02x%02x", r, g, b)
+    }
 }
 
 // MARK: - Graph Color Theme

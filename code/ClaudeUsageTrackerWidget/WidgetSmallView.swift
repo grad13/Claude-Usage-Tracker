@@ -1,4 +1,4 @@
-// meta: created=2026-02-21 updated=2026-03-07 checked=2026-03-03
+// meta: created=2026-02-21 updated=2026-03-07 checked=2026-03-07
 import SwiftUI
 import WidgetKit
 import ClaudeUsageTrackerShared
@@ -7,8 +7,15 @@ struct WidgetSmallView: View {
     let snapshot: UsageSnapshot?
     @Environment(\.colorScheme) private var envColorScheme
 
-    private static let fiveHourColor = Color(red: 100/255, green: 180/255, blue: 255/255)
-    private static let sevenDayColor = Color(red: 255/255, green: 130/255, blue: 180/255)
+    private static let defaultFiveHourColor = Color(red: 100/255, green: 180/255, blue: 255/255)
+    private static let defaultSevenDayColor = Color(red: 255/255, green: 130/255, blue: 180/255)
+
+    private var fiveHourColor: Color {
+        WidgetColorThemeResolver.resolveChartColor(forKey: "hourly_color_preset", default: Self.defaultFiveHourColor)
+    }
+    private var sevenDayColor: Color {
+        WidgetColorThemeResolver.resolveChartColor(forKey: "weekly_color_preset", default: Self.defaultSevenDayColor)
+    }
 
     private var resolvedColorScheme: ColorScheme {
         WidgetColorThemeResolver.resolve(environment: envColorScheme)
@@ -23,7 +30,7 @@ struct WidgetSmallView: View {
                     resetsAt: snapshot.fiveHourResetsAt,
                     history: snapshot.fiveHourHistory,
                     windowSeconds: 5 * 3600,
-                    color: Self.fiveHourColor,
+                    color: fiveHourColor,
                     opacity: 0.7
                 )
 
@@ -33,7 +40,7 @@ struct WidgetSmallView: View {
                     resetsAt: snapshot.sevenDayResetsAt,
                     history: snapshot.sevenDayHistory,
                     windowSeconds: 7 * 24 * 3600,
-                    color: Self.sevenDayColor,
+                    color: sevenDayColor,
                     opacity: 0.65
                 )
             }
