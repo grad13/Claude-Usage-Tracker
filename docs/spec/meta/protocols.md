@@ -146,7 +146,7 @@ Each default implementation is a thin wrapper with no logic. During testing, moc
 | DI-09 | NotificationSending | DefaultNotificationSender | NotificationManager.shared | Struct wrapper |
 | DI-10 | WebViewCoordinatorDelegate | None (conformance) | UsageViewModel | Existing type conforms |
 
-Note: DI-03 (SnapshotWriting) was removed — widget data sharing uses UsageReader directly reading usage.db written by UsageStore. DI-07 (TokenSyncing) was removed — JSONL cost estimation feature is omitted.
+Note: DI-03 (SnapshotWriting) was removed — widget data sharing uses UsageReader directly reading usage.db written by UsageStore.
 
 ### 3.2 LoginItemManaging.setEnabled Branching
 

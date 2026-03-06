@@ -312,7 +312,6 @@ Used to calculate the x-coordinate for the remaining time text (multiplied by `G
    - Percent (when `percent != nil`): `"%.1f%%"` format, `.system(.body, design: .rounded, weight: .semibold)` `.monospacedDigit()`
    - Reset time (when `resetsAt != nil`): `"resets \(remainingText)"` `.font(.caption)` `.foregroundStyle(.secondary)`
    - `Spacer()`
-   - Estimated cost (when `predictCost != nil`): `"Est. $%.2f"` `.font(.caption)` `.foregroundStyle(.secondary)`
 
 ### usageBlock Argument Mapping
 
@@ -325,7 +324,6 @@ Used to calculate the x-coordinate for the remaining time text (multiplied by `G
 | `windowSeconds` | `5 * 3600` | `7 * 24 * 3600` |
 | `color` | `WidgetColorThemeResolver.resolveChartColor(forKey: "hourly_color_preset", default: blue)` | `WidgetColorThemeResolver.resolveChartColor(forKey: "weekly_color_preset", default: pink)` |
 | `opacity` | `0.7` | `0.65` |
-| `predictCost` | `snapshot.predictFiveHourCost` | `snapshot.predictSevenDayCost` |
 
 The MiniGraph `label` argument receives `title` (the full title string) directly (unlike the abbreviated labels in Small/Medium). However, since it is displayed at 9pt in the graph's top left, there is no visual issue.
 
@@ -480,6 +478,6 @@ Drawing order within the Canvas (later draws appear on top):
 | Label text | `"5h"` / `"7d"` | `"5h"` / `"7d"` | `"5-hour Usage"` / `"7-day Usage"` |
 | resetsAt text | None | Present (at marker x-position) | Present ("resets in Xh") |
 | Percent display | None (graph marker only) | None (graph marker only) | Present ("%.1f%%", rounded semibold) |
-| Estimated cost | None | None | Present (`predictFiveHourCost` / `predictSevenDayCost`) |
+| Estimated cost | None | None | None |
 | notFetchedView icon | `.title2` | `.title2` | `.largeTitle` |
 | notFetchedView text | "Not fetched" caption | "Not fetched" caption | "Not fetched yet" body + description caption |

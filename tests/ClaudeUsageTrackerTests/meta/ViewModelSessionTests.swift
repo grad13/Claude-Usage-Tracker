@@ -250,6 +250,24 @@ final class ViewModelSessionTests: XCTestCase {
             "checkPopupLogin should call closePopup() after 500ms when session is valid")
     }
 
+    /// checkPopupLogin() は hasValidSession が true のとき handleSessionDetected() を呼び、isLoggedIn が true になる。
+    func testCheckPopupLogin_callsHandleSessionDetected_whenSessionValid() async throws {
+        let vm = makeVM()
+        stubFetcher.hasValidSessionResult = true
+
+        let popup = WKWebView(frame: .zero)
+        vm.popupWebView = popup
+        XCTAssertFalse(vm.isLoggedIn)
+
+        vm.checkPopupLogin()
+
+        // 500ms + マージン = 800ms 待機
+        try await Task.sleep(nanoseconds: 800_000_000)
+
+        XCTAssertTrue(vm.isLoggedIn,
+            "checkPopupLogin should call handleSessionDetected() which sets isLoggedIn=true")
+    }
+
     /// checkPopupLogin() は hasValidSession が false のとき closePopup() を呼ばない。
     func testCheckPopupLogin_doesNotClosePopup_whenSessionInvalid() async throws {
         let vm = makeVM()
@@ -410,6 +428,23 @@ final class ViewModelSessionTests: XCTestCase {
 
         XCTAssertEqual(widgetReloader.reloadCount, 2,
             "Each signOut call should invoke reloadAllTimelines")
+    }
+
+    // MARK: - signOut: loginPollTimer 再開
+
+    /// signOut() は非同期コールバック完了後に startLoginPolling() を呼び、loginPollTimer を再設定する。
+    func testSignOut_restartsLoginPolling() async throws {
+        let vm = makeVM()
+        XCTAssertNil(vm.loginPollTimer)
+
+        vm.signOut()
+
+        // startLoginPolling() は removeData → getAllCookies → Task @MainActor の
+        // 非同期コールバックチェーン内で呼ばれるため、十分な待機が必要
+        try await Task.sleep(nanoseconds: 1_000_000_000)
+
+        XCTAssertNotNil(vm.loginPollTimer,
+            "signOut should restart login polling via startLoginPolling()")
     }
 
     // MARK: - signOut: lastRedirectAt リセット

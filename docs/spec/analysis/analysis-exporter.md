@@ -1,6 +1,6 @@
 ---
 Created: 2026-02-26
-Updated: 2026-03-06
+Updated: 2026-03-07
 Checked: -
 Deprecated: -
 Format: spec-v2.1
@@ -91,8 +91,9 @@ function renderMain(usageData: UsageRecord[]): void
 function destroyAllCharts(): void
 
 // --- Session Navigation ---
-function buildWeeklySlots(meta: MetaJSON): Slot[]
-function buildDailySlots(meta: MetaJSON): Slot[]
+function buildSessionSlots(sessions: {id, resets_at}[], windowSec: number): Slot[]
+function buildCalendarSlots(oldest: number, latest: number, stepSec: number, labelFn: (Date) => string): Slot[]
+function switchMode(mode: NavMode): void
 function updateNavUI(): void
 async function navigateTo(index: number): Promise<void>
 function initNavigation(): void
@@ -115,10 +116,13 @@ interface Point {
   x: number   // epoch ms (Date value)
   y: number   // percent
 }
+type NavMode = 'sessionWeekly' | 'sessionHourly' | 'calWeek' | 'calDay'
 interface MetaJSON {
   latestSevenDayResetsAt?: number  // epoch seconds
   latestTimestamp?: number         // epoch seconds
   oldestTimestamp?: number         // epoch seconds
+  weeklySessions?: {id: number, resets_at: number}[]
+  hourlySessions?: {id: number, resets_at: number}[]
 }
 interface Slot {
   from: number  // epoch seconds
@@ -133,7 +137,7 @@ interface Slot {
 stateDiagram-v2
     [*] --> Loading: Page load begins
     Loading --> FetchMeta: fetch cut://meta.json
-    FetchMeta --> BuildSlots: Build weekly/daily session slots
+    FetchMeta --> BuildSlots: Build slots for 4 nav modes
     BuildSlots --> NavigateToLatest: navigateTo(last slot)
     NavigateToLatest --> LoadData: loadData(from, to)
     LoadData --> DrawingCharts: renderMain(usageData)
@@ -147,12 +151,14 @@ stateDiagram-v2
     }
 ```
 
-### Session Navigation
+### Session Navigation (4 Modes)
 
-- `_navSlots` holds either weekly or daily slots
-- `_navIndex` points to the current slot
+- `_allSlots` object holds slots for all 4 modes: `sessionWeekly`, `sessionHourly`, `calWeek`, `calDay`
+- `_navMode` tracks the active mode (default: `sessionWeekly`)
+- `_navSlots` is the active mode's slot array, `_navIndex` points to the current slot
 - Prev/Next buttons load data for adjacent slots via `navigateTo()`
-- Weekly/Daily toggle rebuilds slots and reloads
+- `switchMode(mode)` changes `_navSlots` to the selected mode's slots and navigates to the latest
+- Session modes use `buildSessionSlots()` (from resets_at timestamps), calendrical modes use `buildCalendarSlots()` (fixed-width time windows)
 
 ## 3. Logic (Decision Table)
 
@@ -217,10 +223,10 @@ Chart.js segment callback. Determines whether the time difference between two po
 | DOM | `#app` -- display:'' to show |
 | DOM | `<canvas>` -- Chart.js instances render usage chart (usageTimeline) |
 | DOM | `#gapSlider` -- input event updates `gapThresholdMs` + chart.update() |
-| DOM | Session nav buttons -- prev/next/weekly/daily toggle |
+| DOM | Session nav buttons -- prev/next + 4 mode buttons (Session Weekly/Hourly, Cal Week/Day) |
 | Global State | `_usageData` -- set in renderMain() |
 | Global State | `_meta` -- meta.json response |
-| Global State | `_navSlots`, `_navIndex` -- session navigation state |
+| Global State | `_allSlots`, `_navMode`, `_navSlots`, `_navIndex` -- session navigation state |
 | Global State | `_charts` -- Chart.js instance cache (for destroy) |
 | Global State | `gapThresholdMs` -- gap threshold (changed via slider) |
 
@@ -230,4 +236,4 @@ Chart.js segment callback. Determines whether the time difference between two po
 - **fetchJSON error handling**: Returns `null` on fetch failure; the corresponding data array becomes empty. Errors are only logged via console.warn
 - **Gap segment**: Chart.js's `segment` property sets borderColor/backgroundColor to `'transparent'` to hide lines. Slider changes are reflected without full chart redraw (`chart.update()` only)
 - **Data serving architecture**: `AnalysisExporter.htmlTemplate` loads `analysis.html` from the bundle, and `AnalysisSchemeHandler` serves JSON endpoints via the `cut://` scheme
-- **Session navigation**: Entry point fetches `meta.json` to get timestamp range, builds weekly/daily slots, then navigates to the latest slot
+- **Session navigation**: Entry point fetches `meta.json` to get timestamp range and session lists, builds slots for all 4 modes (sessionWeekly, sessionHourly, calWeek, calDay), then navigates to the latest slot in the default mode (sessionWeekly)

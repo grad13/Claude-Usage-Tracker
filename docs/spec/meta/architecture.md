@@ -67,7 +67,6 @@ code/ClaudeUsageTracker/
 ├── UsageViewModel.swift            # State management, fetch control, auto-refresh
 ├── UsageViewModel+Session.swift    # Cookie observation/backup, login polling, sign out
 ├── UsageViewModel+Settings.swift   # Settings mutation methods, login item management
-├── UsageViewModel+Predict.swift    # JSONL cost estimation (fetchPredict)
 ├── WebViewCoordinator.swift        # WKNavigationDelegate + WKUIDelegate + CookieChangeObserver
 ├── UsageFetcher.swift              # Org ID retrieval (cookie + JS) + usage API fetch + JSON parsing
 ├── LoginWebView.swift              # NSViewRepresentable (thin WKWebView wrapper)
@@ -99,46 +98,6 @@ code/ClaudeUsageTracker/
 | `AnalysisExporter` | Load analysis.html from bundle, serve to WKWebView (AnalysisWindowView) |
 | `AlertChecker` | Weekly/Hourly/Daily threshold evaluation + per-session duplicate notification prevention |
 | `NotificationManager` | UNUserNotificationCenter wrapper (requestAuthorization, send) |
-
-## Phase 2: JSONL Estimation (Predict)
-
-### Data Flow
-
-```
-~/.claude/projects/{project-path}/*.jsonl
-  → JSONLParser.parseDirectory()
-  → Filter for type=="assistant" with usage data
-  → Deduplicate by requestId (keep record with max output_tokens)
-  → [TokenRecord] array
-  → CostEstimator.estimate(records:windowHours:)
-  → Calculate cost using per-model pricing
-  → CostSummary (total cost, token breakdown, record count, time range)
-```
-
-### File Structure
-
-```
-code/ClaudeUsageTracker/
-├── JSONLParser.swift       # JSONL reading, parsing, deduplication
-└── CostEstimator.swift     # Per-model cost calculation, window aggregation
-```
-
-### Components
-
-| File | Responsibility |
-|------|----------------|
-| `JSONLParser` | JSONL directory traversal, line parsing, ISO 8601 timestamp parsing, requestId deduplication |
-| `CostEstimator` | Per-model pricing (Opus/Sonnet/Haiku), per-record cost calculation, window filtering, aggregation |
-| `TokenRecord` | Token information for a single request (timestamp, model, speed, token counts) |
-| `CostSummary` | Aggregated result (total cost, TokenBreakdown, record count, time range) |
-
-### Design Decisions
-
-- **No UI integration**: Phase 2 covers parsing and calculation only. Integration with UsageViewModel is deferred to Phase 3+.
-- **Public pricing based**: The server-side quota formula is undisclosed, so estimation uses publicly available pricing. Calibration will happen in Phase 3.
-- **Deduplication strategy**: Among records sharing the same requestId, the one with the highest output_tokens is retained (filters out intermediate streaming records).
-
-Detailed specification: `spec/predict/jsonl-cost.md`
 
 ## Design Decisions
 
