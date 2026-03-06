@@ -1,7 +1,26 @@
-<!-- meta: created=2026-02-21 updated=2026-03-06 checked=never -->
+<!-- meta: created=2026-02-21 updated=2026-03-07 checked=never -->
 # Changelog
 
 ## [Unreleased]
+
+## [0.9.12] - 2026-03-07
+
+### Added
+- Light mode support for menu bar graphs (auto-follows system appearance)
+- Auto-show Sign In window on first launch when not logged in
+- Privacy manifest (PrivacyInfo.xcprivacy) for main app and widget
+- Network error auto-retry with exponential backoff (30s/60s/120s, max 3)
+- Database integrity check on init (PRAGMA quick_check, auto-recovery)
+- Settings file corruption recovery (.bak rename + defaults reset)
+- GitHub issue templates (bug report, feature request)
+- GitHub Actions CI workflow (xcodebuild test + pytest on PRs)
+
+### Changed
+- Unified print() to NSLog() in Settings.swift
+
+### Fixed
+- Menu bar text/graph invisible in light mode (.white hardcoded)
+- Deploy script session-cookies.json protection (shelter_file fix)
 
 ## [0.9.11] - 2026-03-06
 
