@@ -1,4 +1,4 @@
-# ClaudeUsageTracker
+# Claude Usage Tracker
 
 macOS menu bar app for monitoring Claude Code usage limits — log, track, and analyze your usage trends.
 
