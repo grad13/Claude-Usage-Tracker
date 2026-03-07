@@ -102,8 +102,9 @@ final class WidgetColorThemeResolverColorMapTests: XCTestCase {
 /// that mirrors the spec's documented behavior.
 final class WidgetColorThemeResolverResolveLogicTests: XCTestCase {
 
-    /// Replicates the spec-defined resolve logic for testing.
-    /// This is the decision table from the spec, not production code.
+    /// Spec-based decision table test. WidgetColorThemeResolver is in the Widget target
+    /// (not importable from tests), so we verify the spec's decision table as a pure function.
+    /// This does NOT test production code — it validates the spec contract.
     private func specResolve(theme: String?, environment: Int) -> Int {
         // environment: 0 = light, 1 = dark (simplified for testing)
         guard let theme else { return 1 } // nil -> dark
@@ -170,24 +171,4 @@ final class WidgetColorThemeResolverFallbackTests: XCTestCase {
             "Spec: weekly_color_preset default is pink")
     }
 
-    // Spec: 5h opacity = 0.7, 7d opacity = 0.65
-    func testAreaOpacityValues_matchSpec() {
-        let hourlyOpacity: Double = 0.7
-        let weeklyOpacity: Double = 0.65
-        XCTAssertEqual(hourlyOpacity, 0.7, accuracy: 0.001,
-            "Spec: 5h area opacity is 0.7")
-        XCTAssertEqual(weeklyOpacity, 0.65, accuracy: 0.001,
-            "Spec: 7d area opacity is 0.65")
-        XCTAssertLessThan(weeklyOpacity, hourlyOpacity,
-            "Weekly opacity must be less than hourly opacity per spec")
-    }
-
-    // Spec: resolveChartColor forKey "hourly_color_preset" / "weekly_color_preset"
-    func testSettingsKeys_matchSpec() {
-        // These key strings must match between Settings.CodingKeys and WidgetColorThemeResolver usage
-        let hourlyKey = "hourly_color_preset"
-        let weeklyKey = "weekly_color_preset"
-        XCTAssertEqual(hourlyKey, "hourly_color_preset")
-        XCTAssertEqual(weeklyKey, "weekly_color_preset")
-    }
 }

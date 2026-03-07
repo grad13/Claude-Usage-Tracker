@@ -189,29 +189,23 @@ final class MiniUsageGraphWindowStartTests: XCTestCase {
 
 final class MiniUsageGraphYFracTests: XCTestCase {
 
-    /// The yFrac formula from the source: min(usage / 100.0, 1.0)
-    /// This is inline code, not a separate method. Tests validate the formula directly.
-    private func yFrac(usage: Double) -> Double {
-        min(usage / 100.0, 1.0)
-    }
-
     /// YF-01: usage=0.0 → yFrac=0.0 (bottom edge)
     func testYF01_zeroUsage_returnsZero() {
-        XCTAssertEqual(yFrac(usage: 0.0), 0.0, accuracy: 0.001)
+        XCTAssertEqual(MiniUsageGraph.yFrac(usage: 0.0), 0.0, accuracy: 0.001)
     }
 
     /// YF-02: usage=50.0 → yFrac=0.5 (center)
     func testYF02_fiftyPercent_returnsHalf() {
-        XCTAssertEqual(yFrac(usage: 50.0), 0.5, accuracy: 0.001)
+        XCTAssertEqual(MiniUsageGraph.yFrac(usage: 50.0), 0.5, accuracy: 0.001)
     }
 
     /// YF-03: usage=100.0 → yFrac=1.0 (top edge)
     func testYF03_hundredPercent_returnsOne() {
-        XCTAssertEqual(yFrac(usage: 100.0), 1.0, accuracy: 0.001)
+        XCTAssertEqual(MiniUsageGraph.yFrac(usage: 100.0), 1.0, accuracy: 0.001)
     }
 
     /// YF-04: usage=150.0 → yFrac=1.0 (clamped, above 100%)
     func testYF04_aboveHundredPercent_clampedToOne() {
-        XCTAssertEqual(yFrac(usage: 150.0), 1.0, accuracy: 0.001)
+        XCTAssertEqual(MiniUsageGraph.yFrac(usage: 150.0), 1.0, accuracy: 0.001)
     }
 }

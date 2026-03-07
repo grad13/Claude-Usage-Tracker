@@ -44,6 +44,10 @@ struct MiniUsageGraph: View {
         }
     }
 
+    static func yFrac(usage: Double) -> Double {
+        min(usage / 100.0, 1.0)
+    }
+
     func fillEndFrac(resetsAt: Date?, windowStart: Date, now: Date, lastPointFrac: Double) -> Double {
         if let resetsAt {
             let resetFrac = min(max(resetsAt.timeIntervalSince(windowStart) / windowSeconds, 0.0), 1.0)
@@ -87,7 +91,7 @@ struct MiniUsageGraph: View {
                 guard dp.timestamp >= windowStart else { continue }
                 guard let usage = usageValue(from: dp) else { continue }
                 let xFrac = xPosition(for: dp.timestamp, windowStart: windowStart)
-                let yFrac = min(usage / 100.0, 1.0)
+                let yFrac = Self.yFrac(usage: usage)
                 points.append((x: CGFloat(xFrac) * w, y: h - CGFloat(yFrac) * h))
             }
 
