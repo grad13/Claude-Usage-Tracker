@@ -114,60 +114,71 @@ struct MenuContent: View {
         }
 
         Menu("Alert Settings") {
-            Toggle("Weekly Alert", isOn: Binding(
-                get: { viewModel.settings.weeklyAlertEnabled },
-                set: { viewModel.setWeeklyAlertEnabled($0) }
-            ))
-            if viewModel.settings.weeklyAlertEnabled {
-                Menu("Weekly Threshold") {
-                    ForEach([10, 20, 30, 50], id: \.self) { threshold in
-                        Button("Remaining \(threshold)%") {
-                            viewModel.setWeeklyAlertThreshold(threshold)
-                        }
-                        .badge(viewModel.settings.weeklyAlertThreshold == threshold ? "✓" : "")
+            Menu("Weekly Alert") {
+                Button("None") {
+                    viewModel.setWeeklyAlertEnabled(false)
+                }
+                .badge(!viewModel.settings.weeklyAlertEnabled ? "✓" : "")
+
+                Divider()
+
+                ForEach([10, 20, 30, 50], id: \.self) { threshold in
+                    Button("Remaining \(threshold)%") {
+                        viewModel.setWeeklyAlertEnabled(true)
+                        viewModel.setWeeklyAlertThreshold(threshold)
                     }
+                    .badge(viewModel.settings.weeklyAlertEnabled && viewModel.settings.weeklyAlertThreshold == threshold ? "✓" : "")
                 }
             }
 
-            Toggle("Hourly Alert", isOn: Binding(
-                get: { viewModel.settings.hourlyAlertEnabled },
-                set: { viewModel.setHourlyAlertEnabled($0) }
-            ))
-            if viewModel.settings.hourlyAlertEnabled {
-                Menu("Hourly Threshold") {
-                    ForEach([10, 20, 30, 50], id: \.self) { threshold in
-                        Button("Remaining \(threshold)%") {
-                            viewModel.setHourlyAlertThreshold(threshold)
-                        }
-                        .badge(viewModel.settings.hourlyAlertThreshold == threshold ? "✓" : "")
+            Menu("Hourly Alert") {
+                Button("None") {
+                    viewModel.setHourlyAlertEnabled(false)
+                }
+                .badge(!viewModel.settings.hourlyAlertEnabled ? "✓" : "")
+
+                Divider()
+
+                ForEach([10, 20, 30, 50], id: \.self) { threshold in
+                    Button("Remaining \(threshold)%") {
+                        viewModel.setHourlyAlertEnabled(true)
+                        viewModel.setHourlyAlertThreshold(threshold)
                     }
+                    .badge(viewModel.settings.hourlyAlertEnabled && viewModel.settings.hourlyAlertThreshold == threshold ? "✓" : "")
                 }
             }
 
             Divider()
 
-            Toggle("Daily Alert", isOn: Binding(
-                get: { viewModel.settings.dailyAlertEnabled },
-                set: { viewModel.setDailyAlertEnabled($0) }
-            ))
-            if viewModel.settings.dailyAlertEnabled {
-                Menu("Daily Threshold") {
-                    ForEach([10, 15, 20, 30], id: \.self) { threshold in
-                        Button("\(threshold)% per day") {
-                            viewModel.setDailyAlertThreshold(threshold)
-                        }
-                        .badge(viewModel.settings.dailyAlertThreshold == threshold ? "✓" : "")
-                    }
+            Menu("Daily Alert") {
+                Button("None") {
+                    viewModel.setDailyAlertEnabled(false)
                 }
-                Menu("Day Definition") {
-                    Button("Calendar (midnight)") {
-                        viewModel.setDailyAlertDefinition(.calendar)
+                .badge(!viewModel.settings.dailyAlertEnabled ? "✓" : "")
+
+                Divider()
+
+                ForEach([10, 15, 20, 30], id: \.self) { threshold in
+                    Button("\(threshold)% per day") {
+                        viewModel.setDailyAlertEnabled(true)
+                        viewModel.setDailyAlertThreshold(threshold)
                     }
-                    .badge(viewModel.settings.dailyAlertDefinition == .calendar ? "✓" : "")
-                    Button("Session-based") {
-                        viewModel.setDailyAlertDefinition(.session)
+                    .badge(viewModel.settings.dailyAlertEnabled && viewModel.settings.dailyAlertThreshold == threshold ? "✓" : "")
+                }
+
+                if viewModel.settings.dailyAlertEnabled {
+                    Divider()
+
+                    Menu("Day Definition") {
+                        Button("Calendar (midnight)") {
+                            viewModel.setDailyAlertDefinition(.calendar)
+                        }
+                        .badge(viewModel.settings.dailyAlertDefinition == .calendar ? "✓" : "")
+                        Button("Session-based") {
+                            viewModel.setDailyAlertDefinition(.session)
+                        }
+                        .badge(viewModel.settings.dailyAlertDefinition == .session ? "✓" : "")
                     }
-                    .badge(viewModel.settings.dailyAlertDefinition == .session ? "✓" : "")
                 }
             }
         }

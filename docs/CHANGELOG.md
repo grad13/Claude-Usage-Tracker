@@ -3,6 +3,11 @@
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-03-07
+
+### Changed
+- Consolidate Alert Settings menu: Weekly/Hourly/Daily alerts now use unified submenu with None + threshold options instead of separate toggle and threshold items
+
 ## [0.10.0] - 2026-03-07
 
 ### Added
