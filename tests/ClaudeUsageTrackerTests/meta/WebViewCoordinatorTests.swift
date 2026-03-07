@@ -92,6 +92,17 @@ final class WebViewCoordinatorTests: XCTestCase {
         WebViewCoordinator(viewModel: mockViewModel)
     }
 
+    /// Returns the 4 components needed to test popup creation via createWebViewWith.
+    func makePopupScenario() -> (
+        coordinator: WebViewCoordinator,
+        configuration: WKWebViewConfiguration,
+        action: MockWKNavigationAction,
+        features: MockWKWindowFeatures
+    ) {
+        (makeCoordinator(), WKWebViewConfiguration(),
+         MockWKNavigationAction(targetFrame: nil), MockWKWindowFeatures())
+    }
+
     // MARK: - CookieChangeObserver: cookiesDidChange
 
     /// Section 3.4: cookiesDidChange always calls onChange regardless of arguments.
@@ -141,10 +152,7 @@ final class WebViewCoordinatorTests: XCTestCase {
 
     /// Section 3.2: When targetFrame == nil, coordinator creates and returns a popup WKWebView.
     func testCreateWebViewWith_nilTargetFrame_returnsPopupWebView() {
-        let coordinator = makeCoordinator()
-        let configuration = WKWebViewConfiguration()
-        let action = MockWKNavigationAction(targetFrame: nil)
-        let features = MockWKWindowFeatures()
+        let (coordinator, configuration, action, features) = makePopupScenario()
 
         let result = coordinator.webView(
             WKWebView(frame: .zero),
@@ -159,10 +167,7 @@ final class WebViewCoordinatorTests: XCTestCase {
 
     /// Section 3.2: The returned popup has coordinator set as its navigationDelegate.
     func testCreateWebViewWith_nilTargetFrame_popupNavigationDelegateIsCoordinator() {
-        let coordinator = makeCoordinator()
-        let configuration = WKWebViewConfiguration()
-        let action = MockWKNavigationAction(targetFrame: nil)
-        let features = MockWKWindowFeatures()
+        let (coordinator, configuration, action, features) = makePopupScenario()
 
         let popup = coordinator.webView(
             WKWebView(frame: .zero),
@@ -177,10 +182,7 @@ final class WebViewCoordinatorTests: XCTestCase {
 
     /// Section 3.2: configuration.preferences.javaScriptCanOpenWindowsAutomatically = true.
     func testCreateWebViewWith_nilTargetFrame_setsJavaScriptCanOpenWindowsAutomatically() {
-        let coordinator = makeCoordinator()
-        let configuration = WKWebViewConfiguration()
-        let action = MockWKNavigationAction(targetFrame: nil)
-        let features = MockWKWindowFeatures()
+        let (coordinator, configuration, action, features) = makePopupScenario()
 
         _ = coordinator.webView(
             WKWebView(frame: .zero),
@@ -252,10 +254,7 @@ final class WebViewCoordinatorTests: XCTestCase {
 
     /// Section 3.2: createWebViewWith stores the popup in viewModel.popupWebView.
     func testCreateWebViewWith_nilTargetFrame_setsPopupWebViewOnViewModel() {
-        let coordinator = makeCoordinator()
-        let configuration = WKWebViewConfiguration()
-        let action = MockWKNavigationAction(targetFrame: nil)
-        let features = MockWKWindowFeatures()
+        let (coordinator, configuration, action, features) = makePopupScenario()
 
         XCTAssertNil(mockViewModel.popupWebView, "popupWebView must be nil before popup creation")
 
@@ -275,10 +274,7 @@ final class WebViewCoordinatorTests: XCTestCase {
     /// Section 2 state diagram: init() → Idle. createWebViewWith returns popup → PopupOpen.
     /// Verifies the transition by confirming a non-nil popup is produced.
     func testStateDiagram_idleToPopupOpen_viaCreateWebViewWith() {
-        let coordinator = makeCoordinator()
-        let configuration = WKWebViewConfiguration()
-        let action = MockWKNavigationAction(targetFrame: nil)
-        let features = MockWKWindowFeatures()
+        let (coordinator, configuration, action, features) = makePopupScenario()
 
         let popup = coordinator.webView(
             WKWebView(frame: .zero),
