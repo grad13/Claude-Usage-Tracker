@@ -89,20 +89,17 @@ The data-fetching approach (using WKWebView browser sessions to access internal 
 
 ## Recent Changes
 
-### 0.9.11
-- Fixed: App shown as folder in Dock after install (bundle bit not set)
-- Fixed: Auth errors now show "Session expired" instead of raw diagnostic string
-- Added: Bundle bit verification in deploy script
+### 0.10.1
+- Consolidated Alert Settings menu: unified submenu with None + threshold options
 
-### 0.9.10
-- Extracted GraphCalc to Shared framework
-- Removed test logic reimplementations — tests now call production code directly
-- Split S6 test files by responsibility
+### 0.10.0
+- Added: Color Theme setting (System/Light/Dark) for menu bar graphs
+- Added: Sync graph settings (colors, theme) to Widget and Analysis page
 
-### 0.9.9
-- Fixed: Analysis window now reloads on reopen
-- Added: 30 tests from spec (protocols, analysis JS, mini-usage-graph)
-- Refactored UsageModels.swift and UsageViewModel+Debug.swift extraction
+### 0.9.12
+- Added: Light mode support for menu bar graphs
+- Added: Privacy manifest, network error auto-retry, database integrity check
+- Added: GitHub Actions CI workflow
 
 ## License
 
