@@ -50,7 +50,7 @@ final class AnalysisFindNearestTests: AnalysisJSTestCase {
         let result = evalJS("""
             return findNearest([], 1000000);
             """)
-        XCTAssertNil(result, "findNearest on empty array should return null")
+        XCTAssertTrue(result is NSNull, "findNearest on empty array should return null (NSNull)")
     }
 
     // FN-03: Target beyond 600000ms threshold returns null
@@ -60,7 +60,7 @@ final class AnalysisFindNearestTests: AnalysisJSTestCase {
             return findNearest(data, 1700000);
             """)
         // Distance = 700000 > 600000 threshold
-        XCTAssertNil(result, "Distance 700000ms exceeds 600000ms threshold -> null")
+        XCTAssertTrue(result is NSNull, "Distance 700000ms exceeds 600000ms threshold -> null (NSNull)")
     }
 
     // FN-04: Target within threshold returns nearest point

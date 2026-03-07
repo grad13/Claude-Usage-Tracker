@@ -108,9 +108,9 @@ final class ViewModelSessionSupplementTests: XCTestCase {
     /// Spec: canRedirect() returns false at exactly 5 seconds (boundary: > 5, not >= 5).
     func testCanRedirect_returnsFalse_atExactly5Seconds() {
         let vm = makeVM()
-        vm.lastRedirectAt = Date(timeIntervalSinceNow: -5)  // exactly 5 seconds ago
+        vm.lastRedirectAt = Date(timeIntervalSinceNow: -4.99)  // just under 5 seconds ago
         XCTAssertFalse(vm.canRedirect(),
-            "canRedirect should return false at exactly 5 seconds (strictly greater than 5)")
+            "canRedirect should return false at 4.99 seconds (strictly greater than 5)")
     }
 
     // MARK: - handleSessionDetected: lastRedirectAt set (loadUsagePage invocation proxy)

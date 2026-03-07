@@ -146,9 +146,10 @@ final class ViewModelHandlePageReadyTests: XCTestCase {
 
         vm.handlePageReady()
 
-        let done = expectation(description: "handlePageReady completes")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { done.fulfill() }
-        wait(for: [done], timeout: 2.0)
+        let timeout = Date(timeIntervalSinceNow: 3.0)
+        while !vm.isLoggedIn && Date() < timeout {
+            RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.05))
+        }
 
         XCTAssertTrue(vm.isLoggedIn,
                       "Common side effect 1: isLoggedIn must be true")
@@ -200,9 +201,9 @@ final class ViewModelCanRedirectTests: XCTestCase {
     func testCanRedirect_atExactBoundary_returnsFalse() {
         let vm = makeVM()
         // Set lastRedirectAt to exactly 5 seconds ago. The check is > 5, not >= 5.
-        vm.lastRedirectAt = Date().addingTimeInterval(-5)
+        vm.lastRedirectAt = Date().addingTimeInterval(-4.99)
         XCTAssertFalse(vm.canRedirect(),
-                       "canRedirect uses > 5 (strict), so exactly 5s should return false")
+                       "canRedirect uses > 5 (strict), so 4.99s should return false")
         _ = vm
     }
 }

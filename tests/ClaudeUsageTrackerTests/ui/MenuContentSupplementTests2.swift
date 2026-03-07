@@ -249,9 +249,9 @@ final class MenuContentSupplementTests2: XCTestCase {
     }
 
     func testToggleStartAtLogin_disableCallsLoginItemManager() {
-        let vm = makeVM()
-        vm.toggleStartAtLogin()  // enable
-        vm.toggleStartAtLogin()  // disable
+        settingsStore.current.startAtLogin = true  // avoid init's syncLoginItem calling setEnabled(false)
+        let vm = makeVM()  // init: setEnabled(true) → enabledCallCount=1
+        vm.toggleStartAtLogin()  // disable: true→false
         XCTAssertEqual(loginItemManager.disabledCallCount, 1,
             "toggleStartAtLogin (true->false) must call loginItemManager.setEnabled(false)")
         XCTAssertEqual(loginItemManager.lastEnabled, false,
