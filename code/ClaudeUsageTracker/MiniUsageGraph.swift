@@ -31,7 +31,7 @@ struct MiniUsageGraph: View {
         colorScheme == .dark ? Color.white.opacity(0.06) : Color.black.opacity(0.06)
     }
 
-    private func xPosition(for timestamp: Date, windowStart: Date) -> Double {
+    func xPosition(for timestamp: Date, windowStart: Date) -> Double {
         let elapsed = timestamp.timeIntervalSince(windowStart)
         return min(max(elapsed / windowSeconds, 0.0), 1.0)
     }

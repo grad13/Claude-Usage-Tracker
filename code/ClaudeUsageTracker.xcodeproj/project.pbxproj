@@ -86,6 +86,24 @@
 		BB800013 /* AnalysisExporterJSLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB800012 /* AnalysisExporterJSLogicTests.swift */; };
 		BB800015 /* MiniUsageGraphLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB800014 /* MiniUsageGraphLogicTests.swift */; };
 		BB800017 /* AnalysisSchemeHandlerSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB800016 /* AnalysisSchemeHandlerSettingsTests.swift */; };
+		BB800019 /* AnalysisExporterSupplementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB800018 /* AnalysisExporterSupplementTests.swift */; };
+		BB80001B /* AppWindowsSupplementTests2.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB80001A /* AppWindowsSupplementTests2.swift */; };
+		BB80001D /* ArchitectureSupplementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB80001C /* ArchitectureSupplementTests.swift */; };
+		BB80001F /* ChartColorPresetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB80001E /* ChartColorPresetTests.swift */; };
+		BB800021 /* DailyAlertDefinitionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB800020 /* DailyAlertDefinitionTests.swift */; };
+		BB800023 /* DisplayHelpersMarkerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB800022 /* DisplayHelpersMarkerTests.swift */; };
+		BB800025 /* MenuContentSupplementTests2.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB800024 /* MenuContentSupplementTests2.swift */; };
+		BB800027 /* SettingsPresetsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB800026 /* SettingsPresetsTests.swift */; };
+		BB800029 /* SettingsSupplementTests2.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB800028 /* SettingsSupplementTests2.swift */; };
+		BB80002B /* SQLiteHelperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB80002A /* SQLiteHelperTests.swift */; };
+		BB80002D /* UsageStoreSupplementTests2.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB80002C /* UsageStoreSupplementTests2.swift */; };
+		BB80002F /* ViewModelFetchSilentlyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB80002E /* ViewModelFetchSilentlyTests.swift */; };
+		BB800031 /* ViewModelHandlePageReadyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB800030 /* ViewModelHandlePageReadyTests.swift */; };
+		BB800033 /* ViewModelSessionSupplementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB800032 /* ViewModelSessionSupplementTests.swift */; };
+		BB800035 /* ViewModelSettingsWidgetReloaderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB800034 /* ViewModelSettingsWidgetReloaderTests.swift */; };
+		BB800037 /* WidgetDesignSupplementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB800036 /* WidgetDesignSupplementTests.swift */; };
+		BB800039 /* WidgetMediumViewNowXTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB800038 /* WidgetMediumViewNowXTests.swift */; };
+		BB80003B /* MiniUsageGraphSupplementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB80003A /* MiniUsageGraphSupplementTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -236,6 +254,24 @@
 		BB800012 /* AnalysisExporterJSLogicTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisExporterJSLogicTests.swift; sourceTree = "<group>"; };
 		BB800014 /* MiniUsageGraphLogicTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniUsageGraphLogicTests.swift; sourceTree = "<group>"; };
 		BB800016 /* AnalysisSchemeHandlerSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisSchemeHandlerSettingsTests.swift; sourceTree = "<group>"; };
+		BB800018 /* AnalysisExporterSupplementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisExporterSupplementTests.swift; sourceTree = "<group>"; };
+		BB80001A /* AppWindowsSupplementTests2.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppWindowsSupplementTests2.swift; sourceTree = "<group>"; };
+		BB80001C /* ArchitectureSupplementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchitectureSupplementTests.swift; sourceTree = "<group>"; };
+		BB80001E /* ChartColorPresetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartColorPresetTests.swift; sourceTree = "<group>"; };
+		BB800020 /* DailyAlertDefinitionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyAlertDefinitionTests.swift; sourceTree = "<group>"; };
+		BB800022 /* DisplayHelpersMarkerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplayHelpersMarkerTests.swift; sourceTree = "<group>"; };
+		BB800024 /* MenuContentSupplementTests2.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuContentSupplementTests2.swift; sourceTree = "<group>"; };
+		BB800026 /* SettingsPresetsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsPresetsTests.swift; sourceTree = "<group>"; };
+		BB800028 /* SettingsSupplementTests2.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsSupplementTests2.swift; sourceTree = "<group>"; };
+		BB80002A /* SQLiteHelperTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLiteHelperTests.swift; sourceTree = "<group>"; };
+		BB80002C /* UsageStoreSupplementTests2.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageStoreSupplementTests2.swift; sourceTree = "<group>"; };
+		BB80002E /* ViewModelFetchSilentlyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewModelFetchSilentlyTests.swift; sourceTree = "<group>"; };
+		BB800030 /* ViewModelHandlePageReadyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewModelHandlePageReadyTests.swift; sourceTree = "<group>"; };
+		BB800032 /* ViewModelSessionSupplementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewModelSessionSupplementTests.swift; sourceTree = "<group>"; };
+		BB800034 /* ViewModelSettingsWidgetReloaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewModelSettingsWidgetReloaderTests.swift; sourceTree = "<group>"; };
+		BB800036 /* WidgetDesignSupplementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetDesignSupplementTests.swift; sourceTree = "<group>"; };
+		BB800038 /* WidgetMediumViewNowXTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetMediumViewNowXTests.swift; sourceTree = "<group>"; };
+		BB80003A /* MiniUsageGraphSupplementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniUsageGraphSupplementTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -390,6 +426,11 @@
 							BB800008 /* ProtocolsSupplementTests2.swift */,
 							BB80000A /* ProtocolsSupplementTests3.swift */,
 							BB80000C /* WebViewCoordinatorSupplementTests.swift */,
+						BB80001C /* ArchitectureSupplementTests.swift */,
+						BB80002E /* ViewModelFetchSilentlyTests.swift */,
+						BB800030 /* ViewModelHandlePageReadyTests.swift */,
+						BB800032 /* ViewModelSessionSupplementTests.swift */,
+						BB800034 /* ViewModelSettingsWidgetReloaderTests.swift */,
 			);
 			path = meta;
 			sourceTree = "<group>";
@@ -409,6 +450,11 @@
 				BB00002C /* AlertCheckerTests.swift */,
 				BB00002D /* AlertCheckerSupplementTests.swift */,
 				BB00002B /* NotificationManagerTests.swift */,
+						BB80001E /* ChartColorPresetTests.swift */,
+						BB800020 /* DailyAlertDefinitionTests.swift */,
+						BB800026 /* SettingsPresetsTests.swift */,
+						BB800028 /* SettingsSupplementTests2.swift */,
+						BB80002C /* UsageStoreSupplementTests2.swift */,
 			);
 			path = data;
 			sourceTree = "<group>";
@@ -419,6 +465,9 @@
 				BB000031 /* MenuContentSupplementTests.swift */,
 				BB00002F /* AppWindowsSupplementTests.swift */,
 							BB800014 /* MiniUsageGraphLogicTests.swift */,
+						BB80001A /* AppWindowsSupplementTests2.swift */,
+						BB800024 /* MenuContentSupplementTests2.swift */,
+						BB80003A /* MiniUsageGraphSupplementTests.swift */,
 			);
 			path = ui;
 			sourceTree = "<group>";
@@ -439,6 +488,7 @@
 							BB800010 /* AnalysisSchemeHandlerMetaJSONSupplementTests.swift */,
 							BB800012 /* AnalysisExporterJSLogicTests.swift */,
 							BB800016 /* AnalysisSchemeHandlerSettingsTests.swift */,
+						BB800018 /* AnalysisExporterSupplementTests.swift */,
 			);
 			path = analysis;
 			sourceTree = "<group>";
@@ -455,6 +505,8 @@
 			children = (
 				BB000044 /* WidgetMiniGraphCalcTests.swift */,
 				BB000045 /* WidgetDisplayFormatTests.swift */,
+						BB800036 /* WidgetDesignSupplementTests.swift */,
+						BB800038 /* WidgetMediumViewNowXTests.swift */,
 			);
 			path = widget;
 			sourceTree = "<group>";
@@ -466,6 +518,8 @@
 				BB000006 /* DisplayHelpersTests.swift */,
 				BB000007 /* SnapshotModelTests.swift */,
 				BB00000E /* SQLiteBackupTests.swift */,
+						BB800022 /* DisplayHelpersMarkerTests.swift */,
+						BB80002A /* SQLiteHelperTests.swift */,
 			);
 			path = shared;
 			sourceTree = "<group>";
@@ -736,6 +790,24 @@
 				BB100038 /* ViewModelLifecycleSupplementTests.swift in Sources */,
 				BB100039 /* ViewModelSessionTests.swift in Sources */,
 				BB10003A /* WebViewCoordinatorTests.swift in Sources */,
+				BB800019 /* AnalysisExporterSupplementTests.swift in Sources */,
+				BB80001B /* AppWindowsSupplementTests2.swift in Sources */,
+				BB80001D /* ArchitectureSupplementTests.swift in Sources */,
+				BB80001F /* ChartColorPresetTests.swift in Sources */,
+				BB800021 /* DailyAlertDefinitionTests.swift in Sources */,
+				BB800023 /* DisplayHelpersMarkerTests.swift in Sources */,
+				BB800025 /* MenuContentSupplementTests2.swift in Sources */,
+				BB800027 /* SettingsPresetsTests.swift in Sources */,
+				BB800029 /* SettingsSupplementTests2.swift in Sources */,
+				BB80002B /* SQLiteHelperTests.swift in Sources */,
+				BB80002D /* UsageStoreSupplementTests2.swift in Sources */,
+				BB80002F /* ViewModelFetchSilentlyTests.swift in Sources */,
+				BB800031 /* ViewModelHandlePageReadyTests.swift in Sources */,
+				BB800033 /* ViewModelSessionSupplementTests.swift in Sources */,
+				BB800035 /* ViewModelSettingsWidgetReloaderTests.swift in Sources */,
+				BB800037 /* WidgetDesignSupplementTests.swift in Sources */,
+				BB800039 /* WidgetMediumViewNowXTests.swift in Sources */,
+				BB80003B /* MiniUsageGraphSupplementTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
