@@ -54,6 +54,8 @@
 		BB100027 /* ViewModelTestDoubles.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000027 /* ViewModelTestDoubles.swift */; };
 		BB100028 /* ViewModelTests+Settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000028 /* ViewModelTests+Settings.swift */; };
 		BB100029 /* ViewModelTests+Fetch.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000029 /* ViewModelTests+Fetch.swift */; };
+		BB100060 /* ViewModelTests+StatusText.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000060 /* ViewModelTests+StatusText.swift */; };
+		BB100061 /* ViewModelTests+TimeProgress.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000061 /* ViewModelTests+TimeProgress.swift */; };
 		BB10002A /* ProductionSettingsIntegrityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00002A /* ProductionSettingsIntegrityTests.swift */; };
 		BB10002B /* NotificationManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00002B /* NotificationManagerTests.swift */; };
 		BB10002C /* AlertCheckerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00002C /* AlertCheckerTests.swift */; };
@@ -222,6 +224,8 @@
 		BB000027 /* ViewModelTestDoubles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewModelTestDoubles.swift; sourceTree = "<group>"; };
 		BB000028 /* ViewModelTests+Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ViewModelTests+Settings.swift"; sourceTree = "<group>"; };
 		BB000029 /* ViewModelTests+Fetch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ViewModelTests+Fetch.swift"; sourceTree = "<group>"; };
+		BB000060 /* ViewModelTests+StatusText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ViewModelTests+StatusText.swift"; sourceTree = "<group>"; };
+		BB000061 /* ViewModelTests+TimeProgress.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ViewModelTests+TimeProgress.swift"; sourceTree = "<group>"; };
 		BB00002A /* ProductionSettingsIntegrityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProductionSettingsIntegrityTests.swift; sourceTree = "<group>"; };
 		BB00002B /* NotificationManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManagerTests.swift; sourceTree = "<group>"; };
 		BB00002C /* AlertCheckerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertCheckerTests.swift; sourceTree = "<group>"; };
@@ -417,6 +421,8 @@
 				BB000003 /* ViewModelTests.swift */,
 				BB000029 /* ViewModelTests+Fetch.swift */,
 				BB000028 /* ViewModelTests+Settings.swift */,
+				BB000060 /* ViewModelTests+StatusText.swift */,
+				BB000061 /* ViewModelTests+TimeProgress.swift */,
 				BB000039 /* ViewModelSessionTests.swift */,
 				BB000038 /* ViewModelLifecycleSupplementTests.swift */,
 				BB000049 /* ArchitectureViewModelStateTests.swift */,
@@ -749,6 +755,8 @@
 				BB100027 /* ViewModelTestDoubles.swift in Sources */,
 				BB100028 /* ViewModelTests+Settings.swift in Sources */,
 				BB100029 /* ViewModelTests+Fetch.swift in Sources */,
+				BB100060 /* ViewModelTests+StatusText.swift in Sources */,
+				BB100061 /* ViewModelTests+TimeProgress.swift in Sources */,
 				BB100006 /* DisplayHelpersTests.swift in Sources */,
 				BB100007 /* SnapshotModelTests.swift in Sources */,
 				BB100008 /* AnalysisExporterTests.swift in Sources */,

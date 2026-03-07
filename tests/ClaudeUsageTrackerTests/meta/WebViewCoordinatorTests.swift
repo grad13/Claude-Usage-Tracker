@@ -36,11 +36,6 @@ final class MockUsageViewModel: WebViewCoordinatorDelegate {
     }
 }
 
-// MARK: - MockWKNavigation
-
-/// Stub for WKNavigation (opaque type; cannot be instantiated directly).
-final class MockWKNavigation: WKNavigation {}
-
 // MARK: - MockWKNavigationAction
 
 /// Stub for WKNavigationAction allowing targetFrame control.
