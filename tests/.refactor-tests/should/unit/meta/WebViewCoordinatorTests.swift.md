@@ -1,20 +1,23 @@
-# WebViewCoordinatorTests.swift refactor analysis
+# WebViewCoordinatorTests.swift — should refactor
 
-- **File**: `tests/ClaudeUsageTrackerTests/meta/WebViewCoordinatorTests.swift`
-- **Lines**: 307
-- **Test cases**: 14
+- **File**: `tests/ClaudeUsageTrackerTests/meta/WebViewCoordinatorTests.swift` (303 lines)
+- **Category**: S7 — hand-written partial mock
 
-## Issues
+## Detected issue
 
-### S7: Duplicated setup code
+Four hand-written mock/stub classes defined inline at the top of the test file:
 
-The following 4-line setup pattern is repeated 5 times across tests (`testCreateWebViewWith_nilTargetFrame_returnsPopupWebView`, `testCreateWebViewWith_nilTargetFrame_popupNavigationDelegateIsCoordinator`, `testCreateWebViewWith_nilTargetFrame_setsJavaScriptCanOpenWindowsAutomatically`, `testCreateWebViewWith_nilTargetFrame_setsPopupWebViewOnViewModel`, `testStateDiagram_idleToPopupOpen_viaCreateWebViewWith`):
+| Mock class | Lines | Technique |
+|---|---|---|
+| `MockUsageViewModel` | 10-37 | Protocol conformance (`WebViewCoordinatorDelegate`) with call-count tracking |
+| `MockWKNavigation` | 42 | Subclass of opaque WebKit type `WKNavigation` |
+| `MockWKNavigationAction` | 47-54 | Subclass overriding `targetFrame` property |
+| `MockWKWindowFeatures` | 59 | Subclass stub (no custom behavior) |
 
-```swift
-let coordinator = makeCoordinator()
-let configuration = WKWebViewConfiguration()
-let action = MockWKNavigationAction(targetFrame: nil)
-let features = MockWKWindowFeatures()
-```
+`MockUsageViewModel` is a reasonable protocol-based test double. The three WebKit subclass stubs (`MockWKNavigation`, `MockWKNavigationAction`, `MockWKWindowFeatures`) are minimal but tightly coupled to WebKit internals.
 
-**Recommendation**: Extract a helper such as `makePopupScenario() -> (WebViewCoordinator, WKWebViewConfiguration, MockWKNavigationAction, MockWKWindowFeatures)` or a tuple/struct to eliminate the repetition.
+## Suggested action
+
+- Extract `MockUsageViewModel` to a shared test helper if reused across files.
+- `MockWKNavigation` is unused (never referenced in any test) — remove it.
+- `MockWKNavigationAction` and `MockWKWindowFeatures` are small stubs; acceptable inline but could move to a shared `WebKitTestStubs.swift` if other test files need them.
