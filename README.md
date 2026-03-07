@@ -83,10 +83,6 @@ xcodebuild -project code/ClaudeUsageTracker.xcodeproj \
 | [AgentLimits](https://github.com/Nihondo/AgentLimits) | macOS menu bar, WKWebView login | Current usage % + token heatmap |
 | **ClaudeUsageTracker** | macOS menu bar, WKWebView login | Usage log with menu bar / widget / analysis |
 
-## Acknowledgments
-
-The data-fetching approach (using WKWebView browser sessions to access internal APIs) is inspired by [AgentLimits](https://github.com/Nihondo/AgentLimits).
-
 ## Recent Changes
 
 ### 0.10.1
@@ -101,6 +97,6 @@ The data-fetching approach (using WKWebView browser sessions to access internal 
 - Added: Privacy manifest, network error auto-retry, database integrity check
 - Added: GitHub Actions CI workflow
 
-## License
+## Acknowledgments
 
-MIT
+The data-fetching approach (using WKWebView browser sessions to access internal APIs) is inspired by [AgentLimits](https://github.com/Nihondo/AgentLimits).
