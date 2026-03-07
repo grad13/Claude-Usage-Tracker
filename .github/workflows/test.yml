@@ -25,5 +25,7 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install pytest
+        run: pip3 install pytest
       - name: Run Python tests
         run: python3 -m pytest tests/ -v
