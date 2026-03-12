@@ -3,6 +3,18 @@
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-03-13
+
+First public release with Developer ID signing and Apple notarization.
+
+### Added
+- Developer ID signed and Apple notarized binary
+- GitHub Actions CI (xcodebuild test + pytest on push/PR)
+
+### Changed
+- Consolidated Alert Settings menu: unified submenu with None + threshold options
+- Git author unified to grad13
+
 ## [0.10.1] - 2026-03-07
 
 ### Changed

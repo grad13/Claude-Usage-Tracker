@@ -85,17 +85,18 @@ xcodebuild -project code/ClaudeUsageTracker.xcodeproj \
 
 ## Recent Changes
 
-### 0.10.1
-- Consolidated Alert Settings menu: unified submenu with None + threshold options
+### 1.0.0
+- First public release with Developer ID signing and Apple notarization
+- Consolidated Alert Settings menu
+- GitHub Actions CI
 
 ### 0.10.0
-- Added: Color Theme setting (System/Light/Dark) for menu bar graphs
-- Added: Sync graph settings (colors, theme) to Widget and Analysis page
+- Color Theme setting (System/Light/Dark) for menu bar graphs
+- Sync graph settings (colors, theme) to Widget and Analysis page
 
 ### 0.9.12
-- Added: Light mode support for menu bar graphs
-- Added: Privacy manifest, network error auto-retry, database integrity check
-- Added: GitHub Actions CI workflow
+- Light mode support for menu bar graphs
+- Privacy manifest, network error auto-retry, database integrity check
 
 ## Acknowledgments
 
