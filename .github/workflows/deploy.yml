@@ -1,0 +1,29 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    paths: ['.face/**']
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore file timestamps
+        run: git ls-files -z | xargs -0 -I{} bash -c 'touch -d "$(git log -1 --format="%cI" -- "{}")" "{}" 2>/dev/null || true'
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SAKURA_SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H ${{ secrets.SAKURA_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy .face
+        run: |
+          ssh ${{ secrets.SAKURA_USER }}@${{ secrets.SAKURA_HOST }} "mkdir -p ~/www/ClaudeUsageTracker/"
+          rsync -avz --chmod=F644,D755 \
+            .face/ ${{ secrets.SAKURA_USER }}@${{ secrets.SAKURA_HOST }}:~/www/ClaudeUsageTracker/.face/
