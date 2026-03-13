@@ -299,6 +299,11 @@ def register_and_verify(backup_file: Path | None) -> None:
             )
         print(f"==> Data integrity verified: no rows lost (backup: {backup_file})")
 
+    # Force Dock to refresh icon cache (prevents folder-icon bug)
+    print("==> Refreshing Dock icon cache...")
+    subprocess.run(["killall", "Dock"], capture_output=True)
+    time.sleep(2)
+
     # Launch
     print("==> Launching...")
     subprocess.run(["open", app_path])

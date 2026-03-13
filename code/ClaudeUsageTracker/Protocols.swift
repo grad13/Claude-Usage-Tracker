@@ -48,8 +48,17 @@ protocol WidgetReloading {
     func reloadAllTimelines()
 }
 
-struct DefaultWidgetReloader: WidgetReloading {
+final class DefaultWidgetReloader: WidgetReloading {
+    /// Minimum interval between actual WidgetKit reload calls.
+    /// WidgetKit has a daily reload budget (~40-70), so calling every minute
+    /// exhausts it within an hour. 5 minutes matches the widget's timeline policy.
+    private static let minimumInterval: TimeInterval = 5 * 60
+    private var lastReloadDate: Date = .distantPast
+
     func reloadAllTimelines() {
+        let now = Date()
+        guard now.timeIntervalSince(lastReloadDate) >= Self.minimumInterval else { return }
+        lastReloadDate = now
         WidgetCenter.shared.reloadAllTimelines()
     }
 }

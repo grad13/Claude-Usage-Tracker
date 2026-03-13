@@ -3,6 +3,14 @@
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-03-13
+
+### Fixed
+- Widget not updating: throttle WidgetKit reloadAllTimelines() to 5-minute intervals to stay within daily reload budget
+
+### Changed
+- Refresh Dock icon cache after install to prevent folder-icon display bug
+
 ## [1.0.0] - 2026-03-13
 
 First public release with Developer ID signing and Apple notarization.
