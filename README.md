@@ -85,18 +85,17 @@ xcodebuild -project code/ClaudeUsageTracker.xcodeproj \
 
 ## Recent Changes
 
+### 1.0.1
+- Fix widget not updating by throttling WidgetKit reload to 5-minute intervals
+- Refresh Dock icon cache after install
+
 ### 1.0.0
 - First public release with Developer ID signing and Apple notarization
 - Consolidated Alert Settings menu
 - GitHub Actions CI
 
-### 0.10.0
-- Color Theme setting (System/Light/Dark) for menu bar graphs
-- Sync graph settings (colors, theme) to Widget and Analysis page
-
-### 0.9.12
-- Light mode support for menu bar graphs
-- Privacy manifest, network error auto-retry, database integrity check
+### 0.10.1
+- Consolidate Alert Settings menu: unified submenu with None + threshold options
 
 ## Acknowledgments
 
