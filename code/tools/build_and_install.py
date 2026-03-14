@@ -183,8 +183,8 @@ def install_app(build_app_path: Path) -> None:
     if new_app.exists():
         shutil.rmtree(str(new_app))
 
-    # Copy new build to .new (ditto preserves macOS metadata including bundle bit)
-    subprocess.run(["ditto", str(build_app_path), str(new_app)], check=True)
+    # Copy new build to .new (cp -R for clean copy; ditto can silently merge stale files)
+    subprocess.run(["cp", "-R", str(build_app_path), str(new_app)], check=True)
 
     # Remove test bundle from .new
     test_xctest = new_app / "Contents/PlugIns/ClaudeUsageTrackerTests.xctest"
@@ -220,6 +220,27 @@ def install_app(build_app_path: Path) -> None:
         shutil.move(str(current_app), str(backup_app))
 
     new_app.rename(current_app)
+
+    # Verify widget binary is fresh (not stale from previous install)
+    widget_bin = (
+        current_app / "Contents/PlugIns/ClaudeUsageTrackerWidgetExtension.appex"
+        / "Contents/MacOS/ClaudeUsageTrackerWidgetExtension"
+    )
+    source_bin = (
+        build_app_path / "Contents/PlugIns/ClaudeUsageTrackerWidgetExtension.appex"
+        / "Contents/MacOS/ClaudeUsageTrackerWidgetExtension"
+    )
+    if widget_bin.exists() and source_bin.exists():
+        installed_mtime = widget_bin.stat().st_mtime
+        source_mtime = source_bin.stat().st_mtime
+        if installed_mtime < source_mtime:
+            raise RuntimeError(
+                f"Widget binary is stale!\n"
+                f"       Installed: {datetime.fromtimestamp(installed_mtime)}\n"
+                f"       Source:    {datetime.fromtimestamp(source_mtime)}\n"
+                f"       The copy did not update the widget extension."
+            )
+        print(f"==> Widget binary timestamp verified: {datetime.fromtimestamp(installed_mtime)}")
 
     # Set bundle bit so Finder treats it as an app, not a folder
     subprocess.run(["SetFile", "-a", "B", str(current_app)], check=True)
@@ -266,6 +287,8 @@ def register_and_verify(backup_file: Path | None) -> None:
     register_app(app_path)
     subprocess.run(["pluginkit", "-e", "use", "-i", WIDGET_ID], capture_output=True)
     subprocess.run(["killall", "chronod"], capture_output=True)
+    subprocess.run(["killall", "NotificationCenter"], capture_output=True)
+    print("==> Restarted chronod + NotificationCenter to reload widget extension")
     time.sleep(3)
 
     # Verify widget registration

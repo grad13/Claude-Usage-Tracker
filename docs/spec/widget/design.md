@@ -1,10 +1,10 @@
 ---
 Created: 2026-02-22
-Updated: 2026-03-14
+Updated: 2026-03-15
 Checked: -
 Deprecated: -
 Format: spec-v2.1
-Source: code/ClaudeUsageTrackerWidget/UsageWidget.swift, code/ClaudeUsageTrackerWidget/WidgetSmallView.swift, code/ClaudeUsageTrackerWidget/WidgetMediumView.swift, code/ClaudeUsageTrackerWidget/WidgetLargeView.swift, code/ClaudeUsageTrackerWidget/WidgetMiniGraph.swift, code/ClaudeUsageTrackerWidget/WidgetColorThemeResolver.swift
+Source: code/ClaudeUsageTrackerWidget/UsageWidget.swift, code/ClaudeUsageTrackerWidget/WidgetMediumView.swift, code/ClaudeUsageTrackerWidget/WidgetMiniGraph.swift, code/ClaudeUsageTrackerWidget/WidgetColorThemeResolver.swift, code/ClaudeUsageTrackerWidget/RefreshIntent.swift
 ---
 
 # Widget Design Specification
@@ -14,11 +14,10 @@ Source: code/ClaudeUsageTrackerWidget/UsageWidget.swift, code/ClaudeUsageTracker
 | Source | Runtime |
 |--------|---------|
 | code/ClaudeUsageTrackerWidget/UsageWidget.swift | macOS |
-| code/ClaudeUsageTrackerWidget/WidgetSmallView.swift | macOS |
 | code/ClaudeUsageTrackerWidget/WidgetMediumView.swift | macOS |
-| code/ClaudeUsageTrackerWidget/WidgetLargeView.swift | macOS |
 | code/ClaudeUsageTrackerWidget/WidgetMiniGraph.swift | macOS |
 | code/ClaudeUsageTrackerWidget/WidgetColorThemeResolver.swift | macOS |
+| code/ClaudeUsageTrackerWidget/RefreshIntent.swift | macOS |
 
 | Field | Value |
 |-------|-------|
@@ -27,7 +26,9 @@ Source: code/ClaudeUsageTrackerWidget/UsageWidget.swift, code/ClaudeUsageTracker
 
 ## Overview
 
-A macOS WidgetKit Medium-size widget. Displays two usage rate graphs (5h and 7d) side by side.
+A macOS WidgetKit Medium-size widget. Displays two usage rate graphs (5h and 7d) side by side, with a diagnostic footer row showing update time, next refresh countdown, and a manual refresh button.
+
+Only `.systemMedium` is supported. Small and Large sizes were removed in v1.1.0 (no usage).
 
 ## Layout Structure
 
@@ -35,10 +36,15 @@ A macOS WidgetKit Medium-size widget. Displays two usage rate graphs (5h and 7d)
 +---------------------------------------+
 | [5h Graph]  [gap 8pt]  [7d Graph]     |
 | [remaining]            [remaining]    |
+|     update 15:30  Next 2m  ↻          |
 +---------------------------------------+
 ```
 
-Each section is a VStack (spacing: 3pt):
+Outer frame: `VStack(spacing: 0)`:
+1. Graph area: `HStack(spacing: 8)` containing two usage sections
+2. Footer row: diagnostic info + refresh button (18pt height)
+
+Each usage section is a VStack (spacing: 3pt):
 1. Graph (Canvas, fills available space via maxWidth/maxHeight)
 2. Remaining time text (12pt-tall row, centered at the marker's x-coordinate)
 
@@ -109,14 +115,77 @@ Displayed at the x-coordinate of the current time and y-coordinate of the curren
 | Less than 1h | `19m` ("0h" omitted) |
 | Expired | `expired` |
 
+## Footer Row (Diagnostic UI)
+
+A horizontal row below the graph area, providing data freshness visibility and manual refresh.
+
+### Layout
+
+```
+update 15:30  Next 2m  ↻
+```
+
+- Frame height: 18pt
+- `HStack(spacing: 6)`, centered
+
+### Elements
+
+| Element | Implementation | Description |
+|---------|---------------|-------------|
+| Update time | `Text("update")` + `Text(snapshot.timestamp, style: .time)` | Shows when data was last fetched (absolute time, e.g., "15:30") |
+| Next refresh | `Text("Next")` + `Text(nextRefresh, style: .relative)` | Auto-countdown to next expected refresh |
+| Refresh button | `Button(intent: RefreshIntent())` with `Image(systemName: "arrow.clockwise")` | Manual refresh, bypasses OS budget |
+
+### Styling
+
+- All text: `.font(.system(size: 9))`, `.foregroundStyle(.secondary)`
+- Refresh button icon: `.font(.system(size: 10))`, `.foregroundStyle(.secondary)`, `.buttonStyle(.plain)`
+
+### Next Refresh Calculation
+
+```swift
+let intervalMinutes = AppGroupConfig.settingsInt(forKey: "refresh_interval_minutes") ?? 5
+let nextRefresh = snapshot.timestamp.addingTimeInterval(Double(intervalMinutes) * 60)
+```
+
+- Uses `refresh_interval_minutes` from `settings.json` (see `spec/data/settings.md`)
+- Falls back to 5 minutes if the setting is absent or the App Group container is unavailable
+
+### Visibility
+
+- Footer is only shown when `snapshot` is non-nil (data has been fetched)
+- When `snapshot` is nil, the `notFetchedView` is displayed instead (no footer)
+
+## RefreshIntent (AppIntent)
+
+`code/ClaudeUsageTrackerWidget/RefreshIntent.swift`
+
+```swift
+struct RefreshIntent: AppIntent {
+    static var title: LocalizedStringResource = "Refresh Usage"
+
+    func perform() async throws -> some IntentResult {
+        WidgetCenter.shared.reloadAllTimelines()
+        return .result()
+    }
+}
+```
+
+- Conforms to `AppIntent` (requires `import AppIntents`)
+- Triggers `reloadAllTimelines()` which causes the timeline provider to re-read the snapshot file
+- User-initiated actions bypass the WidgetKit OS budget (40-70 refreshes/day limit does not apply)
+- `openAppWhenRun` is not set (defaults to false) — the main app is not opened
+- Used by `Button(intent: RefreshIntent())` in the footer row
+- Coexists with `widgetURL`: `Button` tap area takes priority over `widgetURL`; tapping outside the button opens the Analysis screen
+
 ## Files
 
 | File | Description |
 |------|-------------|
 | `ClaudeUsageTrackerWidget/WidgetMiniGraph.swift` | Canvas graph drawing (shared component, split into 10 private drawing methods) |
-| `ClaudeUsageTrackerWidget/WidgetMediumView.swift` | Medium widget layout (5h + 7d side by side) |
-| `ClaudeUsageTrackerWidget/WidgetLargeView.swift` | Large widget (uses the same WidgetMiniGraph) |
-| `tmp/marker_prototype.html` | Design prototype (Canvas/JS) |
+| `ClaudeUsageTrackerWidget/WidgetMediumView.swift` | Medium widget layout (5h + 7d side by side + footer row) |
+| `ClaudeUsageTrackerWidget/RefreshIntent.swift` | AppIntent for manual widget refresh |
+| `ClaudeUsageTrackerWidget/WidgetColorThemeResolver.swift` | Chart color preset resolution from settings.json |
 
 ## Design Change History
 
@@ -128,6 +197,7 @@ Displayed at the x-coordinate of the current time and y-coordinate of the curren
 - **2026-02-22**: Percent text horizontal clipping prevention (anchor switching, 16pt margin)
 - **2026-02-22**: Percent text top clipping prevention (if within 14pt topMargin, display below)
 - **2026-02-25**: Area extension -- horizontal extension from the last data point to min(current time, reset time). Restricted no-data gray to post-reset only. Moved marker position to the extension endpoint
+- **2026-03-15**: Removed Small and Large sizes (Medium only). Added diagnostic footer row (update time + next refresh countdown + manual refresh button via AppIntent)
 
 ## WidgetKit Structure (UsageWidget.swift)
 
@@ -156,24 +226,23 @@ struct UsageTimelineProvider: TimelineProvider {
 |--------|----------|
 | `placeholder(in:)` | Returns `UsageEntry(date: Date(), snapshot: .placeholder)` |
 | `getSnapshot(in:)` | Returns placeholder if `context.isPreview` is true. Otherwise calls `UsageReader.load()` (reads snapshot file from App Group container) and returns the result |
-| `getTimeline(in:)` | `UsageReader.load()` (reads snapshot file from App Group container) -> creates entries. If snapshot has `resetsAt` dates, adds a future entry at the earliest reset time. `policy: .never` — updates are driven exclusively by `reloadTimelines()` from the main app |
+| `getTimeline(in:)` | `UsageReader.load()` (reads snapshot file from App Group container) -> creates entries. If snapshot has `resetsAt` dates, adds a future entry at the earliest reset time. `policy: .never` — updates are driven exclusively by `reloadTimelines()` from the main app or `RefreshIntent` |
 
-**Update policy**: `.never` — the widget does not self-refresh on a timer. The main app calls `WidgetCenter.shared.reloadAllTimelines()` after each fetch, which triggers `getTimeline()`. A future entry at the earliest `resetsAt` ensures the widget also refreshes at the reset moment.
+**Update policy**: `.never` — the widget does not self-refresh on a timer. The main app calls `WidgetCenter.shared.reloadAllTimelines()` after each fetch, which triggers `getTimeline()`. The user can also trigger this via the ↻ button (`RefreshIntent`). A future entry at the earliest `resetsAt` ensures the widget also refreshes at the reset moment.
 
-### UsageWidgetEntryView (Size Branching)
+### UsageWidgetEntryView
 
 ```swift
-@Environment(\.widgetFamily) private var family
+struct UsageWidgetEntryView: View {
+    var entry: UsageEntry
 
-switch family {
-case .systemSmall:  WidgetSmallView(snapshot: entry.snapshot)
-case .systemMedium: WidgetMediumView(snapshot: entry.snapshot)
-case .systemLarge:  WidgetLargeView(snapshot: entry.snapshot)
-default:            WidgetSmallView(snapshot: entry.snapshot)
+    var body: some View {
+        WidgetMediumView(snapshot: entry.snapshot)
+    }
 }
 ```
 
-Fallback for unsupported sizes (`.systemExtraLarge`, etc.) is Small.
+Only Medium size is supported. No size branching.
 
 ### UsageWidget (WidgetConfiguration)
 
@@ -185,46 +254,7 @@ Fallback for unsupported sizes (`.systemExtraLarge`, etc.) is Small.
 | `containerBackground` | `.clear` |
 | `configurationDisplayName` | `"Claude Usage"` |
 | `description` | `"Monitor Claude Code usage limits"` |
-| `supportedFamilies` | `[.systemSmall, .systemMedium, .systemLarge]` |
-
-## WidgetSmallView
-
-`code/ClaudeUsageTrackerWidget/WidgetSmallView.swift`
-
-### Layout
-
-```
-+-----------+
-| [5h Graph]|
-| [7d Graph]|
-+-----------+
-```
-
-- Outer frame: `VStack(spacing: 4)`
-- Each graph is a `WidgetMiniGraph` with `frame(maxWidth: .infinity, maxHeight: .infinity)`
-- `clipShape(RoundedRectangle(cornerRadius: 4))`
-- No `resetsAt` text row (unlike Medium)
-
-### usageSection Argument Mapping
-
-| Argument | 5h Value | 7d Value |
-|----------|----------|----------|
-| `label` | `"5h"` | `"7d"` |
-| `percent` | `snapshot.fiveHourPercent` | `snapshot.sevenDayPercent` |
-| `resetsAt` | `snapshot.fiveHourResetsAt` | `snapshot.sevenDayResetsAt` |
-| `history` | `snapshot.fiveHourHistory` | `snapshot.sevenDayHistory` |
-| `windowSeconds` | `5 * 3600` | `7 * 24 * 3600` |
-| `color` | `WidgetColorThemeResolver.resolveChartColor(forKey: "hourly_color_preset", default: blue)` | `WidgetColorThemeResolver.resolveChartColor(forKey: "weekly_color_preset", default: pink)` |
-| `opacity` | `0.7` | `0.65` |
-
-### notFetchedView (When snapshot is nil)
-
-```
-[chart.bar.fill icon] .font(.title2)  .foregroundStyle(.secondary)
-[Not fetched text]    .font(.caption) .foregroundStyle(.secondary)
-```
-
-VStack(spacing: 4)
+| `supportedFamilies` | `[.systemMedium]` |
 
 ## WidgetColorThemeResolver
 
@@ -257,8 +287,6 @@ Supported presets: `blue`, `pink`, `green`, `teal`, `purple`, `orange`, `white` 
 
 VStack(spacing: 4), `frame(maxWidth: .infinity, maxHeight: .infinity)` to fill the container.
 
-Same design as Small's `notFetchedView` (differs from Large in text and font).
-
 ### DisplayHelpers Usage
 
 Uses `DisplayHelpers.remainingText(until: resetsAt)` to generate the remaining time text.
@@ -276,82 +304,6 @@ private func nowXFraction(resetsAt: Date, windowSeconds: TimeInterval) -> CGFloa
 
 Uses `resetsAt - windowSeconds` as the window start time and clamps the current time's relative position to 0.0-1.0.
 Used to calculate the x-coordinate for the remaining time text (multiplied by `GeometryReader.size.width`).
-
-## WidgetLargeView
-
-`code/ClaudeUsageTrackerWidget/WidgetLargeView.swift`
-
-### Layout
-
-```
-+------------------------------------------+
-| Claude Usage            .font(.headline)  |
-|                                           |
-| 5-hour Usage            .font(.subheadline)|
-| [5h MiniGraph  height:48]                 |
-| [xx.x%]  [resets in Xh Ym]  [Est. $x.xx] |
-|                                           |
-| 7-day Usage             .font(.subheadline)|
-| [7d MiniGraph  height:48]                 |
-| [xx.x%]  [resets in Xd Yh]  [Est. $x.xx] |
-|                                           |
-| Spacer                                    |
-+------------------------------------------+
-```
-
-- Outer frame: `VStack(alignment: .leading, spacing: 10)` + `.padding(.vertical, 4)`
-- Header: `Text("Claude Usage")` `.font(.headline)`
-- Each block: `usageBlock` method
-
-### usageBlock Structure
-
-`VStack(alignment: .leading, spacing: 4)`:
-
-1. Title row: `Text(title)` `.font(.subheadline)` `.foregroundStyle(.secondary)`
-2. Graph: `WidgetMiniGraph` `.frame(height: 48)` `.frame(maxWidth: .infinity)` `clipShape(RoundedRectangle(cornerRadius: 4))`
-3. Metrics row: `HStack(spacing: 8)`:
-   - Percent (when `percent != nil`): `"%.1f%%"` format, `.system(.body, design: .rounded, weight: .semibold)` `.monospacedDigit()`
-   - Reset time (when `resetsAt != nil`): `"resets \(remainingText)"` `.font(.caption)` `.foregroundStyle(.secondary)`
-   - `Spacer()`
-
-### usageBlock Argument Mapping
-
-| Argument | 5h Value | 7d Value |
-|----------|----------|----------|
-| `title` | `"5-hour Usage"` | `"7-day Usage"` |
-| `percent` | `snapshot.fiveHourPercent` | `snapshot.sevenDayPercent` |
-| `resetsAt` | `snapshot.fiveHourResetsAt` | `snapshot.sevenDayResetsAt` |
-| `history` | `snapshot.fiveHourHistory` | `snapshot.sevenDayHistory` |
-| `windowSeconds` | `5 * 3600` | `7 * 24 * 3600` |
-| `color` | `WidgetColorThemeResolver.resolveChartColor(forKey: "hourly_color_preset", default: blue)` | `WidgetColorThemeResolver.resolveChartColor(forKey: "weekly_color_preset", default: pink)` |
-| `opacity` | `0.7` | `0.65` |
-
-The MiniGraph `label` argument receives `title` (the full title string) directly (unlike the abbreviated labels in Small/Medium). However, since it is displayed at 9pt in the graph's top left, there is no visual issue.
-
-### remainingText (Internal Helper)
-
-```swift
-private func remainingText(_ date: Date) -> String {
-    let text = DisplayHelpers.remainingText(until: date)
-    return text == "expired" ? text : "in " + text
-}
-```
-
-If the result of `DisplayHelpers.remainingText(until:)` is `"expired"`, returns it as-is.
-Otherwise, prepends `"in "` to produce strings like `"resets in 2h 35m"`.
-
-### notFetchedView (When snapshot is nil)
-
-Large-specific design (different text and font from Small/Medium):
-
-```
-[chart.bar.fill]          .font(.largeTitle)
-[Not fetched yet]         .font(.body)
-[Open ClaudeUsageTracker  .font(.caption)
- to sign in]              .foregroundStyle(.tertiary)
-```
-
-VStack(spacing: 8), `frame(maxWidth: .infinity, maxHeight: .infinity)` to fill the container.
 
 ## WidgetMiniGraph Type Interface and Drawing Details
 
@@ -468,17 +420,3 @@ Drawing order within the Canvas (later draws appear on top):
 9. `drawUsageLine` -- Usage rate dashed horizontal line
 10. `drawMarker` -- Current position marker (inner circle + outer ring)
 11. `drawPercentText` -- Percent text
-
-## Size Comparison Table
-
-| Aspect | Small | Medium | Large |
-|--------|-------|--------|-------|
-| Outer frame | VStack spacing:4 | HStack spacing:8 | VStack spacing:10 |
-| Graph arrangement | 2 stacked vertically | 2 side by side | 2 stacked vertically (with titles) |
-| Graph height | maxHeight (.infinity) | maxHeight (.infinity) | Fixed 48pt |
-| Label text | `"5h"` / `"7d"` | `"5h"` / `"7d"` | `"5-hour Usage"` / `"7-day Usage"` |
-| resetsAt text | None | Present (at marker x-position) | Present ("resets in Xh") |
-| Percent display | None (graph marker only) | None (graph marker only) | Present ("%.1f%%", rounded semibold) |
-| Estimated cost | None | None | None |
-| notFetchedView icon | `.title2` | `.title2` | `.largeTitle` |
-| notFetchedView text | "Not fetched" caption | "Not fetched" caption | "Not fetched yet" body + description caption |

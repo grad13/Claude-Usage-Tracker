@@ -21,6 +21,20 @@ final class AppGroupConfigTests: XCTestCase {
         _ = url
     }
 
+    func testSettingsInt_nilWhenContainerIsNil() {
+        if AppGroupConfig.containerURL == nil {
+            XCTAssertNil(AppGroupConfig.settingsInt(forKey: "refresh_interval_minutes"),
+                         "settingsInt should return nil when containerURL is nil")
+        }
+    }
+
+    func testSettingsString_nilWhenContainerIsNil() {
+        if AppGroupConfig.containerURL == nil {
+            XCTAssertNil(AppGroupConfig.settingsString(forKey: "nonexistent_key"),
+                         "settingsString should return nil when containerURL is nil")
+        }
+    }
+
     func testUsageDBPath_nilWhenContainerIsNil() {
         if AppGroupConfig.containerURL == nil {
             XCTAssertNil(AppGroupConfig.usageDBPath,

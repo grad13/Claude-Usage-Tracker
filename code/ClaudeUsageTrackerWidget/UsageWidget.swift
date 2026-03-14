@@ -1,4 +1,4 @@
-// meta: created=2026-02-21 updated=2026-03-14 checked=2026-03-03
+// meta: created=2026-02-21 updated=2026-03-15 checked=2026-03-03
 import SwiftUI
 import WidgetKit
 import ClaudeUsageTrackerShared
@@ -44,19 +44,9 @@ struct UsageTimelineProvider: TimelineProvider {
 
 struct UsageWidgetEntryView: View {
     var entry: UsageEntry
-    @Environment(\.widgetFamily) private var family
 
     var body: some View {
-        switch family {
-        case .systemSmall:
-            WidgetSmallView(snapshot: entry.snapshot)
-        case .systemMedium:
-            WidgetMediumView(snapshot: entry.snapshot)
-        case .systemLarge:
-            WidgetLargeView(snapshot: entry.snapshot)
-        default:
-            WidgetSmallView(snapshot: entry.snapshot)
-        }
+        WidgetMediumView(snapshot: entry.snapshot)
     }
 }
 
@@ -71,6 +61,6 @@ struct UsageWidget: Widget {
         }
         .configurationDisplayName("Claude Usage")
         .description("Monitor Claude Code usage limits")
-        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+        .supportedFamilies([.systemMedium])
     }
 }

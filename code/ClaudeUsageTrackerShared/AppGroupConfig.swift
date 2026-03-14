@@ -1,4 +1,4 @@
-// meta: created=2026-02-21 updated=2026-03-14 checked=2026-03-03
+// meta: created=2026-02-21 updated=2026-03-15 checked=2026-03-03
 import Foundation
 
 public enum AppGroupConfig {
@@ -21,6 +21,20 @@ public enum AppGroupConfig {
             return nil
         }
         return dict[key] as? String
+    }
+
+    /// Read an integer value from settings.json in the App Group container.
+    public static func settingsInt(forKey key: String) -> Int? {
+        guard let container = containerURL else { return nil }
+        let settingsURL = container
+            .appendingPathComponent("Library/Application Support", isDirectory: true)
+            .appendingPathComponent(appName, isDirectory: true)
+            .appendingPathComponent("settings.json")
+        guard let data = try? Data(contentsOf: settingsURL),
+              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+        return dict[key] as? Int
     }
 
     /// JSON file URL for widget snapshot (shared between app and widget).

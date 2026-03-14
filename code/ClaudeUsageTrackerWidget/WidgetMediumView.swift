@@ -1,4 +1,5 @@
-// meta: created=2026-02-21 updated=2026-03-07 checked=2026-03-03
+// meta: created=2026-02-21 updated=2026-03-15 checked=2026-03-03
+import AppIntents
 import SwiftUI
 import WidgetKit
 import ClaudeUsageTrackerShared
@@ -23,26 +24,30 @@ struct WidgetMediumView: View {
 
     var body: some View {
         if let snapshot {
-            HStack(spacing: 8) {
-                usageSection(
-                    label: "5h",
-                    percent: snapshot.fiveHourPercent,
-                    resetsAt: snapshot.fiveHourResetsAt,
-                    history: snapshot.fiveHourHistory,
-                    windowSeconds: 5 * 3600,
-                    color: fiveHourColor,
-                    opacity: 0.7
-                )
+            VStack(spacing: 0) {
+                HStack(spacing: 8) {
+                    usageSection(
+                        label: "5h",
+                        percent: snapshot.fiveHourPercent,
+                        resetsAt: snapshot.fiveHourResetsAt,
+                        history: snapshot.fiveHourHistory,
+                        windowSeconds: 5 * 3600,
+                        color: fiveHourColor,
+                        opacity: 0.7
+                    )
 
-                usageSection(
-                    label: "7d",
-                    percent: snapshot.sevenDayPercent,
-                    resetsAt: snapshot.sevenDayResetsAt,
-                    history: snapshot.sevenDayHistory,
-                    windowSeconds: 7 * 24 * 3600,
-                    color: sevenDayColor,
-                    opacity: 0.65
-                )
+                    usageSection(
+                        label: "7d",
+                        percent: snapshot.sevenDayPercent,
+                        resetsAt: snapshot.sevenDayResetsAt,
+                        history: snapshot.sevenDayHistory,
+                        windowSeconds: 7 * 24 * 3600,
+                        color: sevenDayColor,
+                        opacity: 0.65
+                    )
+                }
+
+                footerRow(timestamp: snapshot.timestamp)
             }
         } else {
             notFetchedView
@@ -85,6 +90,40 @@ struct WidgetMediumView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func footerRow(timestamp: Date) -> some View {
+        let intervalMinutes = AppGroupConfig.settingsInt(forKey: "refresh_interval_minutes") ?? 5
+        let nextRefresh = timestamp.addingTimeInterval(Double(intervalMinutes) * 60)
+
+        HStack(spacing: 6) {
+            Spacer(minLength: 0)
+
+            HStack(spacing: 3) {
+                Text("update")
+                Text(timestamp, style: .time)
+            }
+            .font(.system(size: 9))
+            .foregroundStyle(.secondary)
+
+            HStack(spacing: 3) {
+                Text("Next")
+                Text(nextRefresh, style: .relative)
+            }
+            .font(.system(size: 9))
+            .foregroundStyle(.secondary)
+
+            Button(intent: RefreshIntent()) {
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+
+            Spacer(minLength: 0)
+        }
+        .frame(height: 18)
     }
 
     private var notFetchedView: some View {
