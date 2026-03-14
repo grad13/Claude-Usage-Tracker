@@ -11,7 +11,7 @@ Covers:
 import sqlite3
 import sys
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -134,100 +134,49 @@ def test_backup_database_rotation(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Test 36: register_and_verify — bundle bit check detects missing B
+# Test 36: verify_bundle_bits — detects missing bundle bit (lowercase b)
 # ---------------------------------------------------------------------------
 
-def test_bundle_bit_check_detects_missing(tmp_path, monkeypatch):
-    """register_and_verify raises when bundle bit is not set."""
-    app_dir = tmp_path / "Applications"
-    app_dir.mkdir()
-    app = app_dir / "ClaudeUsageTracker.app"
-    app.mkdir()
+@patch("build_and_install.run")
+def test_bundle_bit_check_detects_missing(mock_run, tmp_path):
+    """verify_bundle_bits raises when bundle bit is not set."""
+    app_path = str(tmp_path / "ClaudeUsageTracker.app")
 
-    monkeypatch.setattr(bai, "INSTALL_DIR", app_dir)
-
-    # Mock GetFileInfo to return lowercase 'b' (bundle bit not set)
-    def mock_run(cmd, **kwargs):
-        if cmd[0] == "GetFileInfo":
-            from unittest.mock import MagicMock
-            result = MagicMock()
-            result.returncode = 0
-            result.stdout = 'directory: "/Applications/ClaudeUsageTracker.app"\nattributes: avbstclinmedz\n'
-            return result
-        from unittest.mock import MagicMock
+    def run_side_effect(cmd, **kwargs):
         result = MagicMock()
         result.returncode = 0
-        result.stdout = ""
+        if cmd[0] == "GetFileInfo":
+            result.stdout = f'directory: "{app_path}"\nattributes: avbstclinmedz\n'
+        else:
+            result.stdout = ""
         return result
 
-    monkeypatch.setattr(bai.subprocess, "run", mock_run)
+    mock_run.side_effect = run_side_effect
 
     with pytest.raises(RuntimeError, match="Bundle bit not set"):
-        bai.register_and_verify(None)
+        bai.verify_bundle_bits(app_path)
 
 
 # ---------------------------------------------------------------------------
-# Test 37: register_and_verify — bundle bit check passes with B
+# Test 37: verify_bundle_bits — passes with bundle bit set (uppercase B)
 # ---------------------------------------------------------------------------
 
-def test_bundle_bit_check_passes(tmp_path, monkeypatch):
-    """register_and_verify does not raise when bundle bit is set (uppercase B)."""
-    app_dir = tmp_path / "Applications"
-    app_dir.mkdir()
-    app = app_dir / "ClaudeUsageTracker.app"
-    app.mkdir()
+@patch("build_and_install.run")
+def test_bundle_bit_check_passes(mock_run, tmp_path):
+    """verify_bundle_bits does not raise when bundle bit is set (uppercase B)."""
+    app_path = str(tmp_path / "ClaudeUsageTracker.app")
 
-    monkeypatch.setattr(bai, "INSTALL_DIR", app_dir)
-
-    calls = []
-
-    def mock_run(cmd, **kwargs):
-        from unittest.mock import MagicMock
-        calls.append(cmd[0] if isinstance(cmd, list) else cmd)
+    def run_side_effect(cmd, **kwargs):
         result = MagicMock()
         result.returncode = 0
-        result.stdout = ""
-
         if cmd[0] == "GetFileInfo":
-            result.stdout = 'directory: "/Applications/ClaudeUsageTracker.app"\nattributes: avBstclinmedz\n'
+            result.stdout = f'directory: "{app_path}"\nattributes: avBstclinmedz\n'
+        else:
+            result.stdout = ""
         return result
 
-    monkeypatch.setattr(bai.subprocess, "run", mock_run)
+    mock_run.side_effect = run_side_effect
 
-    # Mock launchservices functions to no-op
-    monkeypatch.setattr(bai, "deregister_stale_apps", lambda *a: None)
-    monkeypatch.setattr(bai, "register_app", lambda *a: None)
-    monkeypatch.setattr(bai, "dump_widget_registration", lambda *a: "/Applications/ClaudeUsageTracker.app")
+    bai.verify_bundle_bits(app_path)
 
-    bai.register_and_verify(None)
-
-    assert "GetFileInfo" in calls
-
-
-# ---------------------------------------------------------------------------
-# Test 38-39: shelter_file — unconditional backup/restore
-# ---------------------------------------------------------------------------
-
-from data_protection import shelter_file
-
-
-def test_shelter_file_restores_unconditionally(tmp_path):
-    """shelter_file restores original content silently even when file is modified."""
-    f = tmp_path / "cookies.json"
-    f.write_text("original")
-
-    with shelter_file(f):
-        f.write_text("modified by test")
-
-    assert f.read_text() == "original"
-    assert not (tmp_path / "cookies.json.shelter").exists()
-
-
-def test_shelter_file_nonexistent(tmp_path):
-    """shelter_file does nothing for a file that doesn't exist."""
-    f = tmp_path / "missing.json"
-
-    with shelter_file(f):
-        f.write_text("created during test")
-
-    assert not f.exists()
+    assert any(c.args[0][0] == "GetFileInfo" for c in mock_run.call_args_list)

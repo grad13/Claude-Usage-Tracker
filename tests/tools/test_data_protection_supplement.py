@@ -8,6 +8,8 @@ Covers:
   Test 30: _restore_if_changed returns 2 when file deleted
   Test 31: _restore_if_changed returns 0 when hash_before is None (skipped)
   Test 32: _snapshot raises OSError when backup copy fails (Layer 3)
+  Test 38: shelter_file — restores original content after modification
+  Test 39: shelter_file — deletes file created during block if file didn't exist
 """
 
 import sys
@@ -18,7 +20,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "code" / "tools" / "lib"))
 
-from data_protection import _restore_if_changed, _sha256, _snapshot
+from data_protection import _restore_if_changed, _sha256, _snapshot, shelter_file
 
 
 # ---------------------------------------------------------------------------
@@ -118,3 +120,29 @@ def test_snapshot_raises_on_copy_failure(tmp_path):
     with patch("data_protection.shutil.copy2"):
         with pytest.raises(OSError, match="Failed to create backup"):
             _snapshot(target)
+
+
+# ---------------------------------------------------------------------------
+# Test 38-39: shelter_file — unconditional backup/restore
+# ---------------------------------------------------------------------------
+
+def test_shelter_file_restores_unconditionally(tmp_path):
+    """shelter_file restores original content silently even when file is modified."""
+    f = tmp_path / "cookies.json"
+    f.write_text("original")
+
+    with shelter_file(f):
+        f.write_text("modified by test")
+
+    assert f.read_text() == "original"
+    assert not (tmp_path / "cookies.json.shelter").exists()
+
+
+def test_shelter_file_nonexistent(tmp_path):
+    """shelter_file does nothing for a file that doesn't exist."""
+    f = tmp_path / "missing.json"
+
+    with shelter_file(f):
+        f.write_text("created during test")
+
+    assert not f.exists()
