@@ -1,6 +1,6 @@
 ---
 Created: 2026-02-26
-Updated: 2026-03-07
+Updated: 2026-03-14
 Checked: -
 Deprecated: -
 Format: spec-v2.1
@@ -28,20 +28,22 @@ Source: code/ClaudeUsageTracker/UsageViewModel.swift, code/ClaudeUsageTracker/Us
 `UsageViewModel.init()` performs initialization in the following order. Everything runs on `@MainActor`.
 
 ```
-1. Dependency injection (6 protocols)
+1. Dependency injection (6 protocols + optional WKWebViewConfiguration)
    - fetcher: UsageFetching
    - settingsStore: SettingsStoring
    - usageStore: UsageStoring
    - widgetReloader: WidgetReloading
    - loginItemManager: LoginItemManaging
    - alertChecker: AlertChecking
+   - webViewConfiguration: WKWebViewConfiguration? (nil = production default)
 
 2. WKWebView creation
-   - Create WKWebViewConfiguration
-   - Generate app-specific data store via WKWebsiteDataStore(forIdentifier: UUID)
-     → .default() is avoided because it shares data with Safari and triggers macOS TCC prompts
-   - UUID is a fixed value "A1B2C3D4-E5F6-7890-ABCD-EF1234567890"
-   - javaScriptCanOpenWindowsAutomatically = true (for OAuth popups)
+   - If webViewConfiguration is provided, use it directly (tests pass .nonPersistent() to avoid touching real cookie store)
+   - Otherwise, create production config:
+     - Generate app-specific data store via WKWebsiteDataStore(forIdentifier: UUID)
+       → .default() is avoided because it shares data with Safari and triggers macOS TCC prompts
+     - UUID is a fixed value "A1B2C3D4-E5F6-7890-ABCD-EF1234567890"
+     - javaScriptCanOpenWindowsAutomatically = true (for OAuth popups)
 
 3. Load settings
    - settingsStore.load() → AppSettings

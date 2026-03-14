@@ -187,8 +187,9 @@ extension UsageViewModel {
             sevenDayHistory: [],
             isLoggedIn: false
         )
-        if let data = try? JSONEncoder().encode(logoutSnapshot) {
-            AppGroupConfig.sharedDefaults?.set(data, forKey: UsageReader.snapshotKey)
+        if let data = try? JSONEncoder().encode(logoutSnapshot),
+           let url = AppGroupConfig.snapshotURL {
+            try? data.write(to: url, options: .atomic)
         }
 
         widgetReloader.reloadAllTimelines()

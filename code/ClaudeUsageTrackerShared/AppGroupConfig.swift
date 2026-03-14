@@ -23,9 +23,14 @@ public enum AppGroupConfig {
         return dict[key] as? String
     }
 
-    /// Shared UserDefaults for App Group (used for widget snapshot data).
-    public static var sharedDefaults: UserDefaults? {
-        UserDefaults(suiteName: groupId)
+    /// JSON file URL for widget snapshot (shared between app and widget).
+    /// Located in the same directory as usage.db.
+    public static var snapshotURL: URL? {
+        guard let container = containerURL else { return nil }
+        return container
+            .appendingPathComponent("Library/Application Support", isDirectory: true)
+            .appendingPathComponent(appName, isDirectory: true)
+            .appendingPathComponent("widget-snapshot.json")
     }
 
     /// SQLite DB path for UsageStore (shared between app and widget).

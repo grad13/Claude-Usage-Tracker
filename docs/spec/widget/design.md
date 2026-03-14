@@ -155,8 +155,8 @@ struct UsageTimelineProvider: TimelineProvider {
 | Method | Behavior |
 |--------|----------|
 | `placeholder(in:)` | Returns `UsageEntry(date: Date(), snapshot: .placeholder)` |
-| `getSnapshot(in:)` | Returns placeholder if `context.isPreview` is true. Otherwise calls `UsageReader.load()` (reads from UserDefaults) and returns the result |
-| `getTimeline(in:)` | `UsageReader.load()` (reads snapshot from UserDefaults via App Group) -> creates entries. If snapshot has `resetsAt` dates, adds a future entry at the earliest reset time. `policy: .never` — updates are driven exclusively by `reloadTimelines()` from the main app |
+| `getSnapshot(in:)` | Returns placeholder if `context.isPreview` is true. Otherwise calls `UsageReader.load()` (reads snapshot file from App Group container) and returns the result |
+| `getTimeline(in:)` | `UsageReader.load()` (reads snapshot file from App Group container) -> creates entries. If snapshot has `resetsAt` dates, adds a future entry at the earliest reset time. `policy: .never` — updates are driven exclusively by `reloadTimelines()` from the main app |
 
 **Update policy**: `.never` — the widget does not self-refresh on a timer. The main app calls `WidgetCenter.shared.reloadAllTimelines()` after each fetch, which triggers `getTimeline()`. A future entry at the earliest `resetsAt` ensures the widget also refreshes at the reset moment.
 

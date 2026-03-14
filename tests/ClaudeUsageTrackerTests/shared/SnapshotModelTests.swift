@@ -157,12 +157,12 @@ final class SnapshotModelTests: XCTestCase {
                              "sevenDayResetsAt should be in the future")
     }
 
-    // MARK: - UsageReader (UserDefaults round-trip)
+    // MARK: - UsageReader (file I/O round-trip)
 
-    func testUsageReader_loadFromUserDefaults() throws {
-        let defaults = AppGroupConfig.sharedDefaults
-        // Skip if App Group is not available in test environment
-        guard let defaults else { return }
+    func testUsageReader_loadFromFile() throws {
+        guard let url = AppGroupConfig.snapshotURL else { return }
+        // Ensure directory exists
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
 
         let now = Date(timeIntervalSince1970: 1740000000)
         let snapshot = UsageSnapshot(
@@ -177,7 +177,7 @@ final class SnapshotModelTests: XCTestCase {
         )
 
         let data = try JSONEncoder().encode(snapshot)
-        defaults.set(data, forKey: UsageReader.snapshotKey)
+        try data.write(to: url, options: .atomic)
 
         let loaded = UsageReader.load()
         XCTAssertNotNil(loaded)
@@ -187,26 +187,27 @@ final class SnapshotModelTests: XCTestCase {
         XCTAssertEqual(loaded?.fiveHourHistory.count, 1)
 
         // Cleanup
-        defaults.removeObject(forKey: UsageReader.snapshotKey)
+        try? FileManager.default.removeItem(at: url)
     }
 
     func testUsageReader_noData_returnsNil() {
-        guard let defaults = AppGroupConfig.sharedDefaults else { return }
-        defaults.removeObject(forKey: UsageReader.snapshotKey)
+        guard let url = AppGroupConfig.snapshotURL else { return }
+        try? FileManager.default.removeItem(at: url)
 
         let loaded = UsageReader.load()
-        XCTAssertNil(loaded, "UsageReader should return nil when no data in UserDefaults")
+        XCTAssertNil(loaded, "UsageReader should return nil when no snapshot file exists")
     }
 
-    func testUsageReader_corruptData_returnsNil() {
-        guard let defaults = AppGroupConfig.sharedDefaults else { return }
-        defaults.set("not valid json".data(using: .utf8)!, forKey: UsageReader.snapshotKey)
+    func testUsageReader_corruptData_returnsNil() throws {
+        guard let url = AppGroupConfig.snapshotURL else { return }
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "not valid json".data(using: .utf8)!.write(to: url, options: .atomic)
 
         let loaded = UsageReader.load()
         XCTAssertNil(loaded, "UsageReader should return nil for corrupt data")
 
         // Cleanup
-        defaults.removeObject(forKey: UsageReader.snapshotKey)
+        try? FileManager.default.removeItem(at: url)
     }
 
     // MARK: - Large history array round-trip

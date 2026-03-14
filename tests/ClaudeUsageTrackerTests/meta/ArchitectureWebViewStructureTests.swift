@@ -24,8 +24,10 @@ final class ArchitectureDataStoreTests: XCTestCase {
 
     // spec: "WKWebsiteDataStore.default() を使用"
     // → default() は App Group 共有 Cookie ストアを指す。永続ストアであることを確認する。
+    // Note: Uses production config (webViewConfiguration: nil) to verify persistence.
+    // Test VMs use nonPersistent() to avoid destroying real session cookies.
     func testWebView_dataStoreIsPersistent() {
-        let vm = makeVM()
+        let vm = UsageViewModel(webViewConfiguration: nil)
         let store = vm.webView.configuration.websiteDataStore
         XCTAssertTrue(
             store.isPersistent,

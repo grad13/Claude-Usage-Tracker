@@ -107,6 +107,13 @@ final class MockAlertChecker: AlertChecking {
 // MARK: - Test Factories
 
 enum ViewModelTestFactory {
+    /// Non-persistent config so tests never touch the real WKWebsiteDataStore.
+    @MainActor private static func testWebViewConfig() -> WKWebViewConfiguration {
+        let config = WKWebViewConfiguration()
+        config.websiteDataStore = .nonPersistent()
+        return config
+    }
+
     @MainActor static func makeVM(
         fetcher: StubUsageFetcher = StubUsageFetcher(),
         settingsStore: InMemorySettingsStore = InMemorySettingsStore(),
@@ -121,7 +128,8 @@ enum ViewModelTestFactory {
             usageStore: usageStore,
             widgetReloader: widgetReloader,
             loginItemManager: loginItemManager,
-            alertChecker: alertChecker
+            alertChecker: alertChecker,
+            webViewConfiguration: testWebViewConfig()
         )
     }
 }

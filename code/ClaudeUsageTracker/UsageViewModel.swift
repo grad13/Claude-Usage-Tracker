@@ -87,7 +87,8 @@ final class UsageViewModel: ObservableObject, WebViewCoordinatorDelegate {
         usageStore: any UsageStoring = UsageStore.shared,
         widgetReloader: any WidgetReloading = DefaultWidgetReloader(),
         loginItemManager: any LoginItemManaging = DefaultLoginItemManager(),
-        alertChecker: any AlertChecking = DefaultAlertChecker()
+        alertChecker: any AlertChecking = DefaultAlertChecker(),
+        webViewConfiguration: WKWebViewConfiguration? = nil
     ) {
         self.fetcher = fetcher
         self.settingsStore = settingsStore
@@ -96,14 +97,17 @@ final class UsageViewModel: ObservableObject, WebViewCoordinatorDelegate {
         self.loginItemManager = loginItemManager
         self.alertChecker = alertChecker
 
-        let config = WKWebViewConfiguration()
-        // Use app-specific persistent data store to avoid macOS TCC prompt
-        // ("ClaudeUsageTracker would like to access data from other apps")
-        // .default() shares data with Safari/other WebKit apps → triggers prompt every launch.
-        // forIdentifier: creates an isolated persistent store scoped to this app.
-        let storeId = UUID(uuidString: "A1B2C3D4-E5F6-7890-ABCD-EF1234567890")!
-        config.websiteDataStore = WKWebsiteDataStore(forIdentifier: storeId)
-        config.preferences.javaScriptCanOpenWindowsAutomatically = true
+        let config = webViewConfiguration ?? {
+            let c = WKWebViewConfiguration()
+            // Use app-specific persistent data store to avoid macOS TCC prompt
+            // ("ClaudeUsageTracker would like to access data from other apps")
+            // .default() shares data with Safari/other WebKit apps → triggers prompt every launch.
+            // forIdentifier: creates an isolated persistent store scoped to this app.
+            let storeId = UUID(uuidString: "A1B2C3D4-E5F6-7890-ABCD-EF1234567890")!
+            c.websiteDataStore = WKWebsiteDataStore(forIdentifier: storeId)
+            c.preferences.javaScriptCanOpenWindowsAutomatically = true
+            return c
+        }()
         self.webView = WKWebView(frame: .zero, configuration: config)
         self.settings = settingsStore.load()
 
@@ -331,8 +335,9 @@ final class UsageViewModel: ObservableObject, WebViewCoordinatorDelegate {
             sevenDayHistory: sevenDayHistory.map { HistoryPoint(timestamp: $0.timestamp, percent: $0.sevenDayPercent ?? 0) },
             isLoggedIn: isLoggedIn
         )
-        if let data = try? JSONEncoder().encode(snapshot) {
-            AppGroupConfig.sharedDefaults?.set(data, forKey: UsageReader.snapshotKey)
+        if let data = try? JSONEncoder().encode(snapshot),
+           let url = AppGroupConfig.snapshotURL {
+            try? data.write(to: url, options: .atomic)
         }
     }
 }

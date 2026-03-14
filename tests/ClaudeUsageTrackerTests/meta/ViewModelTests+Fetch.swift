@@ -87,12 +87,12 @@ extension ViewModelTests {
         XCTAssertNotNil(text, "Past date should still return a string, not nil")
     }
 
-    // MARK: - applyResult writes widget snapshot to UserDefaults
+    // MARK: - applyResult writes widget snapshot to file
 
-    func testApplyResult_writesSnapshotToUserDefaults() {
-        guard let defaults = AppGroupConfig.sharedDefaults else { return }
+    func testApplyResult_writesSnapshotToFile() {
+        guard let url = AppGroupConfig.snapshotURL else { return }
         // Clean up first
-        defaults.removeObject(forKey: UsageReader.snapshotKey)
+        try? FileManager.default.removeItem(at: url)
 
         let now = Date()
         let vm = makeVM()
@@ -104,8 +104,8 @@ extension ViewModelTests {
 
         vm.applyResult(result)
 
-        let data = defaults.data(forKey: UsageReader.snapshotKey)
-        XCTAssertNotNil(data, "applyResult must write snapshot to UserDefaults")
+        let data = try? Data(contentsOf: url)
+        XCTAssertNotNil(data, "applyResult must write snapshot file")
 
         if let data {
             let snapshot = try? JSONDecoder().decode(UsageSnapshot.self, from: data)
@@ -116,19 +116,19 @@ extension ViewModelTests {
         }
 
         // Cleanup
-        defaults.removeObject(forKey: UsageReader.snapshotKey)
+        try? FileManager.default.removeItem(at: url)
     }
 
-    func testSignOut_writesLoggedOutSnapshotToUserDefaults() {
-        guard let defaults = AppGroupConfig.sharedDefaults else { return }
-        defaults.removeObject(forKey: UsageReader.snapshotKey)
+    func testSignOut_writesLoggedOutSnapshotToFile() {
+        guard let url = AppGroupConfig.snapshotURL else { return }
+        try? FileManager.default.removeItem(at: url)
 
         let vm = makeVM()
         vm.isLoggedIn = true
         vm.signOut()
 
-        let data = defaults.data(forKey: UsageReader.snapshotKey)
-        XCTAssertNotNil(data, "signOut must write snapshot to UserDefaults")
+        let data = try? Data(contentsOf: url)
+        XCTAssertNotNil(data, "signOut must write snapshot file")
 
         if let data {
             let snapshot = try? JSONDecoder().decode(UsageSnapshot.self, from: data)
@@ -139,7 +139,7 @@ extension ViewModelTests {
         }
 
         // Cleanup
-        defaults.removeObject(forKey: UsageReader.snapshotKey)
+        try? FileManager.default.removeItem(at: url)
     }
 
     /// ウィジェットのグラフが描画可能かの前提条件テスト。

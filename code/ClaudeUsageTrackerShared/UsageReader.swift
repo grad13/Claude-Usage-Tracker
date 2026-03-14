@@ -2,22 +2,20 @@
 import Foundation
 import os
 
-/// Read-only access to widget snapshot data via UserDefaults (App Group).
+/// Read-only access to widget snapshot data via file I/O (App Group container).
 /// The main app writes via UsageViewModel.applyResult(); this type only reads.
 public enum UsageReader {
 
     private static let log = Logger(subsystem: "grad13.claudeusagetracker", category: "UsageReader")
 
-    public static let snapshotKey = "widgetSnapshot"
-
-    /// Load a UsageSnapshot from UserDefaults for widget display.
+    /// Load a UsageSnapshot from the App Group container file.
     public static func load() -> UsageSnapshot? {
-        guard let defaults = AppGroupConfig.sharedDefaults else {
-            log.warning("load: sharedDefaults is nil")
+        guard let url = AppGroupConfig.snapshotURL else {
+            log.warning("load: snapshotURL is nil")
             return nil
         }
-        guard let data = defaults.data(forKey: snapshotKey) else {
-            log.warning("load: no snapshot data in UserDefaults")
+        guard let data = try? Data(contentsOf: url) else {
+            log.warning("load: no snapshot file at \(url.path)")
             return nil
         }
         do {
