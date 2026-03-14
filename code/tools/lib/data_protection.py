@@ -52,11 +52,14 @@ def _snapshot(file: Path) -> str | None:
 
     file_hash = _sha256(file)
     backup = file.with_name(file.name + ".backup")
-    shutil.copy2(str(file), str(backup))
+    try:
+        shutil.copy2(str(file), str(backup))
+    except OSError as e:
+        raise OSError(f"Failed to backup {file}: {e}") from e
 
     # Verify the copy succeeded (Layer 3)
     if not backup.exists():
-        raise OSError(f"Failed to create backup: {backup}")
+        raise OSError(f"Backup created but not found: {backup}")
 
     return file_hash
 
@@ -139,8 +142,13 @@ def shelter_file(path: str | Path):
     try:
         yield
     finally:
-        if existed and backup.exists():
-            shutil.copy2(str(backup), str(file))
-            backup.unlink()
+        if existed:
+            if backup.exists():
+                shutil.copy2(str(backup), str(file))
+                backup.unlink()
+            else:
+                import sys
+                print(f"ERROR: Shelter backup for {file.name} was lost! "
+                      f"Original file cannot be restored.", file=sys.stderr)
         elif not existed and file.exists():
             file.unlink()

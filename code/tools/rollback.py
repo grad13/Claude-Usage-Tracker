@@ -11,7 +11,6 @@ Usage:
 
 import os
 import shutil
-import subprocess
 import sys
 import time
 from pathlib import Path
@@ -19,19 +18,17 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent / "lib"))
 
 from launchservices import register_app
+from runner import run
 
-APP_NAME = os.environ.get("APP_NAME", "ClaudeUsageTracker")
-INSTALL_DIR = Path(os.environ.get("INSTALL_DIR", "/Applications"))
-APPGROUP_DIR = Path(
-    os.environ.get(
-        "APPGROUP_DIR",
-        str(
-            Path.home()
-            / "Library/Group Containers/group.grad13.claudeusagetracker"
-            / "Library/Application Support/ClaudeUsageTracker"
-        ),
-    )
+_TEST_MODE = bool(os.environ.get("ROLLBACK_TEST_MODE"))
+_DEFAULT_APPGROUP = str(
+    Path.home()
+    / "Library/Group Containers/group.grad13.claudeusagetracker"
+    / "Library/Application Support/ClaudeUsageTracker"
 )
+APP_NAME = os.environ.get("APP_NAME", "ClaudeUsageTracker") if _TEST_MODE else "ClaudeUsageTracker"
+INSTALL_DIR = Path(os.environ.get("INSTALL_DIR", "/Applications")) if _TEST_MODE else Path("/Applications")
+APPGROUP_DIR = Path(os.environ.get("APPGROUP_DIR", _DEFAULT_APPGROUP)) if _TEST_MODE else Path(_DEFAULT_APPGROUP)
 APP_BACKUP_DIR = APPGROUP_DIR / "app-backups"
 
 
@@ -63,12 +60,10 @@ def rollback(version: str, *, test_mode: bool = False) -> None:
     # Quit running app
     if not test_mode:
         print(f"==> Quitting {APP_NAME}...")
-        subprocess.run(
-            ["osascript", "-e", f'tell application "{APP_NAME}" to quit'],
-            capture_output=True,
-        )
+        run(["osascript", "-e", f'tell application "{APP_NAME}" to quit'],
+            check=False, label="quit app")
         time.sleep(2)
-        subprocess.run(["killall", APP_NAME], capture_output=True)
+        run(["killall", APP_NAME], allow_fail=True, label="killall app")
         time.sleep(0.5)
 
     # Atomic swap: cp .new → mv swap
@@ -83,7 +78,11 @@ def rollback(version: str, *, test_mode: bool = False) -> None:
     if removing_app.exists():
         shutil.rmtree(str(removing_app))
 
-    shutil.copytree(str(backup_app), str(new_app))
+    try:
+        shutil.copytree(str(backup_app), str(new_app))
+    except FileExistsError:
+        shutil.rmtree(str(new_app))
+        shutil.copytree(str(backup_app), str(new_app))
 
     if current_app.is_dir():
         current_app.rename(removing_app)
@@ -96,7 +95,7 @@ def rollback(version: str, *, test_mode: bool = False) -> None:
         register_app(str(current_app))
 
         print("==> Launching...")
-        subprocess.run(["open", str(current_app)])
+        run(["open", str(current_app)], label="launch app")
 
     print(f"==> Rollback to {version} complete.")
     print("    Data (DB, Cookie) は変更されていません。")

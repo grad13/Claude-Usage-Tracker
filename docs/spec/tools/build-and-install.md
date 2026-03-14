@@ -1,6 +1,7 @@
 ---
 Created: 2026-03-04
 Updated: 2026-03-15
+Checked: 2026-03-15
 Checked: -
 Deprecated: -
 Format: spec-v2.1
@@ -45,7 +46,7 @@ A deploy script that performs build, test, and install in a single run. Includes
    |-- Widget verification: run against .new (on failure, .new deleted, current app untouched)
    |-- Binary backup: mv to APPGROUP_DIR/app-backups/.app.v{version}
    |-- mv .new -> .app: atomic swap
-   |-- Widget binary mtime verification
+   |-- Widget binary size + mtime verification
    +-- SetFile -a B: bundle bit
 8. LaunchServices:
    |-- GetFileInfo: bundle bit verification
@@ -146,7 +147,7 @@ The traditional `rm -rf` + `cp -R` pattern is non-atomic and irrecoverable on in
 2. Widget verification (runs against .new)    # On failure: .new deleted, current app untouched
 3. shutil.move(.app, APPGROUP_DIR/app-backups/.app.v{version})  # Backup current app
 4. .app.new.rename(.app)                     # Swap in new app (mv is atomic)
-5. Widget binary mtime verification           # Ensure binary is fresh
+5. Widget binary size + mtime verification     # Ensure binary is fresh
 6. SetFile -a B .app                         # Set bundle bit for Finder
 ```
 
@@ -247,7 +248,7 @@ $HOME/Library/Group Containers/group.grad13.claudeusagetracker/Library/Applicati
 | Test failure | RuntimeError (build and install are not performed) |
 | Build artifact not found | RuntimeError |
 | Widget appex not found in .new | RuntimeError (.new deleted, current app untouched) |
-| Widget binary stale (mtime) | RuntimeError |
+| Widget binary stale (mtime) or size mismatch | RuntimeError |
 | Bundle bit not set | RuntimeError |
 | Entitlements missing (application-groups) | RuntimeError |
 | Widget registered from DerivedData (LS) | RuntimeError |
@@ -265,19 +266,24 @@ $HOME/Library/Group Containers/group.grad13.claudeusagetracker/Library/Applicati
 
 | Function | Responsibility |
 |----------|----------------|
-| `backup_database()` | DB backup + rotation (keeps 10) |
+| `find_derived_data_dir()` | Find correct DerivedData via WorkspacePath matching; fallback to newest by mtime |
 | `run_test_gate()` | xcodebuild test |
 | `build_app()` | Remove stale xctest from DerivedData + xcodebuild build + artifact verification; returns Path |
-| `install_app(build_app_path)` | Stop app + atomic install + widget verification + mtime check + bundle bit |
-| `register_and_verify(backup_file)` | Bundle bit verify + entitlements verify + LS registration + process kill + verification gate + data integrity + Dock refresh + launch |
-| `_verify_widget_deployment(app_path)` | Deployment verification gate: 3 conditions, all must pass or RuntimeError |
+| `install_app(build_app_path)` | Stop app + atomic install + widget verification + size/mtime check + bundle bit |
+| `verify_bundle_bits(app_path)` | Verify bundle bit via GetFileInfo |
+| `register_and_clean(app_path)` | Deregister stale copies + entitlements verify + LS registration + process kill |
+| `verify_deployment(app_path)` | Deployment verification gate: 3 conditions, all must pass or RuntimeError |
+| `check_data_integrity(backup_file)` | Row loss detection (ATTACH + COUNT) |
+| `refresh_and_launch(app_path)` | killall Dock (icon cache refresh) + open app |
 
 ## Related Scripts
 
 | Script | Responsibility |
 |--------|----------------|
-| `tools/lib/data_protection.py` | `protect_files` context manager (3-layer defense) |
-| `tools/lib/launchservices.py` | `LSREGISTER` path constant + `deregister_stale_apps()` + `register_app()` |
-| `tools/lib/version.py` | `get_app_version()` -- version string retrieval via plistlib |
-| `tools/rollback.py` | Binary rollback (atomic swap). Does not cover data (DB, cookies) |
-| `tools/tests/` (pytest) | Tests for data protection + rollback + lib functions (27 cases) |
+| `tools/lib/runner.py` | `run()` — subprocess wrapper with consistent error handling (check/allow_fail/label) |
+| `tools/lib/db_backup.py` | `backup_database()` + `rotate_backups()` + `check_lost_rows()` — DB backup and integrity |
+| `tools/lib/data_protection.py` | `protect_files` context manager (3-layer defense) + `shelter_file` (backup loss detection) |
+| `tools/lib/launchservices.py` | `LSREGISTER` path constant + `deregister_stale_apps()` + `register_app()` + `dump_widget_registration()` (entry boundary search) |
+| `tools/lib/version.py` | `get_app_version()` — version string retrieval via plistlib (specific exception handling) |
+| `tools/rollback.py` | Binary rollback (atomic swap). Env vars restricted to TEST_MODE. Does not cover data (DB, cookies) |
+| `tools/tests/` (pytest) | Tests for runner + data protection + deploy gate + rollback + lib functions + find_derived_data |

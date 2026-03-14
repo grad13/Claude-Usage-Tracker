@@ -15,5 +15,9 @@ def get_app_version(app_path: str | Path) -> str:
         with open(plist_path, "rb") as f:
             plist = plistlib.load(f)
         return plist.get("CFBundleShortVersionString", "unknown")
-    except (FileNotFoundError, plistlib.InvalidFileException, Exception):
+    except (FileNotFoundError, plistlib.InvalidFileException, KeyError):
+        return "unknown"
+    except Exception as e:
+        import sys
+        print(f"WARNING: Unexpected error reading {plist_path}: {e}", file=sys.stderr)
         return "unknown"

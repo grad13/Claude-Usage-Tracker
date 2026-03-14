@@ -1,8 +1,9 @@
 """LaunchServices utilities for app registration management."""
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
+
+from runner import run
 
 LSREGISTER = (
     "/System/Library/Frameworks/CoreServices.framework"
@@ -28,25 +29,21 @@ def deregister_stale_apps(app_name: str, derived_data: str) -> None:
     if dd_path.exists():
         for dd_dir in dd_path.glob(f"{app_name}-*/Build/Products/*/{app_name}.app"):
             if dd_dir.is_dir():
-                subprocess.run(
-                    [LSREGISTER, "-u", str(dd_dir)],
-                    capture_output=True,
-                )
+                run([LSREGISTER, "-u", str(dd_dir)],
+                    allow_fail=True, label="deregister DD")
 
     # Trash copies
     trash = Path.home() / ".Trash"
     if trash.exists():
         for trash_app in trash.glob(f"{app_name}*.app"):
             if trash_app.is_dir():
-                subprocess.run(
-                    [LSREGISTER, "-u", str(trash_app)],
-                    capture_output=True,
-                )
+                run([LSREGISTER, "-u", str(trash_app)],
+                    allow_fail=True, label="deregister Trash")
 
 
 def register_app(app_path: str) -> None:
     """Register an app with LaunchServices (force)."""
-    subprocess.run([LSREGISTER, "-f", app_path], check=True)
+    run([LSREGISTER, "-f", app_path], label="register app")
 
 
 def dump_widget_registration(widget_id: str) -> str | None:
@@ -54,16 +51,18 @@ def dump_widget_registration(widget_id: str) -> str | None:
 
     Returns the path line, or None if not found.
     """
-    result = subprocess.run(
-        [LSREGISTER, "-dump"],
-        capture_output=True,
-        text=True,
-    )
+    result = run([LSREGISTER, "-dump"], check=False, label="lsregister dump")
     lines = result.stdout.splitlines()
     for i, line in enumerate(lines):
         if f"plugin Identifiers:         {widget_id}" in line:
-            # Search backwards for the path
-            for j in range(i, max(i - 80, -1), -1):
+            # lsregister entries are separated by "----" lines.
+            # Search backwards for "path:" within the same entry.
+            for j in range(i - 1, -1, -1):
                 if lines[j].startswith("path:"):
                     return lines[j]
+                if "----" in lines[j]:
+                    break  # Hit entry boundary — stop
+            print(f"WARNING: Widget {widget_id} found at line {i} "
+                  f"but no path line in same entry")
+            return None
     return None

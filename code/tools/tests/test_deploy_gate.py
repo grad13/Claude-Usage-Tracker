@@ -13,7 +13,7 @@ Spec: docs/spec/tools/build-and-install.md (Deployment Verification Gate)
 import subprocess
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -33,6 +33,11 @@ def _make_completed_process(stdout="", stderr="", returncode=0):
     return subprocess.CompletedProcess(
         args=[], returncode=returncode, stdout=stdout, stderr=stderr,
     )
+
+
+def _mock_run_success(cmd, **kwargs):
+    """Default mock for runner.run that always succeeds."""
+    return _make_completed_process()
 
 
 # ---------------------------------------------------------------------------
@@ -60,8 +65,7 @@ class TestStaleXctestRemoval:
         import build_and_install as bi
 
         with patch.object(bi, "find_derived_data_dir", return_value=dd_dir), \
-             patch.object(bi, "subprocess") as mock_sub:
-            mock_sub.run.return_value = _make_completed_process()
+             patch.object(bi, "run", side_effect=_mock_run_success):
             try:
                 bi.build_app()
             except Exception:
@@ -79,8 +83,7 @@ class TestStaleXctestRemoval:
         import build_and_install as bi
 
         with patch.object(bi, "find_derived_data_dir", return_value=dd_dir), \
-             patch.object(bi, "subprocess") as mock_sub:
-            mock_sub.run.return_value = _make_completed_process()
+             patch.object(bi, "run", side_effect=_mock_run_success):
             try:
                 bi.build_app()
             except Exception:
@@ -92,8 +95,7 @@ class TestStaleXctestRemoval:
         import build_and_install as bi
 
         with patch.object(bi, "find_derived_data_dir", return_value=None), \
-             patch.object(bi, "subprocess") as mock_sub:
-            mock_sub.run.return_value = _make_completed_process()
+             patch.object(bi, "run", side_effect=_mock_run_success):
             try:
                 bi.build_app()
             except RuntimeError as e:
@@ -122,14 +124,13 @@ class TestVerificationGate:
 
         pk_stdout = self._make_pluginkit_stdout(found=True, ghost=False)
 
-        def side_effect(cmd, **kwargs):
+        def mock_run(cmd, **kwargs):
             if "pluginkit" in cmd:
                 return _make_completed_process(stdout=pk_stdout)
             return _make_completed_process()
 
-        with patch.object(bi, "subprocess") as mock_sub, \
+        with patch.object(bi, "run", side_effect=mock_run), \
              patch.object(bi, "dump_widget_registration", return_value="/Applications/ClaudeUsageTracker.app"):
-            mock_sub.run.side_effect = side_effect
             # Should not raise
             bi._verify_widget_deployment("/Applications/ClaudeUsageTracker.app")
 
@@ -137,14 +138,13 @@ class TestVerificationGate:
         """Test 5: Widget not in pluginkit → GATE FAIL [1/3]."""
         import build_and_install as bi
 
-        def side_effect(cmd, **kwargs):
+        def mock_run(cmd, **kwargs):
             if "pluginkit" in cmd:
                 return _make_completed_process(stdout="")
             return _make_completed_process()
 
-        with patch.object(bi, "subprocess") as mock_sub, \
+        with patch.object(bi, "run", side_effect=mock_run), \
              patch.object(bi, "dump_widget_registration", return_value=None):
-            mock_sub.run.side_effect = side_effect
             with pytest.raises(RuntimeError, match=r"GATE FAIL \[1/3\]"):
                 bi._verify_widget_deployment("/Applications/ClaudeUsageTracker.app")
 
@@ -154,14 +154,13 @@ class TestVerificationGate:
 
         pk_stdout = self._make_pluginkit_stdout(found=True, ghost=True)
 
-        def side_effect(cmd, **kwargs):
+        def mock_run(cmd, **kwargs):
             if "pluginkit" in cmd:
                 return _make_completed_process(stdout=pk_stdout)
             return _make_completed_process()
 
-        with patch.object(bi, "subprocess") as mock_sub, \
+        with patch.object(bi, "run", side_effect=mock_run), \
              patch.object(bi, "dump_widget_registration", return_value=None):
-            mock_sub.run.side_effect = side_effect
             with pytest.raises(RuntimeError, match=r"GATE FAIL \[2/3\]"):
                 bi._verify_widget_deployment("/Applications/ClaudeUsageTracker.app")
 
@@ -171,13 +170,12 @@ class TestVerificationGate:
 
         pk_stdout = self._make_pluginkit_stdout(found=True, ghost=False)
 
-        def side_effect(cmd, **kwargs):
+        def mock_run(cmd, **kwargs):
             if "pluginkit" in cmd:
                 return _make_completed_process(stdout=pk_stdout)
             return _make_completed_process()
 
-        with patch.object(bi, "subprocess") as mock_sub, \
+        with patch.object(bi, "run", side_effect=mock_run), \
              patch.object(bi, "dump_widget_registration", return_value="/Users/x/DerivedData/ghost"):
-            mock_sub.run.side_effect = side_effect
             with pytest.raises(RuntimeError, match=r"GATE FAIL \[3/3\]"):
                 bi._verify_widget_deployment("/Applications/ClaudeUsageTracker.app")
