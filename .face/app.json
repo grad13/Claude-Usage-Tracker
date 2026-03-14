@@ -2,15 +2,5 @@
   "name": "Claude Usage Tracker",
   "description": "Claude Code 使用量モニター",
   "url": "https://github.com/grad13/Claude-Usage-Tracker",
-  "news": [
-    {"date": "2026-03-14", "text": "ウィジェットのデータ共有をSQLite→UserDefaultsに変更、古いデータ表示の問題を修正"},
-    {"date": "2026-03-13", "text": "v1.0.0 正式リリース（Developer ID署名 + Apple公証済み）"},
-    {"date": "2026-03-07", "text": "カラーテーマ設定（System/Light/Dark）、ウィジェット・分析ページにも反映"},
-    {"date": "2026-03-06", "text": "分析ページにセッションナビゲーション（週次/時間帯 × セッション/カレンダー 4モード）"},
-    {"date": "2026-03-03", "text": "ClaudeUsageTracker に改名、新アイコン適用"},
-    {"date": "2026-02-28", "text": "アラート通知機能（週次/時間帯/日次の使用量しきい値）"},
-    {"date": "2026-02-26", "text": "分析ページ追加（使用量チャート、日付範囲選択、セッション可視化）"},
-    {"date": "2026-02-23", "text": "macOS ウィジェット対応（Small/Medium/Large）"},
-    {"date": "2026-02-21", "text": "初版公開 — メニューバー常駐型の使用量モニター"}
-  ]
+  "thumbnail": "thumbnail.png"
 }
