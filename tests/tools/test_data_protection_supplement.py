@@ -93,7 +93,7 @@ class TestSnapshot:
         target.write_text('{"data":"value"}')
 
         with patch("data_protection.shutil.copy2"):
-            with pytest.raises(OSError, match="Failed to create backup"):
+            with pytest.raises(OSError, match="Backup created but not found"):
                 _snapshot(target)
 
 

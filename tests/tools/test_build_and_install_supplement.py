@@ -68,10 +68,7 @@ def test_backup_database_creates_backup(tmp_path, monkeypatch):
     db = appgroup / "usage.db"
     _create_usage_db_with_rows(db, 5)
 
-    monkeypatch.setattr(bai, "APPGROUP_DIR", appgroup)
-    monkeypatch.setattr(bai, "APPGROUP_DB", db)
-
-    pre_count, backup_file = bai.backup_database()
+    pre_count, backup_file = bai.backup_database(db, appgroup)
 
     assert pre_count == 5
     assert backup_file is not None
@@ -91,10 +88,7 @@ def test_backup_database_db_not_found(tmp_path, monkeypatch):
     appgroup.mkdir()
     db = appgroup / "usage.db"  # does not exist
 
-    monkeypatch.setattr(bai, "APPGROUP_DIR", appgroup)
-    monkeypatch.setattr(bai, "APPGROUP_DB", db)
-
-    pre_count, backup_file = bai.backup_database()
+    pre_count, backup_file = bai.backup_database(db, appgroup)
 
     assert pre_count == 0
     assert backup_file is None
@@ -123,10 +117,7 @@ def test_backup_database_rotation(tmp_path, monkeypatch):
         mtime = time.time() - (12 - i) * 60
         os.utime(f, (mtime, mtime))
 
-    monkeypatch.setattr(bai, "APPGROUP_DIR", appgroup)
-    monkeypatch.setattr(bai, "APPGROUP_DB", db)
-
-    bai.backup_database()
+    bai.backup_database(db, appgroup)
 
     # 11 pre-existing + 1 new = 12 total, rotation keeps 10
     remaining = list(backup_dir.glob("usage_*.db"))
