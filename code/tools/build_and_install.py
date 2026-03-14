@@ -82,11 +82,10 @@ def find_derived_data_dir() -> Path | None:
             except Exception:
                 pass
         candidates.append(d)
-    # Fallback: newest by mtime (with warning)
+    # No match found — fresh build will create a new DerivedData
     if candidates:
-        best = max(candidates, key=lambda p: p.stat().st_mtime)
-        print(f"WARNING: No WorkspacePath match. Using newest: {best.name}")
-        return best
+        print(f"WARNING: {len(candidates)} DerivedData dir(s) found but none match "
+              f"PROJECT_DIR={PROJECT_DIR}. Will build fresh.")
     return None
 
 
@@ -104,7 +103,7 @@ def run_test_gate() -> None:
             "-allowProvisioningUpdates",
             "test",
         ],
-        check=False,
+        on_error="warn",
         label="xcodebuild test",
     )
     # Show last 5 lines of output
@@ -146,7 +145,7 @@ def build_app() -> Path:
             "-allowProvisioningUpdates",
             "clean", "build",
         ],
-        check=False,
+        on_error="warn",
         label="xcodebuild build",
     )
     for line in result.stdout.splitlines()[-5:]:
@@ -168,18 +167,22 @@ def build_app() -> Path:
     return build_app_path
 
 
+def quit_running_app() -> None:
+    """Quit the running app instance gracefully, then force-kill."""
+    run(["osascript", "-e", f'tell application "{APP_NAME}" to quit'],
+        on_error="warn", label="quit app")
+    # Wait for app to handle quit event and flush state (settings, cookies)
+    time.sleep(2)
+    run(["killall", APP_NAME], on_error="warn", label="killall app")
+    # Wait for process to fully terminate before touching the .app bundle
+    time.sleep(0.5)
+
+
 def install_app(build_app_path: Path) -> None:
-    """Atomic install: cp .new → verify → mv swap.
+    """Atomic install: cp .new → verify widget → backup current → mv swap.
 
     If widget verification fails, .new is deleted and current app is untouched.
     """
-    # Quit running instance
-    run(["osascript", "-e", f'tell application "{APP_NAME}" to quit'],
-        check=False, label="quit app")
-    time.sleep(2)
-    run(["killall", APP_NAME], allow_fail=True, label="killall app")
-    time.sleep(0.5)
-
     print(f"==> Installing to {INSTALL_DIR}...")
     new_app = INSTALL_DIR / f"{APP_NAME}.app.new"
 
@@ -220,9 +223,14 @@ def install_app(build_app_path: Path) -> None:
 
     new_app.rename(current_app)
 
-    # Verify widget binary is fresh (not stale from previous install)
+
+def verify_installed_widget(build_app_path: Path, installed_app: Path) -> None:
+    """Verify installed widget binary matches the build and set bundle bit.
+
+    Checks size and mtime to catch stale binaries from previous installs.
+    """
     widget_bin = (
-        current_app / "Contents/PlugIns/ClaudeUsageTrackerWidgetExtension.appex"
+        installed_app / "Contents/PlugIns/ClaudeUsageTrackerWidgetExtension.appex"
         / "Contents/MacOS/ClaudeUsageTrackerWidgetExtension"
     )
     source_bin = (
@@ -248,7 +256,7 @@ def install_app(build_app_path: Path) -> None:
               f"mtime={datetime.fromtimestamp(inst_stat.st_mtime)}")
 
     # Set bundle bit so Finder treats it as an app, not a folder
-    run(["SetFile", "-a", "B", str(current_app)], label="SetFile bundle bit")
+    run(["SetFile", "-a", "B", str(installed_app)], label="SetFile bundle bit")
 
 
 def _verify_widget_deployment(app_path: str) -> None:
@@ -263,7 +271,7 @@ def _verify_widget_deployment(app_path: str) -> None:
 
     # --- Check 1: Widget found in pluginkit manifest ---
     pk = run(["pluginkit", "-m", "-v", "-i", WIDGET_ID],
-             check=False, label="pluginkit manifest")
+             on_error="warn", label="pluginkit manifest")
     if WIDGET_ID not in pk.stdout:
         raise RuntimeError(
             f"GATE FAIL [1/3]: Widget not found in pluginkit\n"
@@ -294,7 +302,7 @@ def _verify_widget_deployment(app_path: str) -> None:
 
 def verify_bundle_bits(app_path: str) -> None:
     """Verify bundle bit is set (Finder shows as folder without it)."""
-    result = run(["GetFileInfo", app_path], check=False, label="GetFileInfo")
+    result = run(["GetFileInfo", app_path], on_error="warn", label="GetFileInfo")
     if result.returncode == 0:
         for line in result.stdout.splitlines():
             if line.startswith("attributes:"):
@@ -311,7 +319,8 @@ def verify_bundle_bits(app_path: str) -> None:
 
 def register_and_clean(app_path: str) -> None:
     """Deregister stale copies, verify entitlements, register app, restart widget processes."""
-    # Deregister stale copies
+    # Deregister DerivedData from LS after install so /Applications is the
+    # sole registered source (prevents widget loading from wrong location)
     print("==> Cleaning stale LaunchServices registrations...")
     deregister_stale_apps(APP_NAME, str(DERIVED_DATA))
 
@@ -339,11 +348,12 @@ def register_and_clean(app_path: str) -> None:
     print(f"==> Registering {app_path} with LaunchServices...")
     register_app(app_path)
     run(["pluginkit", "-e", "use", "-i", WIDGET_ID],
-        allow_fail=True, label="pluginkit enable")
+        on_error="warn", label="pluginkit enable")
     # Kill widget extension process first so chronod doesn't reuse the old binary
     for proc in ["ClaudeUsageTrackerWidgetExtension", "chronod", "NotificationCenter"]:
-        run(["killall", proc], allow_fail=True, label=f"killall {proc}")
+        run(["killall", proc], on_error="warn", label=f"killall {proc}")
     print("==> Killed widget extension + chronod + NotificationCenter")
+    # Wait for OS to restart widget-related daemons (chronod, NC) with new binary
     time.sleep(3)
 
 
@@ -375,7 +385,8 @@ def check_data_integrity(backup_file: Path | None) -> None:
 def refresh_and_launch(app_path: str) -> None:
     """Force Dock refresh + launch app."""
     print("==> Refreshing Dock icon cache...")
-    run(["killall", "Dock"], allow_fail=True, label="killall Dock")
+    run(["killall", "Dock"], on_error="warn", label="killall Dock")
+    # Wait for Dock to restart and rebuild icon cache with new app bundle
     time.sleep(2)
 
     print("==> Launching...")
@@ -401,14 +412,19 @@ def main() -> None:
     # protect_files guarantees restore even if run_test_gate raises
 
     # Phase 2: Build (after test passes, after files are restored)
+    # Deregister DerivedData from LS before build so xcodebuild doesn't
+    # reuse stale code signature info from previous builds
     print("==> Deregistering DerivedData from LaunchServices...")
     deregister_stale_apps(APP_NAME, str(DERIVED_DATA))
 
     build_app_path = build_app()
 
-    # Phase 3: Atomic install + register + verify + launch
+    # Phase 3: Quit → Atomic install → Verify → Register → Launch
+    quit_running_app()
     install_app(build_app_path)
-    app_path = str(INSTALL_DIR / f"{APP_NAME}.app")
+    installed_app = INSTALL_DIR / f"{APP_NAME}.app"
+    verify_installed_widget(build_app_path, installed_app)
+    app_path = str(installed_app)
     verify_bundle_bits(app_path)
     register_and_clean(app_path)
     verify_deployment(app_path)

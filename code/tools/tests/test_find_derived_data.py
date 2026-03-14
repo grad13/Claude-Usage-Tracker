@@ -2,14 +2,13 @@
 
 Covers:
   Test 1: Multiple DerivedData dirs → correct one selected by WorkspacePath
-  Test 2: No WorkspacePath match → newest by mtime (with WARNING)
+  Test 2: No WorkspacePath match → None (with WARNING)
   Test 3: Empty DerivedData → None
   Test 4: DerivedData dir doesn't exist → None
 """
 
 import plistlib
 import sys
-import time
 from pathlib import Path
 from unittest.mock import patch
 
@@ -47,22 +46,21 @@ class TestFindDerivedDataDir:
 
         assert result == correct
 
-    def test_fallback_newest_when_no_workspace_match(self, tmp_path, capsys):
-        """Test 2: No WorkspacePath match → newest by mtime + WARNING."""
+    def test_returns_none_when_no_workspace_match(self, tmp_path, capsys):
+        """Test 2: No WorkspacePath match → None + WARNING."""
         import build_and_install as bi
 
         dd_base = tmp_path / "DerivedData"
         dd_base.mkdir()
 
-        old = _create_dd_dir(dd_base, "old", "/wrong/path")
-        time.sleep(0.05)
-        new = _create_dd_dir(dd_base, "new", "/also/wrong")
+        _create_dd_dir(dd_base, "old", "/wrong/path")
+        _create_dd_dir(dd_base, "new", "/also/wrong")
 
         with patch.object(bi, "DERIVED_DATA", dd_base), \
              patch.object(bi, "PROJECT_DIR", Path("/nonexistent")):
             result = bi.find_derived_data_dir()
 
-        assert result == new
+        assert result is None
         captured = capsys.readouterr()
         assert "WARNING" in captured.out
 

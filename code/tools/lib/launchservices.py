@@ -30,7 +30,7 @@ def deregister_stale_apps(app_name: str, derived_data: str) -> None:
         for dd_dir in dd_path.glob(f"{app_name}-*/Build/Products/*/{app_name}.app"):
             if dd_dir.is_dir():
                 run([LSREGISTER, "-u", str(dd_dir)],
-                    allow_fail=True, label="deregister DD")
+                    on_error="warn", label="deregister DD")
 
     # Trash copies
     trash = Path.home() / ".Trash"
@@ -38,7 +38,7 @@ def deregister_stale_apps(app_name: str, derived_data: str) -> None:
         for trash_app in trash.glob(f"{app_name}*.app"):
             if trash_app.is_dir():
                 run([LSREGISTER, "-u", str(trash_app)],
-                    allow_fail=True, label="deregister Trash")
+                    on_error="warn", label="deregister Trash")
 
 
 def register_app(app_path: str) -> None:
@@ -51,7 +51,7 @@ def dump_widget_registration(widget_id: str) -> str | None:
 
     Returns the path line, or None if not found.
     """
-    result = run([LSREGISTER, "-dump"], check=False, label="lsregister dump")
+    result = run([LSREGISTER, "-dump"], on_error="warn", label="lsregister dump")
     lines = result.stdout.splitlines()
     for i, line in enumerate(lines):
         if f"plugin Identifiers:         {widget_id}" in line:

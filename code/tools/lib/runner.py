@@ -8,21 +8,20 @@ import sys
 def run(
     cmd: list[str],
     *,
-    check: bool = True,
+    on_error: str = "raise",
     label: str = "",
-    allow_fail: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     """Run a subprocess with logging.
 
-    - check=True (default): raise RuntimeError on non-zero exit
-    - allow_fail=True: log WARNING but don't raise
-    - check=False, allow_fail=False: log WARNING (same as allow_fail)
+    on_error:
+      - "raise" (default): raise RuntimeError on non-zero exit
+      - "warn": log WARNING to stderr but don't raise
     """
     result = subprocess.run(cmd, capture_output=True, text=True)
     prefix = f"[{label}] " if label else ""
     if result.returncode != 0:
         msg = f"{prefix}rc={result.returncode}: {result.stderr.strip()}"
-        if check and not allow_fail:
+        if on_error == "raise":
             raise RuntimeError(msg)
         print(f"WARNING: {msg}", file=sys.stderr)
     return result

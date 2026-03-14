@@ -61,9 +61,9 @@ def rollback(version: str, *, test_mode: bool = False) -> None:
     if not test_mode:
         print(f"==> Quitting {APP_NAME}...")
         run(["osascript", "-e", f'tell application "{APP_NAME}" to quit'],
-            check=False, label="quit app")
+            on_error="warn", label="quit app")
         time.sleep(2)
-        run(["killall", APP_NAME], allow_fail=True, label="killall app")
+        run(["killall", APP_NAME], on_error="warn", label="killall app")
         time.sleep(0.5)
 
     # Atomic swap: cp .new → mv swap

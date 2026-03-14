@@ -28,8 +28,8 @@ def test_run_success(_patch_subprocess):
     assert result.stdout == "ok\n"
 
 
-def test_run_check_raises_on_failure(_patch_subprocess):
-    """check=True (default) raises RuntimeError on non-zero exit."""
+def test_run_raises_on_failure_by_default(_patch_subprocess):
+    """on_error='raise' (default) raises RuntimeError on non-zero exit."""
     _patch_subprocess.return_value = subprocess.CompletedProcess(
         args=["false"], returncode=1, stdout="", stderr="command failed"
     )
@@ -46,27 +46,25 @@ def test_run_label_in_error_message(_patch_subprocess):
         run(["bad"], label="my label")
 
 
-def test_run_allow_fail_warns(_patch_subprocess, capsys):
-    """allow_fail=True logs WARNING but does not raise."""
+def test_run_on_error_warn(_patch_subprocess, capsys):
+    """on_error='warn' logs WARNING but does not raise."""
     _patch_subprocess.return_value = subprocess.CompletedProcess(
         args=["fail"], returncode=1, stdout="", stderr="not fatal"
     )
-    result = run(["fail"], allow_fail=True, label="soft")
+    result = run(["fail"], on_error="warn", label="soft")
     assert result.returncode == 1
     captured = capsys.readouterr()
     assert "WARNING" in captured.err
     assert "soft" in captured.err
 
 
-def test_run_check_false_warns(_patch_subprocess, capsys):
-    """check=False logs WARNING but does not raise."""
+def test_run_on_error_raise_explicit(_patch_subprocess):
+    """on_error='raise' explicitly raises RuntimeError."""
     _patch_subprocess.return_value = subprocess.CompletedProcess(
-        args=["fail"], returncode=1, stdout="", stderr="info"
+        args=["fail"], returncode=1, stdout="", stderr="fatal"
     )
-    result = run(["fail"], check=False, label="optional")
-    assert result.returncode == 1
-    captured = capsys.readouterr()
-    assert "WARNING" in captured.err
+    with pytest.raises(RuntimeError, match="rc=1"):
+        run(["fail"], on_error="raise", label="explicit")
 
 
 def test_run_no_label(_patch_subprocess):
