@@ -48,9 +48,6 @@ APPGROUP_DB = APPGROUP_DIR / "usage.db"
 APPGROUP_SETTINGS = APPGROUP_DIR / "settings.json"
 COOKIE_FILE = APPGROUP_DIR / "session-cookies.json"
 WIDGET_ID = "grad13.claudeusagetracker.widget"
-SIGNING_IDENTITY = "F45B6D9D59936DBD3B71A979D7EA110BA3969C81"
-WIDGET_ENTITLEMENTS = PROJECT_DIR / "code/ClaudeUsageTrackerWidget/ClaudeUsageTrackerWidget.entitlements"
-APP_ENTITLEMENTS = PROJECT_DIR / "code/ClaudeUsageTracker/ClaudeUsageTracker.entitlements"
 
 
 # ---------------------------------------------------------------------------
@@ -130,7 +127,24 @@ def run_test_gate() -> None:
 
 
 def build_app() -> Path:
-    """Build the app and return the path to the built .app."""
+    """Build the app and return the path to the built .app.
+
+    Removes stale xctest from DerivedData before building so that
+    xcodebuild re-signs the bundle without the test target.
+    (Scheme has buildForTesting=NO, but xcodebuild test leaves
+    xctest in DerivedData which persists across incremental builds.)
+    """
+    # Remove stale xctest from DerivedData (left by xcodebuild test)
+    dd_dir = find_derived_data_dir()
+    if dd_dir:
+        stale_xctest = (
+            dd_dir / "Build/Products/Debug"
+            / f"{APP_NAME}.app/Contents/PlugIns/ClaudeUsageTrackerTests.xctest"
+        )
+        if stale_xctest.exists():
+            shutil.rmtree(str(stale_xctest))
+            print("==> Removed stale xctest from DerivedData")
+
     print(f"==> Building {SCHEME}...")
     result = subprocess.run(
         [
@@ -154,7 +168,8 @@ def build_app() -> Path:
         raise RuntimeError("Build failed.")
 
     # Find the built app
-    dd_dir = find_derived_data_dir()
+    if dd_dir is None:
+        dd_dir = find_derived_data_dir()
     if dd_dir is None:
         raise RuntimeError("DerivedData not found after build.")
 
@@ -163,62 +178,6 @@ def build_app() -> Path:
         raise RuntimeError(f"Built app not found at {build_app_path}")
 
     return build_app_path
-
-
-def _resign_after_xctest_removal(app_path: Path) -> None:
-    """Re-sign app bundle after xctest removal (inner → outer).
-
-    xctest deletion breaks the outer code signature seal.
-    Re-sign each component individually with --entitlements to restore
-    both signature validity and entitlements.
-    Never use --deep (strips/overwrites entitlements on nested bundles).
-    """
-    subprocess.run(["xattr", "-cr", str(app_path)], check=True)
-
-    # 1. Shared framework (innermost)
-    framework = app_path / "Contents/Frameworks/ClaudeUsageTrackerShared.framework"
-    if framework.exists():
-        subprocess.run(
-            ["codesign", "--force", "--sign", SIGNING_IDENTITY, str(framework)],
-            check=True,
-        )
-
-    # 2. Widget extension (with entitlements)
-    appex = app_path / "Contents/PlugIns/ClaudeUsageTrackerWidgetExtension.appex"
-    if appex.exists():
-        subprocess.run(
-            ["codesign", "--force", "--sign", SIGNING_IDENTITY,
-             "--entitlements", str(WIDGET_ENTITLEMENTS), str(appex)],
-            check=True,
-        )
-
-    # 3. Main app (outermost, with entitlements)
-    subprocess.run(
-        ["codesign", "--force", "--sign", SIGNING_IDENTITY,
-         "--entitlements", str(APP_ENTITLEMENTS), str(app_path)],
-        check=True,
-    )
-
-    # 4. Verify signature
-    result = subprocess.run(
-        ["codesign", "--verify", "--deep", "--strict", str(app_path)],
-        capture_output=True, text=True,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"Code signature verification failed after re-signing: {result.stderr}")
-
-    # 5. Verify entitlements
-    for target, name in [(app_path, "main app"), (appex, "widget extension")]:
-        if not target.exists():
-            continue
-        ent_result = subprocess.run(
-            ["codesign", "-d", "--entitlements", "-", str(target)],
-            capture_output=True, text=True,
-        )
-        if "application-groups" not in ent_result.stdout:
-            raise RuntimeError(f"Entitlements missing on {name} after re-signing")
-
-    print("==> Re-signed after xctest removal (inner → outer)")
 
 
 def install_app(build_app_path: Path) -> None:
@@ -244,12 +203,6 @@ def install_app(build_app_path: Path) -> None:
 
     # Copy new build to .new (cp -R for clean copy; ditto can silently merge stale files)
     subprocess.run(["cp", "-R", str(build_app_path), str(new_app)], check=True)
-
-    # Remove test bundle from .new and re-sign (xctest deletion breaks outer seal)
-    test_xctest = new_app / "Contents/PlugIns/ClaudeUsageTrackerTests.xctest"
-    if test_xctest.exists():
-        shutil.rmtree(str(test_xctest))
-        _resign_after_xctest_removal(new_app)
 
     # Verify widget extension in .new (before touching current app)
     widget_appex = new_app / "Contents/PlugIns/ClaudeUsageTrackerWidgetExtension.appex"
@@ -304,6 +257,48 @@ def install_app(build_app_path: Path) -> None:
 
     # Set bundle bit so Finder treats it as an app, not a folder
     subprocess.run(["SetFile", "-a", "B", str(current_app)], check=True)
+
+
+def _verify_widget_deployment(app_path: str) -> None:
+    """Deployment verification gate: prove widget registration is correct.
+
+    Checks ALL known necessary conditions for widget operation after deploy.
+    Raises RuntimeError if any condition fails. No WARNING — all failures stop deploy.
+    """
+    print("==> Running deployment verification gate...")
+    passed = 0
+    total = 3
+
+    # --- Check 1: Widget found in pluginkit manifest ---
+    pk = subprocess.run(
+        ["pluginkit", "-m", "-v", "-i", WIDGET_ID],
+        capture_output=True, text=True,
+    )
+    if WIDGET_ID not in pk.stdout:
+        raise RuntimeError(
+            f"GATE FAIL [1/3]: Widget not found in pluginkit\n"
+            f"       {pk.stdout.strip()}"
+        )
+    passed += 1
+
+    # --- Check 2: No DerivedData ghost in pluginkit ---
+    if "DerivedData" in pk.stdout:
+        raise RuntimeError(
+            f"GATE FAIL [2/3]: Widget registered from DerivedData (ghost)\n"
+            f"       {pk.stdout.strip()}"
+        )
+    passed += 1
+
+    # --- Check 3: No ghost LS registration ---
+    reg = dump_widget_registration(WIDGET_ID)
+    if reg and "DerivedData" in reg:
+        raise RuntimeError(
+            f"GATE FAIL [3/3]: Ghost LS registration from DerivedData\n"
+            f"       {reg}"
+        )
+    passed += 1
+
+    print(f"==> Deployment verification gate: {passed}/{total} checks passed")
 
 
 def check_lost_rows(current_db: str, backup_db: str) -> int:
@@ -379,29 +374,8 @@ def register_and_verify(backup_file: Path | None) -> None:
     print("==> Killed widget extension + chronod + NotificationCenter")
     time.sleep(3)
 
-    # Verify widget registration
-    print("==> Verifying widget extension registration...")
-    widget_reg = dump_widget_registration(WIDGET_ID)
-    if widget_reg and "DerivedData" in widget_reg:
-        raise RuntimeError(
-            f"Widget extension still registered from DerivedData!\n"
-            f"       {widget_reg}\n"
-            f"       chronod will fail to launch the widget from /Applications."
-        )
-    if widget_reg and "/Applications/" in widget_reg:
-        print(f"==> Widget registered correctly: {widget_reg}")
-    else:
-        print(f"WARNING: Could not verify widget registration path: {widget_reg}")
-
-    # Verify pluginkit can find the widget
-    pk_match = subprocess.run(
-        ["pluginkit", "-m", "-i", WIDGET_ID],
-        capture_output=True, text=True,
-    )
-    if WIDGET_ID in pk_match.stdout:
-        print(f"==> Widget found in pluginkit: {pk_match.stdout.strip()}")
-    else:
-        print(f"WARNING: Widget not found in pluginkit -m. chronod may not discover it.")
+    # Deployment verification gate (Layer 2: all conditions must pass)
+    _verify_widget_deployment(app_path)
 
     # Data integrity check
     if backup_file and backup_file.exists() and APPGROUP_DB.exists():

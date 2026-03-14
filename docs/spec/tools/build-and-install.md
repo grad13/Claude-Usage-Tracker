@@ -1,6 +1,6 @@
 ---
 Created: 2026-03-04
-Updated: 2026-03-06
+Updated: 2026-03-15
 Checked: -
 Deprecated: -
 Format: spec-v2.1
@@ -34,21 +34,34 @@ A deploy script that performs build, test, and install in a single run. Includes
 2. File protection: protect_files context manager starts
    |-- stale .backup detection and recovery (layer 2)
    |-- settings.json snapshot
-   +-- session-cookies.json snapshot
+   +-- session-cookies.json snapshot (via shelter_file)
 3. Test gate: xcodebuild test
 4. File protection: context manager exits (auto-restore via try/finally)
 5. LaunchServices: DerivedData deregistration
-6. Build: xcodebuild build
+6. Build: remove stale xctest from DerivedData + xcodebuild build
 7. Atomic install:
    |-- Stop app: osascript quit + killall
-   |-- cp .new: copy new build to .app.new
+   |-- cp -R .new: copy new build to .app.new
    |-- Widget verification: run against .new (on failure, .new deleted, current app untouched)
-   |-- Binary backup: mv to .app.v{version}
-   +-- mv .new -> .app: atomic swap
-8. LaunchServices: registration + chronod restart
-9. Widget registration verification
+   |-- Binary backup: mv to APPGROUP_DIR/app-backups/.app.v{version}
+   |-- mv .new -> .app: atomic swap
+   |-- Widget binary mtime verification
+   +-- SetFile -a B: bundle bit
+8. LaunchServices:
+   |-- GetFileInfo: bundle bit verification
+   |-- DerivedData deregistration
+   |-- Entitlements verification (application-groups on app + widget)
+   |-- lsregister -f: registration
+   |-- pluginkit -e use: widget activation
+   |-- killall: widget extension → chronod → NotificationCenter
+   +-- sleep(3): wait for chronod restart
+9. Deployment verification gate (all must pass or RuntimeError):
+   |-- pluginkit -m: widget found in manifest
+   |-- pluginkit -m: no DerivedData ghost registration
+   +-- lsregister dump: no ghost LS registration
 10. Data integrity: row loss detection
-11. Launch: open
+11. killall Dock: icon cache refresh
+12. Launch: open
 ```
 
 ## Data Protection
@@ -85,9 +98,12 @@ The `protect_files` context manager protects settings.json and session-cookies.j
 #### Usage
 
 ```python
-with protect_files(APPGROUP_SETTINGS, COOKIE_FILE):
-    run_test_gate()  # Auto-restore via finally even if exception occurs
+with protect_files(APPGROUP_SETTINGS):
+    with shelter_file(COOKIE_FILE):
+        run_test_gate()  # Auto-restore via finally even if exception occurs
 ```
+
+`shelter_file` is a lightweight context manager for files that may not exist yet. Unlike `protect_files`, it does not require the file to exist at backup time.
 
 #### Internal Behavior
 
@@ -126,14 +142,17 @@ with protect_files(APPGROUP_SETTINGS, COOKIE_FILE):
 The traditional `rm -rf` + `cp -R` pattern is non-atomic and irrecoverable on interruption. The new approach:
 
 ```
-1. shutil.copytree(build_app, .app.new)     # Copy to temporary directory
-2. Widget verification (runs against .new)   # On failure: .new deleted, current app untouched
-3. .app.rename(.app.v{version})              # Backup current app (mv is atomic)
+1. cp -R build_app .app.new                  # Copy to temporary directory
+2. Widget verification (runs against .new)    # On failure: .new deleted, current app untouched
+3. shutil.move(.app, APPGROUP_DIR/app-backups/.app.v{version})  # Backup current app
 4. .app.new.rename(.app)                     # Swap in new app (mv is atomic)
+5. Widget binary mtime verification           # Ensure binary is fresh
+6. SetFile -a B .app                         # Set bundle bit for Finder
 ```
 
 - Step 2 failure: only `.new` is deleted; the current app is untouched
-- Interruption between steps 3-4: backup exists at `.app.v{version}`; manual recovery is possible
+- Interruption between steps 3-4: backup exists at `APPGROUP_DIR/app-backups/.app.v{version}`; manual recovery is possible
+- Step 5 failure: RuntimeError with installed/source mtime comparison
 
 ### Version Retrieval
 
@@ -155,13 +174,58 @@ The traditional `rm -rf` + `cp -R` pattern is non-atomic and irrecoverable on in
 
 - **Method**: `lsregister -f` (force register)
 - **Widget activation**: `pluginkit -e use -i grad13.claudeusagetracker.widget`
-- **chronod restart**: `killall chronod` (waits 3 seconds)
+
+### Widget Extension Process Lifecycle
+
+The correct kill order after registration:
+
+1. `killall ClaudeUsageTrackerWidgetExtension` — remove old binary's process
+2. `killall chronod` — launchd restarts it immediately; processes `extensionChanged` event
+3. `killall NotificationCenter` — discard in-memory rendering buffer
+
+chronod and extension are independent processes. Killing chronod does not kill the extension. The extension must be killed first to prevent chronod from reusing the old binary.
+
+After kill sequence: `sleep(3)` to allow chronod restart.
+
+### Code Signing
+
+Xcode signs all components during `xcodebuild build`. No manual re-signing is needed because:
+
+- Scheme has `buildForTesting="NO"` — xctest is not embedded during build
+- Stale xctest (left by `xcodebuild test`) is removed from DerivedData before build
+- Xcode detects the missing xctest and re-signs the bundle automatically
+
+Principles (if manual re-signing is ever needed again):
+- **Never use `--deep`** — it overwrites entitlements on nested bundles (Apple: `--deep Considered Harmful`)
+- **Inner → outer order**: framework → appex → app
+- **Always use `--entitlements`** — explicit entitlements file for each component
+
+### Entitlements Verification
+
+Before LaunchServices registration, verify entitlements on both app and widget extension:
+
+- **Command**: `codesign -d --entitlements -`
+- **Required**: `com.apple.security.application-groups` on both targets
+- **Required**: `com.apple.security.app-sandbox` on widget extension (chronod refuses to load without it)
+- **Failure**: RuntimeError
 
 ### Widget Registration Verification
 
 - Checks widget extension registration path from `lsregister -dump`
 - RuntimeError if registered from DerivedData
 - WARNING if not registered from /Applications
+
+### Deployment Verification Gate
+
+After all registration and process restart steps, a verification gate runs as the final check. All conditions must pass or the deploy fails with RuntimeError.
+
+| # | Condition | Command | Expected | Failure |
+|---|-----------|---------|----------|---------|
+| 1 | Widget in pluginkit manifest | `pluginkit -m -i <WIDGET_ID>` | WIDGET_ID in stdout | `GATE FAIL [1/3]` RuntimeError |
+| 2 | No DerivedData ghost in pluginkit | `pluginkit -m -i <WIDGET_ID>` | "DerivedData" not in stdout | `GATE FAIL [2/3]` RuntimeError |
+| 3 | No ghost LS registration | `dump_widget_registration()` | "DerivedData" not in output | `GATE FAIL [3/3]` RuntimeError |
+
+The gate function `_verify_widget_deployment()` is a single function that checks all conditions. WARNING-level checks are prohibited — all failures are RuntimeError.
 
 ## App Group Path
 
@@ -170,8 +234,10 @@ $HOME/Library/Group Containers/group.grad13.claudeusagetracker/Library/Applicati
 |-- usage.db
 |-- settings.json
 |-- session-cookies.json
-+-- backups/
-    +-- usage_YYYYMMDD_HHMMSS.db  (max 10)
+|-- backups/
+|   +-- usage_YYYYMMDD_HHMMSS.db  (max 10)
++-- app-backups/
+    +-- ClaudeUsageTracker.app.v{version}
 ```
 
 ## Error Behavior
@@ -180,9 +246,18 @@ $HOME/Library/Group Containers/group.grad13.claudeusagetracker/Library/Applicati
 |-----------|----------|
 | Test failure | RuntimeError (build and install are not performed) |
 | Build artifact not found | RuntimeError |
-| Widget appex not found | RuntimeError (.new deleted, current app untouched) |
-| Widget registered from DerivedData | RuntimeError |
+| Widget appex not found in .new | RuntimeError (.new deleted, current app untouched) |
+| Widget binary stale (mtime) | RuntimeError |
+| Bundle bit not set | RuntimeError |
+| Entitlements missing (application-groups) | RuntimeError |
+| Widget registered from DerivedData (LS) | RuntimeError |
+| GATE FAIL [1/3]: Widget not in pluginkit | RuntimeError |
+| GATE FAIL [2/3]: Ghost in pluginkit | RuntimeError |
+| GATE FAIL [3/3]: Ghost LS registration | RuntimeError |
 | DB row loss detected | RuntimeError (displays backup path; no automatic recovery) |
+| pluginkit -e use failure | WARNING (continues) |
+| Widget not in pluginkit -m (pre-gate) | WARNING (continues; gate will catch) |
+| Widget not registered from /Applications | WARNING (continues) |
 | settings.json modification detected | WARNING + restore (automatic, continues) |
 | session-cookies.json modification detected | WARNING + restore (automatic, continues) |
 
@@ -192,9 +267,10 @@ $HOME/Library/Group Containers/group.grad13.claudeusagetracker/Library/Applicati
 |----------|----------------|
 | `backup_database()` | DB backup + rotation (keeps 10) |
 | `run_test_gate()` | xcodebuild test |
-| `build_app()` | xcodebuild build + artifact verification; returns Path |
-| `install_app(build_app_path)` | Stop app + atomic install + widget verification |
-| `register_and_verify(backup_file)` | LaunchServices registration + widget verification + data integrity + launch |
+| `build_app()` | Remove stale xctest from DerivedData + xcodebuild build + artifact verification; returns Path |
+| `install_app(build_app_path)` | Stop app + atomic install + widget verification + mtime check + bundle bit |
+| `register_and_verify(backup_file)` | Bundle bit verify + entitlements verify + LS registration + process kill + verification gate + data integrity + Dock refresh + launch |
+| `_verify_widget_deployment(app_path)` | Deployment verification gate: 3 conditions, all must pass or RuntimeError |
 
 ## Related Scripts
 
