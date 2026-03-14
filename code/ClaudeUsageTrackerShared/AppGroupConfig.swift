@@ -1,4 +1,4 @@
-// meta: created=2026-02-21 updated=2026-03-07 checked=2026-03-03
+// meta: created=2026-02-21 updated=2026-03-14 checked=2026-03-03
 import Foundation
 
 public enum AppGroupConfig {
@@ -21,6 +21,11 @@ public enum AppGroupConfig {
             return nil
         }
         return dict[key] as? String
+    }
+
+    /// Shared UserDefaults for App Group (used for widget snapshot data).
+    public static var sharedDefaults: UserDefaults? {
+        UserDefaults(suiteName: groupId)
     }
 
     /// SQLite DB path for UsageStore (shared between app and widget).

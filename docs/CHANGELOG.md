@@ -3,6 +3,16 @@
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-03-14
+
+### Fixed
+- Widget stale data: switched widget data sharing from SQLite direct read to UserDefaults (App Group) snapshot for reliable updates
+
+### Changed
+- Widget timeline policy changed from `.after(5min)` to `.never` — updates driven by `reloadTimelines()` only
+- Removed WidgetKit reload throttling (no longer needed with UserDefaults-based reads)
+- Added future timeline entry at reset time for automatic widget refresh at usage window reset
+
 ## [1.0.1] - 2026-03-13
 
 ### Fixed

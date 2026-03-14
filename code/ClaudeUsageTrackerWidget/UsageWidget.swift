@@ -1,4 +1,4 @@
-// meta: created=2026-02-21 updated=2026-02-23 checked=2026-03-03
+// meta: created=2026-02-21 updated=2026-03-14 checked=2026-03-03
 import SwiftUI
 import WidgetKit
 import ClaudeUsageTrackerShared
@@ -26,9 +26,19 @@ struct UsageTimelineProvider: TimelineProvider {
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<UsageEntry>) -> Void) {
         let snapshot = UsageReader.load()
-        let entry = UsageEntry(date: Date(), snapshot: snapshot)
-        let nextUpdate = Date().addingTimeInterval(5 * 60)
-        completion(Timeline(entries: [entry], policy: .after(nextUpdate)))
+        let now = Date()
+        var entries = [UsageEntry(date: now, snapshot: snapshot)]
+
+        // Add a future entry at the earliest reset time so the widget
+        // refreshes automatically when a usage window resets.
+        if let s = snapshot {
+            let resetDates = [s.fiveHourResetsAt, s.sevenDayResetsAt].compactMap { $0 }.filter { $0 > now }
+            if let earliest = resetDates.min() {
+                entries.append(UsageEntry(date: earliest, snapshot: snapshot))
+            }
+        }
+
+        completion(Timeline(entries: entries, policy: .never))
     }
 }
 

@@ -1,6 +1,6 @@
 ---
 Created: 2026-02-22
-Updated: 2026-03-07
+Updated: 2026-03-14
 Checked: -
 Deprecated: -
 Format: spec-v2.1
@@ -155,10 +155,10 @@ struct UsageTimelineProvider: TimelineProvider {
 | Method | Behavior |
 |--------|----------|
 | `placeholder(in:)` | Returns `UsageEntry(date: Date(), snapshot: .placeholder)` |
-| `getSnapshot(in:)` | Returns placeholder if `context.isPreview` is true. Otherwise calls `SnapshotStore.load()` and returns the result |
-| `getTimeline(in:)` | `SnapshotStore.load()` -> creates a single-entry Timeline. `policy: .after(Date() + 5 min)` requests refresh after 5 minutes |
+| `getSnapshot(in:)` | Returns placeholder if `context.isPreview` is true. Otherwise calls `UsageReader.load()` (reads from UserDefaults) and returns the result |
+| `getTimeline(in:)` | `UsageReader.load()` (reads snapshot from UserDefaults via App Group) -> creates entries. If snapshot has `resetsAt` dates, adds a future entry at the earliest reset time. `policy: .never` — updates are driven exclusively by `reloadTimelines()` from the main app |
 
-**Update policy**: Every 5 minutes (`5 * 60` seconds). Expressed as `Timeline(entries: [entry], policy: .after(nextUpdate))`.
+**Update policy**: `.never` — the widget does not self-refresh on a timer. The main app calls `WidgetCenter.shared.reloadAllTimelines()` after each fetch, which triggers `getTimeline()`. A future entry at the earliest `resetsAt` ensures the widget also refreshes at the reset moment.
 
 ### UsageWidgetEntryView (Size Branching)
 

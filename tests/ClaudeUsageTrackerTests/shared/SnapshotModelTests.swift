@@ -157,6 +157,58 @@ final class SnapshotModelTests: XCTestCase {
                              "sevenDayResetsAt should be in the future")
     }
 
+    // MARK: - UsageReader (UserDefaults round-trip)
+
+    func testUsageReader_loadFromUserDefaults() throws {
+        let defaults = AppGroupConfig.sharedDefaults
+        // Skip if App Group is not available in test environment
+        guard let defaults else { return }
+
+        let now = Date(timeIntervalSince1970: 1740000000)
+        let snapshot = UsageSnapshot(
+            timestamp: now,
+            fiveHourPercent: 42.5,
+            sevenDayPercent: 18.2,
+            fiveHourResetsAt: now.addingTimeInterval(3600),
+            sevenDayResetsAt: now.addingTimeInterval(86400),
+            fiveHourHistory: [HistoryPoint(timestamp: now, percent: 42.5)],
+            sevenDayHistory: [HistoryPoint(timestamp: now, percent: 18.2)],
+            isLoggedIn: true
+        )
+
+        let data = try JSONEncoder().encode(snapshot)
+        defaults.set(data, forKey: UsageReader.snapshotKey)
+
+        let loaded = UsageReader.load()
+        XCTAssertNotNil(loaded)
+        XCTAssertEqual(loaded?.fiveHourPercent, 42.5)
+        XCTAssertEqual(loaded?.sevenDayPercent, 18.2)
+        XCTAssertTrue(loaded?.isLoggedIn == true)
+        XCTAssertEqual(loaded?.fiveHourHistory.count, 1)
+
+        // Cleanup
+        defaults.removeObject(forKey: UsageReader.snapshotKey)
+    }
+
+    func testUsageReader_noData_returnsNil() {
+        guard let defaults = AppGroupConfig.sharedDefaults else { return }
+        defaults.removeObject(forKey: UsageReader.snapshotKey)
+
+        let loaded = UsageReader.load()
+        XCTAssertNil(loaded, "UsageReader should return nil when no data in UserDefaults")
+    }
+
+    func testUsageReader_corruptData_returnsNil() {
+        guard let defaults = AppGroupConfig.sharedDefaults else { return }
+        defaults.set("not valid json".data(using: .utf8)!, forKey: UsageReader.snapshotKey)
+
+        let loaded = UsageReader.load()
+        XCTAssertNil(loaded, "UsageReader should return nil for corrupt data")
+
+        // Cleanup
+        defaults.removeObject(forKey: UsageReader.snapshotKey)
+    }
+
     // MARK: - Large history array round-trip
 
     func testCodableWithManyHistoryPoints() throws {

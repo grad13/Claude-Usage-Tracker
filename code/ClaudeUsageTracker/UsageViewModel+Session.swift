@@ -1,4 +1,4 @@
-// meta: created=2026-02-26 updated=2026-02-26 checked=2026-02-26
+// meta: created=2026-02-26 updated=2026-03-14 checked=2026-02-26
 import Foundation
 import WebKit
 import ClaudeUsageTrackerShared
@@ -175,6 +175,21 @@ extension UsageViewModel {
         fiveHourResetsAt = nil
         sevenDayResetsAt = nil
         error = nil
+
+        // Write logged-out snapshot to UserDefaults for widget
+        let logoutSnapshot = UsageSnapshot(
+            timestamp: Date(),
+            fiveHourPercent: nil,
+            sevenDayPercent: nil,
+            fiveHourResetsAt: nil,
+            sevenDayResetsAt: nil,
+            fiveHourHistory: [],
+            sevenDayHistory: [],
+            isLoggedIn: false
+        )
+        if let data = try? JSONEncoder().encode(logoutSnapshot) {
+            AppGroupConfig.sharedDefaults?.set(data, forKey: UsageReader.snapshotKey)
+        }
 
         widgetReloader.reloadAllTimelines()
 

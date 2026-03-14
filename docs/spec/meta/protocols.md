@@ -1,6 +1,6 @@
 ---
 Created: 2026-02-26
-Updated: 2026-03-06
+Updated: 2026-03-14
 Checked: -
 Deprecated: -
 Format: spec-v2.1
@@ -46,11 +46,10 @@ protocol UsageStoring {
 
 // MARK: - Widget Data Sharing (note: no dedicated protocol)
 //
-// The widget reads usage data directly from usage.db via UsageReader (ClaudeUsageTrackerShared).
-// The main app writes via UsageStore (UsageStoring protocol), and the widget reads via
-// UsageReader.load() → UsageSnapshot. No SnapshotWriting protocol is needed because
-// the write side is already covered by UsageStoring, and the read side (UsageReader)
-// is a read-only utility in the Shared framework.
+// The main app writes a UsageSnapshot to UserDefaults (App Group) after each fetch
+// via UsageViewModel.writeWidgetSnapshot(). The widget reads via UsageReader.load()
+// which decodes the snapshot from UserDefaults. No SnapshotWriting protocol is needed
+// because the write is a simple JSONEncoder + UserDefaults.set() call in the ViewModel.
 
 // MARK: - Usage Fetching
 
@@ -70,7 +69,7 @@ protocol WidgetReloading {
 }
 
 struct DefaultWidgetReloader: WidgetReloading {
-    // Delegates to WidgetCenter.shared.reloadAllTimelines()
+    // Delegates directly to WidgetCenter.shared.reloadAllTimelines() (no throttling)
 }
 
 // MARK: - Login Item
@@ -164,7 +163,7 @@ Note: DI-03 (SnapshotWriting) was removed — widget data sharing uses UsageRead
 | Type | Description | Related Protocol |
 |------|-------------|-----------------|
 | Store | Read/write AppSettings (UserDefaults / Keychain) | SettingsStoring |
-| Store | Persist UsageResult (widget reads via UsageReader from same DB) | UsageStoring |
+| Store | Persist UsageResult to SQLite (main app history) and UserDefaults (widget snapshot) | UsageStoring |
 | Network | Fetch usage API via WKWebView | UsageFetching |
 | System | WidgetCenter.shared.reloadAllTimelines() — reload widget timelines | WidgetReloading |
 | System | SMAppService.mainApp.register() / unregister() — login item registration | LoginItemManaging |
@@ -180,5 +179,5 @@ Note: DI-03 (SnapshotWriting) was removed — widget data sharing uses UsageRead
   - **Extension declaration only**: Existing concrete types (SettingsStore, UsageStore) already satisfy the protocol's method signatures, so they conform via a simple extension declaration.
   - **Struct wrapper**: When the delegation target uses static methods or singletons (UsageFetcher, WidgetCenter.shared, SMAppService.mainApp), instance methods wrap them to enable DI.
 - UsageFetching methods have a `@MainActor` constraint because WKWebView can only be operated on the main thread.
-- Widget data sharing: The main app writes usage data via `UsageStoring` (UsageStore), and the widget reads via `UsageReader.load()` (ClaudeUsageTrackerShared). No separate protocol is needed for the read side.
+- Widget data sharing: The main app writes a `UsageSnapshot` to UserDefaults (App Group) via `UsageViewModel.writeWidgetSnapshot()` after each fetch. The widget reads via `UsageReader.load()` which decodes from UserDefaults. No separate protocol is needed.
 - WebViewCoordinatorDelegate is a protocol that decouples communication between WebViewCoordinator and UsageViewModel. The `@MainActor` constraint ensures WKWebView thread safety. It can be mocked in tests to verify popup event sequences.

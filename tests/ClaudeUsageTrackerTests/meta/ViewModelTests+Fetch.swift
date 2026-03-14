@@ -87,7 +87,60 @@ extension ViewModelTests {
         XCTAssertNotNil(text, "Past date should still return a string, not nil")
     }
 
-    // (writeSnapshot data flow tests removed — SQLite migration moved this logic to SnapshotStore)
+    // MARK: - applyResult writes widget snapshot to UserDefaults
+
+    func testApplyResult_writesSnapshotToUserDefaults() {
+        guard let defaults = AppGroupConfig.sharedDefaults else { return }
+        // Clean up first
+        defaults.removeObject(forKey: UsageReader.snapshotKey)
+
+        let now = Date()
+        let vm = makeVM()
+        var result = UsageResult()
+        result.fiveHourPercent = 55.0
+        result.sevenDayPercent = 25.0
+        result.fiveHourResetsAt = now.addingTimeInterval(3600)
+        result.sevenDayResetsAt = now.addingTimeInterval(3 * 24 * 3600)
+
+        vm.applyResult(result)
+
+        let data = defaults.data(forKey: UsageReader.snapshotKey)
+        XCTAssertNotNil(data, "applyResult must write snapshot to UserDefaults")
+
+        if let data {
+            let snapshot = try? JSONDecoder().decode(UsageSnapshot.self, from: data)
+            XCTAssertNotNil(snapshot)
+            XCTAssertEqual(snapshot?.fiveHourPercent, 55.0)
+            XCTAssertEqual(snapshot?.sevenDayPercent, 25.0)
+            XCTAssertTrue(snapshot?.isLoggedIn == true)
+        }
+
+        // Cleanup
+        defaults.removeObject(forKey: UsageReader.snapshotKey)
+    }
+
+    func testSignOut_writesLoggedOutSnapshotToUserDefaults() {
+        guard let defaults = AppGroupConfig.sharedDefaults else { return }
+        defaults.removeObject(forKey: UsageReader.snapshotKey)
+
+        let vm = makeVM()
+        vm.isLoggedIn = true
+        vm.signOut()
+
+        let data = defaults.data(forKey: UsageReader.snapshotKey)
+        XCTAssertNotNil(data, "signOut must write snapshot to UserDefaults")
+
+        if let data {
+            let snapshot = try? JSONDecoder().decode(UsageSnapshot.self, from: data)
+            XCTAssertNotNil(snapshot)
+            XCTAssertFalse(snapshot?.isLoggedIn ?? true)
+            XCTAssertNil(snapshot?.fiveHourPercent)
+            XCTAssertNil(snapshot?.sevenDayPercent)
+        }
+
+        // Cleanup
+        defaults.removeObject(forKey: UsageReader.snapshotKey)
+    }
 
     /// ウィジェットのグラフが描画可能かの前提条件テスト。
     /// WidgetMiniGraph は resolveWindowStart() で windowStart を決定する:

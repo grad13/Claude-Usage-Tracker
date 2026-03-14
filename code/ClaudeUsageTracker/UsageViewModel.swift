@@ -1,4 +1,4 @@
-// meta: created=2026-02-21 updated=2026-03-07 checked=2026-02-26
+// meta: created=2026-02-21 updated=2026-03-14 checked=2026-02-26
 import Foundation
 import WebKit
 import Combine
@@ -256,6 +256,9 @@ final class UsageViewModel: ObservableObject, WebViewCoordinatorDelegate {
         usageStore.save(result)
         reloadHistory()
 
+        // Phase 2.5: Write snapshot to UserDefaults for widget
+        writeWidgetSnapshot(result: result, isLoggedIn: true)
+
         // Phase 3: Evaluate alert thresholds
         alertChecker.checkAlerts(result: result, settings: settings)
 
@@ -312,6 +315,24 @@ final class UsageViewModel: ObservableObject, WebViewCoordinatorDelegate {
         refreshTimer = nil
         if isLoggedIn {
             startAutoRefresh()
+        }
+    }
+
+    // MARK: - Widget Snapshot
+
+    func writeWidgetSnapshot(result: UsageResult, isLoggedIn: Bool) {
+        let snapshot = UsageSnapshot(
+            timestamp: Date(),
+            fiveHourPercent: result.fiveHourPercent,
+            sevenDayPercent: result.sevenDayPercent,
+            fiveHourResetsAt: result.fiveHourResetsAt,
+            sevenDayResetsAt: result.sevenDayResetsAt,
+            fiveHourHistory: fiveHourHistory.map { HistoryPoint(timestamp: $0.timestamp, percent: $0.fiveHourPercent ?? 0) },
+            sevenDayHistory: sevenDayHistory.map { HistoryPoint(timestamp: $0.timestamp, percent: $0.sevenDayPercent ?? 0) },
+            isLoggedIn: isLoggedIn
+        )
+        if let data = try? JSONEncoder().encode(snapshot) {
+            AppGroupConfig.sharedDefaults?.set(data, forKey: UsageReader.snapshotKey)
         }
     }
 }

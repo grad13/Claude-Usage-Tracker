@@ -1,4 +1,4 @@
-// meta: created=2026-02-23 updated=2026-02-27 checked=2026-03-03
+// meta: created=2026-02-23 updated=2026-03-14 checked=2026-03-03
 // Dependency injection protocols.
 // Enables testing UsageViewModel without touching production state.
 import Foundation
@@ -48,17 +48,8 @@ protocol WidgetReloading {
     func reloadAllTimelines()
 }
 
-final class DefaultWidgetReloader: WidgetReloading {
-    /// Minimum interval between actual WidgetKit reload calls.
-    /// WidgetKit has a daily reload budget (~40-70), so calling every minute
-    /// exhausts it within an hour. 5 minutes matches the widget's timeline policy.
-    private static let minimumInterval: TimeInterval = 5 * 60
-    private var lastReloadDate: Date = .distantPast
-
+struct DefaultWidgetReloader: WidgetReloading {
     func reloadAllTimelines() {
-        let now = Date()
-        guard now.timeIntervalSince(lastReloadDate) >= Self.minimumInterval else { return }
-        lastReloadDate = now
         WidgetCenter.shared.reloadAllTimelines()
     }
 }
