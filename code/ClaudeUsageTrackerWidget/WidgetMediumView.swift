@@ -22,32 +22,39 @@ struct WidgetMediumView: View {
         WidgetColorThemeResolver.resolveChartColor(forKey: "weekly_color_preset", default: Self.defaultSevenDayColor)
     }
 
+    private let footerHeight: CGFloat = 18
+
     var body: some View {
         if let snapshot {
-            VStack(spacing: 0) {
-                HStack(spacing: 8) {
-                    usageSection(
-                        label: "5h",
-                        percent: snapshot.fiveHourPercent,
-                        resetsAt: snapshot.fiveHourResetsAt,
-                        history: snapshot.fiveHourHistory,
-                        windowSeconds: 5 * 3600,
-                        color: fiveHourColor,
-                        opacity: 0.7
-                    )
+            GeometryReader { geo in
+                VStack(spacing: 0) {
+                    HStack(spacing: 8) {
+                        usageSection(
+                            label: "5h",
+                            percent: snapshot.fiveHourPercent,
+                            resetsAt: snapshot.fiveHourResetsAt,
+                            history: snapshot.fiveHourHistory,
+                            windowSeconds: 5 * 3600,
+                            color: fiveHourColor,
+                            opacity: 0.7
+                        )
 
-                    usageSection(
-                        label: "7d",
-                        percent: snapshot.sevenDayPercent,
-                        resetsAt: snapshot.sevenDayResetsAt,
-                        history: snapshot.sevenDayHistory,
-                        windowSeconds: 7 * 24 * 3600,
-                        color: sevenDayColor,
-                        opacity: 0.65
-                    )
+                        usageSection(
+                            label: "7d",
+                            percent: snapshot.sevenDayPercent,
+                            resetsAt: snapshot.sevenDayResetsAt,
+                            history: snapshot.sevenDayHistory,
+                            windowSeconds: 7 * 24 * 3600,
+                            color: sevenDayColor,
+                            opacity: 0.65
+                        )
+                    }
+                    .frame(height: geo.size.height - footerHeight)
+
+                    footerRow(timestamp: snapshot.timestamp)
+                        .frame(height: footerHeight)
+                        .background(Color.red)
                 }
-
-                footerRow(timestamp: snapshot.timestamp)
             }
         } else {
             notFetchedView

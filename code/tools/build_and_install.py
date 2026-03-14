@@ -155,7 +155,7 @@ def build_app() -> Path:
             "-configuration", "Debug",
             "DEVELOPMENT_TEAM=C3WA2TT222",
             "-allowProvisioningUpdates",
-            "build",
+            "clean", "build",
         ],
         capture_output=True,
         text=True,
