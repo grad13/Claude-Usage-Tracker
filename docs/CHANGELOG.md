@@ -1,7 +1,13 @@
-<!-- meta: created=2026-02-21 updated=2026-03-07 checked=never -->
+<!-- meta: created=2026-02-21 updated=2026-03-14 checked=never -->
 # Changelog
 
 ## [Unreleased]
+
+## [1.0.3] - 2026-03-14
+
+### Fixed
+- **Widget snapshot**: UserDefaults → ファイル I/O に変更。sandbox の有無で読み書き先がズレてウィジェットにデータが表示されない問題を修正
+- **セッション維持**: テスト用 ViewModel が本番の WKWebsiteDataStore を破壊し、デプロイ後にセッション Cookie が消える問題を修正（nonPersistent で隔離）
 
 ## [1.0.2] - 2026-03-14
 
