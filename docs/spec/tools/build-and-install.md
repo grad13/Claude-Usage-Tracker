@@ -1,7 +1,6 @@
 ---
 Created: 2026-03-04
 Updated: 2026-03-15
-Checked: 2026-03-15
 Checked: -
 Deprecated: -
 Format: spec-v2.1
@@ -15,275 +14,431 @@ Source: tools/build_and_install.py
 | Source | Runtime |
 |--------|---------|
 | tools/build_and_install.py | Python 3.12+ |
-| tools/lib/data_protection.py | Python 3.12+ |
-| tools/lib/launchservices.py | Python 3.12+ |
-| tools/lib/version.py | Python 3.12+ |
 
 | Field | Value |
 |-------|-------|
-| Related | tools/tests/ (pytest), tools/rollback.py |
+| Related | docs/spec/tools/rollback.md, docs/spec/tools/data-protection.md, docs/spec/tools/db-backup.md, docs/spec/tools/launchservices.md, docs/spec/tools/version.md, docs/spec/tools/runner.md |
 | Test Type | pytest (code/tools/tests/) |
 
 ## Overview
 
-A deploy script that performs build, test, and install in a single run. Includes data protection, binary backup, and LaunchServices management.
+Deploy script that performs build, test, and install in a single run. Orchestrates lib modules for data protection, DB backup, LaunchServices management, and version retrieval. All functions are in `build_and_install.py`; lib modules have their own specs.
 
-## Execution Flow
+## 1. Contract (Python)
 
-```
-1. Data protection: DB backup + rotation
-2. File protection: protect_files context manager starts
-   |-- stale .backup detection and recovery (layer 2)
-   |-- settings.json snapshot
-   +-- session-cookies.json snapshot (via shelter_file)
-3. Test gate: xcodebuild test
-4. File protection: context manager exits (auto-restore via try/finally)
-5. LaunchServices: DerivedData deregistration
-6. Build: remove stale xctest from DerivedData + xcodebuild build
-7. Atomic install:
-   |-- Stop app: osascript quit + killall
-   |-- cp -R .new: copy new build to .app.new
-   |-- Widget verification: run against .new (on failure, .new deleted, current app untouched)
-   |-- Binary backup: mv to APPGROUP_DIR/app-backups/.app.v{version}
-   |-- mv .new -> .app: atomic swap
-   |-- Widget binary size + mtime verification
-   +-- SetFile -a B: bundle bit
-8. LaunchServices:
-   |-- GetFileInfo: bundle bit verification
-   |-- DerivedData deregistration
-   |-- Entitlements verification (application-groups on app + widget)
-   |-- lsregister -f: registration
-   |-- pluginkit -e use: widget activation
-   |-- killall: widget extension → chronod → NotificationCenter
-   +-- sleep(3): wait for chronod restart
-9. Deployment verification gate (all must pass or RuntimeError):
-   |-- pluginkit -m: widget found in manifest
-   |-- pluginkit -m: no DerivedData ghost registration
-   +-- lsregister dump: no ghost LS registration
-10. Data integrity: row loss detection
-11. killall Dock: icon cache refresh
-12. Launch: open
-```
+> AI Instruction: この型定義を唯一の正解として扱い、モックやテストの型に使用すること。
 
-## Data Protection
-
-### Protected Items
-
-| Protected Item | Mechanism | Timing |
-|----------------|-----------|--------|
-| usage.db | Backup + rotation | Before tests |
-| settings.json | `protect_files` context manager | Before/after tests |
-| session-cookies.json | `protect_files` context manager | Before/after tests |
-| usage.db integrity | Row loss detection (ATTACH + COUNT) | After install |
-| Binary (.app) | Atomic swap (cp .new -> mv) | During install |
-
-### DB Backup + Rotation
-
-- **Target**: `APPGROUP_DIR/usage.db`
-- **Backup destination**: `APPGROUP_DIR/backups/usage_YYYYMMDD_HHMMSS.db`
-- **Rotation**: Keeps the latest 10; older ones deleted via `Path.unlink()`
-- **Pre-test row count**: `SELECT COUNT(*) FROM usage_log`
-
-### File Protection (data_protection.py)
-
-The `protect_files` context manager protects settings.json and session-cookies.json. It has a 3-layer defense mechanism.
-
-#### 3-Layer Defense
-
-| Layer | Mechanism | Protects Against |
-|-------|-----------|-----------------|
-| 1 | try/finally | Python exceptions (RuntimeError, etc.) |
-| 2 | stale .backup detection | SIGKILL, power loss (recovers previous remnants on next run) |
-| 3 | cp failure detection | Disk full, permission errors (shutil.copy2 exceptions) |
-
-#### Usage
+### Constants
 
 ```python
-with protect_files(APPGROUP_SETTINGS):
-    with shelter_file(COOKIE_FILE):
-        run_test_gate()  # Auto-restore via finally even if exception occurs
+PROJECT_DIR: Path      # Script's grandparent directory (project root)
+APP_NAME: str          # "ClaudeUsageTracker"
+SCHEME: str            # "ClaudeUsageTracker"
+DERIVED_DATA: Path     # ~/Library/Developer/Xcode/DerivedData
+INSTALL_DIR: Path      # /Applications
+APPGROUP_DIR: Path     # ~/Library/Group Containers/group.grad13.claudeusagetracker/Library/Application Support/ClaudeUsageTracker
+APPGROUP_DB: Path      # APPGROUP_DIR / "usage.db"
+APPGROUP_SETTINGS: Path  # APPGROUP_DIR / "settings.json"
+COOKIE_FILE: Path      # APPGROUP_DIR / "session-cookies.json"
+WIDGET_ID: str         # "grad13.claudeusagetracker.widget"
 ```
 
-`shelter_file` is a lightweight context manager for files that may not exist yet. Unlike `protect_files`, it does not require the file to exist at backup time.
+### Functions
 
-#### Internal Behavior
+```python
+def find_derived_data_dir() -> Path | None:
+    """Find the DerivedData directory for THIS project.
 
-**On entry:**
-1. Detect and recover stale `.backup` files for each file (layer 2)
-2. Record SHA-256 hash via `hashlib`
-3. Copy to `.backup` via `shutil.copy2` (raises on failure: layer 3)
+    Search: DERIVED_DATA / "{APP_NAME}-*" directories
+    Match: info.plist → WorkspacePath contains PROJECT_DIR
+    Fallback: None (logs WARNING if candidates exist but none match)
+    """
+    ...
 
-**On exit (finally):**
-1. Recalculate SHA-256 for each file
-2. If hash differs: restore from `.backup` + WARNING
-3. If file was deleted: restore from `.backup` + WARNING
-4. If unchanged: delete `.backup`
-5. If a restore itself fails, processing continues for remaining files
+def run_test_gate() -> None:
+    """Run xcodebuild test. Prints last 5 lines of output.
 
-#### Return Values (_restore_if_changed internal)
+    Raises: RuntimeError if tests fail (returncode != 0).
+    Note: Uses on_error="warn" for run() to capture output before raising.
+    """
+    ...
 
-- `0`: No change / skipped (file did not exist)
-- `1`: Restored (file was corrupted)
-- `2`: Restored (file was deleted)
+def build_app() -> Path:
+    """Build the app and return path to built .app.
 
-### Data Integrity Check (Row Loss Detection)
+    Steps:
+        1. Find DerivedData dir
+        2. Remove stale xctest from DerivedData (left by xcodebuild test)
+        3. xcodebuild clean build
+        4. Re-find DerivedData if not found in step 1 (fresh build case)
+        5. Verify build artifact exists
 
-- **Target**: `APPGROUP_DIR/usage.db` (post-deploy)
-- **Comparison source**: Backup DB created before tests
-- **Detection SQL**: `ATTACH backup -> SELECT COUNT(*) FROM backup.usage_log WHERE rowid NOT IN (SELECT rowid FROM main.usage_log)`
-- **Results**:
-  - `0`: No loss -> proceed normally
-  - `> 0`: Row loss detected -> RuntimeError (no automatic recovery; displays backup path for manual intervention)
-  - Exception: SQL error -> WARNING
+    Returns: Path to DerivedData/.../Debug/{APP_NAME}.app
+    Raises: RuntimeError if build fails or artifact not found.
+    """
+    ...
 
-## Atomic Install
+def quit_running_app() -> None:
+    """Quit the running app gracefully, then force-kill.
 
-### cp .new -> mv Swap
+    Sequence:
+        1. osascript quit (on_error="warn")
+        2. sleep(2) — wait for quit event + state flush
+        3. killall (on_error="warn")
+        4. sleep(0.5) — wait for process termination
+    """
+    ...
 
-The traditional `rm -rf` + `cp -R` pattern is non-atomic and irrecoverable on interruption. The new approach:
+def install_app(build_app_path: Path) -> None:
+    """Atomic install: cp .new → verify widget → backup current → mv swap.
+
+    Steps:
+        1. Clean up leftover .app.new (rmtree)
+        2. cp -R build to .app.new
+        3. Verify widget appex exists in .new
+           - If missing: rmtree .new + RuntimeError (current app untouched)
+        4. If current .app exists:
+           - Get version via get_app_version()
+           - mv current to APPGROUP_DIR/app-backups/.app.v{version}
+        5. rename .app.new → .app (atomic)
+
+    Raises: RuntimeError on widget missing or copy failure.
+    """
+    ...
+
+def verify_installed_widget(build_app_path: Path, installed_app: Path) -> None:
+    """Verify installed widget binary matches build and set bundle bit.
+
+    Checks:
+        - Binary size: installed vs source (RuntimeError on mismatch)
+        - Binary mtime: installed must not be older than source (RuntimeError if stale)
+    Then: SetFile -a B (bundle bit)
+    """
+    ...
+
+def _verify_widget_deployment(app_path: str) -> None:
+    """Deployment verification gate: 3 conditions, all must pass.
+
+    | # | Condition | Check |
+    |---|-----------|-------|
+    | 1 | Widget in pluginkit | WIDGET_ID in pluginkit -m stdout |
+    | 2 | No DerivedData ghost in pluginkit | "DerivedData" not in pluginkit -m stdout |
+    | 3 | No ghost LS registration | "DerivedData" not in dump_widget_registration() |
+
+    Raises: RuntimeError with "GATE FAIL [N/3]" on any failure.
+    """
+    ...
+
+def verify_bundle_bits(app_path: str) -> None:
+    """Verify bundle bit via GetFileInfo.
+
+    Parses "attributes:" line for "B" flag.
+    Raises: RuntimeError if bundle bit not set.
+    """
+    ...
+
+def register_and_clean(app_path: str) -> None:
+    """Deregister stale copies, verify entitlements, register app, restart widget processes.
+
+    Steps:
+        1. deregister_stale_apps(APP_NAME, DERIVED_DATA)
+        2. codesign -d --entitlements on app + widget → require "application-groups"
+        3. register_app(app_path) + pluginkit -e use
+        4. killall: widget extension → chronod → NotificationCenter (in order)
+        5. sleep(3) — wait for chronod restart
+
+    Raises: RuntimeError if entitlements missing.
+    """
+    ...
+
+def verify_deployment(app_path: str) -> None:
+    """Wrapper: calls _verify_widget_deployment(app_path)."""
+    ...
+
+def check_data_integrity(backup_file: Path | None) -> None:
+    """Check no rows were lost during deploy.
+
+    Skips if: backup_file is None, or doesn't exist, or APPGROUP_DB doesn't exist.
+    Uses: check_lost_rows() from db_backup.
+    Raises: RuntimeError if lost > 0 (displays backup path for manual recovery).
+    On sqlite3.Error: WARNING (non-fatal).
+    """
+    ...
+
+def refresh_and_launch(app_path: str) -> None:
+    """killall Dock (icon cache refresh) + sleep(2) + open app."""
+    ...
+
+def main() -> None:
+    """Entry point: orchestrates full deploy pipeline.
+
+    Phase 1: backup_database + protect_files(settings) + shelter_file(cookies) + test gate
+    Phase 2: deregister DerivedData + build_app
+    Phase 3: quit → install → verify widget → verify bundle bits → register → verify deployment → check integrity → launch
+    """
+    ...
+```
+
+## 2. State (Mermaid)
+
+> AI Instruction: この遷移図の全パス（Success/Failure/Edge）を網羅するテストを生成すること。
+
+### main() — Full Deploy Pipeline
+
+```mermaid
+stateDiagram-v2
+    [*] --> BackupDB: Phase 1
+    BackupDB --> ProtectFiles: backup_database()
+    ProtectFiles --> TestGate: protect_files + shelter_file
+    TestGate --> TestFail: returncode != 0
+    TestGate --> DeregDD: tests pass → Phase 2
+    TestFail --> [*]: RuntimeError (files auto-restored)
+    DeregDD --> Build: deregister_stale_apps
+    Build --> BuildFail: xcodebuild fail or artifact missing
+    Build --> QuitApp: build_app() returns Path → Phase 3
+    BuildFail --> [*]: RuntimeError
+    QuitApp --> Install: quit_running_app()
+    Install --> InstallFail: widget missing in .new
+    Install --> VerifyWidget: install_app() success
+    InstallFail --> [*]: RuntimeError (.new deleted)
+    VerifyWidget --> WidgetFail: size/mtime mismatch
+    VerifyWidget --> VerifyBundle: verify_installed_widget() OK
+    WidgetFail --> [*]: RuntimeError
+    VerifyBundle --> BundleFail: bundle bit not set
+    VerifyBundle --> Register: verify_bundle_bits() OK
+    BundleFail --> [*]: RuntimeError
+    Register --> EntitlementsFail: missing application-groups
+    Register --> VerifyDeploy: register_and_clean() OK
+    EntitlementsFail --> [*]: RuntimeError
+    VerifyDeploy --> GateFail: GATE FAIL [1-3/3]
+    VerifyDeploy --> CheckIntegrity: verify_deployment() OK
+    GateFail --> [*]: RuntimeError
+    CheckIntegrity --> RowLoss: lost > 0
+    CheckIntegrity --> Launch: check_data_integrity() OK
+    RowLoss --> [*]: RuntimeError
+    Launch --> [*]: refresh_and_launch() → Done
+```
+
+### find_derived_data_dir()
+
+```mermaid
+stateDiagram-v2
+    [*] --> CheckDD: find_derived_data_dir()
+    CheckDD --> NotFound: DERIVED_DATA not exists
+    CheckDD --> Scan: DERIVED_DATA exists
+    NotFound --> [*]: return None
+    Scan --> MatchPlist: info.plist WorkspacePath matches PROJECT_DIR
+    Scan --> NoMatch: candidates exist but none match
+    Scan --> Empty: no APP_NAME-* dirs
+    MatchPlist --> [*]: return matched Path
+    NoMatch --> [*]: WARNING + return None
+    Empty --> [*]: return None
+```
+
+### install_app()
+
+```mermaid
+stateDiagram-v2
+    [*] --> CleanNew: leftover .app.new?
+    CleanNew --> CopyNew: cp -R build → .app.new
+    CopyNew --> VerifyAppex: widget appex in .new?
+    VerifyAppex --> AppexMissing: not found
+    VerifyAppex --> BackupCurrent: appex OK
+    AppexMissing --> [*]: rmtree .new + RuntimeError
+    BackupCurrent --> HasCurrent: current .app exists
+    BackupCurrent --> Swap: no current .app
+    HasCurrent --> MoveBackup: mv .app → app-backups/.app.v{version}
+    MoveBackup --> Swap
+    Swap --> [*]: .app.new.rename(.app)
+```
+
+## 3. Logic (Decision Table)
+
+> AI Instruction: 各行を pytest のパラメータ化テスト（ケースごとのテストメソッド or ループ）として Unit Test を生成すること。
+
+### find_derived_data_dir()
+
+| Case ID | Input | Expected | Notes |
+|---------|-------|----------|-------|
+| FD-01 | DERIVED_DATA 不存在 | None | |
+| FD-02 | 1つのDD dir + WorkspacePath一致 | その Path | info.plist 読み取り |
+| FD-03 | 2つのDD dir + 1つ一致 | 一致した Path | |
+| FD-04 | DD dir存在 + WorkspacePath不一致 | None + WARNING | |
+| FD-05 | info.plist なし | candidates に追加、最終的に None | |
+| FD-06 | info.plist 読み取りエラー | 例外握りつぶし → candidates に追加 | |
+
+### run_test_gate()
+
+| Case ID | Input | Expected | Notes |
+|---------|-------|----------|-------|
+| TG-01 | テスト成功 (rc=0) | 正常終了 | 最後5行出力 |
+| TG-02 | テスト失敗 (rc!=0) | RuntimeError | |
+
+### build_app()
+
+| Case ID | Input | Expected | Notes |
+|---------|-------|----------|-------|
+| BA-01 | ビルド成功 + artifact存在 | Path返却 | |
+| BA-02 | ビルド失敗 (rc!=0) | RuntimeError | |
+| BA-03 | ビルド成功 + DD見つからない | RuntimeError | |
+| BA-04 | ビルド成功 + artifact不存在 | RuntimeError | |
+| BA-05 | stale xctest存在 | rmtreeで削除 → ビルド続行 | |
+
+### install_app()
+
+| Case ID | Input | Expected | Notes |
+|---------|-------|----------|-------|
+| IA-01 | 正常 + 既存app有 | backup + swap | |
+| IA-02 | 正常 + 既存appなし | swap のみ | |
+| IA-03 | widget appex不存在 | RuntimeError + .new削除 | current app untouched |
+| IA-04 | leftover .new存在 | 先にrmtree → 通常処理 | |
+
+### verify_installed_widget()
+
+| Case ID | Input | Expected | Notes |
+|---------|-------|----------|-------|
+| VW-01 | size一致 + mtime正常 | OK + SetFile | |
+| VW-02 | sizeミスマッチ | RuntimeError | |
+| VW-03 | mtime古い（stale） | RuntimeError | |
+| VW-04 | widget_bin不存在 | SetFile実行のみ | 比較スキップ |
+
+### _verify_widget_deployment()
+
+| Case ID | Input | Expected | Notes |
+|---------|-------|----------|-------|
+| VD-01 | 3条件全てパス | OK (3/3) | |
+| VD-02 | WIDGET_ID not in pluginkit stdout | GATE FAIL [1/3] RuntimeError | |
+| VD-03 | "DerivedData" in pluginkit stdout | GATE FAIL [2/3] RuntimeError | |
+| VD-04 | "DerivedData" in dump_widget_registration | GATE FAIL [3/3] RuntimeError | |
+
+### verify_bundle_bits()
+
+| Case ID | Input | Expected | Notes |
+|---------|-------|----------|-------|
+| VB-01 | attributes に "B" あり | OK | |
+| VB-02 | attributes に "B" なし | RuntimeError | |
+| VB-03 | GetFileInfo 失敗 | スキップ（on_error="warn"） | |
+
+### register_and_clean()
+
+| Case ID | Input | Expected | Notes |
+|---------|-------|----------|-------|
+| RC-01 | entitlements正常 | deregister + register + process kill | |
+| RC-02 | app に application-groups なし | RuntimeError | |
+| RC-03 | widget に application-groups なし | RuntimeError | |
+
+### check_data_integrity()
+
+| Case ID | Input | Expected | Notes |
+|---------|-------|----------|-------|
+| CI-01 | backup_file=None | スキップ | |
+| CI-02 | lost=0 | OK | |
+| CI-03 | lost>0 | RuntimeError (backup path表示) | |
+| CI-04 | sqlite3.Error | WARNING (非致命) | |
+
+## 4. Side Effects (Integration)
+
+> AI Instruction: 結合テストでは以下の副作用をスパイ/モックして検証すること。
+
+| 種別 | 内容 |
+|------|------|
+| Process | `xcodebuild test` — テスト実行 |
+| Process | `xcodebuild clean build` — ビルド |
+| Process | `osascript quit` + `killall` — アプリ終了 |
+| Process | `cp -R` — ビルド成果物のコピー |
+| Process | `SetFile -a B` — バンドルビット設定 |
+| Process | `GetFileInfo` — バンドルビット確認 |
+| Process | `codesign -d --entitlements` — エンタイトルメント確認 |
+| Process | `pluginkit -m` — ウィジェットマニフェスト確認 |
+| Process | `pluginkit -e use` — ウィジェット有効化 |
+| Process | `killall` — widget extension, chronod, NotificationCenter, Dock |
+| Process | `open` — アプリ起動 |
+| FileSystem | `shutil.rmtree` — stale xctest 削除、.new 削除 |
+| FileSystem | `shutil.move` — 現行アプリのバックアップ |
+| FileSystem | `Path.rename` — .app.new → .app スワップ |
+| FileSystem | `plistlib.load` — info.plist の読み取り（find_derived_data_dir） |
+| Lib | `backup_database()` — DB バックアップ（db_backup.py） |
+| Lib | `protect_files()` — ファイル保護（data_protection.py） |
+| Lib | `shelter_file()` — Cookie 保護（data_protection.py） |
+| Lib | `deregister_stale_apps()` — stale 登録解除（launchservices.py） |
+| Lib | `register_app()` — LS 登録（launchservices.py） |
+| Lib | `dump_widget_registration()` — LS ダンプ（launchservices.py） |
+| Lib | `get_app_version()` — バージョン取得（version.py） |
+| Lib | `check_lost_rows()` — 行ロス検出（db_backup.py） |
+
+## 5. Notes
+
+### Execution Flow
 
 ```
-1. cp -R build_app .app.new                  # Copy to temporary directory
-2. Widget verification (runs against .new)    # On failure: .new deleted, current app untouched
-3. shutil.move(.app, APPGROUP_DIR/app-backups/.app.v{version})  # Backup current app
-4. .app.new.rename(.app)                     # Swap in new app (mv is atomic)
-5. Widget binary size + mtime verification     # Ensure binary is fresh
-6. SetFile -a B .app                         # Set bundle bit for Finder
+Phase 1: Data Protection + Test
+  1. backup_database(APPGROUP_DB, APPGROUP_DIR)
+  2. protect_files(APPGROUP_SETTINGS) + shelter_file(COOKIE_FILE)
+  3. run_test_gate()
+  4. (auto-restore on exit)
+
+Phase 2: Build
+  5. deregister_stale_apps (before build)
+  6. build_app() — remove stale xctest + xcodebuild clean build
+
+Phase 3: Deploy
+  7. quit_running_app()
+  8. install_app(build_app_path) — atomic swap
+  9. verify_installed_widget() — size + mtime + bundle bit
+  10. verify_bundle_bits() — GetFileInfo
+  11. register_and_clean() — entitlements + LS register + process kill
+  12. verify_deployment() — 3-condition gate
+  13. check_data_integrity() — row loss detection
+  14. refresh_and_launch() — Dock refresh + open
 ```
 
-- Step 2 failure: only `.new` is deleted; the current app is untouched
-- Interruption between steps 3-4: backup exists at `APPGROUP_DIR/app-backups/.app.v{version}`; manual recovery is possible
-- Step 5 failure: RuntimeError with installed/source mtime comparison
-
-### Version Retrieval
-
-- Reads `CFBundleShortVersionString` from `Info.plist` using `plistlib`
-- Falls back to `"unknown"` on failure
-- No PlistBuddy dependency (stdlib only)
-
-## LaunchServices Management
-
-### DerivedData Deregistration
-
-- **Timing**: After tests (before build) + after install
-- **Target**: `DerivedData/ClaudeUsageTracker-*/Build/Products/*/ClaudeUsageTracker.app`
-- **Additional target**: Apps in `~/.Trash`
-- **Method**: `lsregister -u` (deregister)
-- **Input validation**: ValueError if `app_name` / `derived_data` is empty
-
-### /Applications Registration
-
-- **Method**: `lsregister -f` (force register)
-- **Widget activation**: `pluginkit -e use -i grad13.claudeusagetracker.widget`
-
-### Widget Extension Process Lifecycle
-
-The correct kill order after registration:
-
-1. `killall ClaudeUsageTrackerWidgetExtension` — remove old binary's process
-2. `killall chronod` — launchd restarts it immediately; processes `extensionChanged` event
-3. `killall NotificationCenter` — discard in-memory rendering buffer
-
-chronod and extension are independent processes. Killing chronod does not kill the extension. The extension must be killed first to prevent chronod from reusing the old binary.
-
-After kill sequence: `sleep(3)` to allow chronod restart.
-
-### Code Signing
-
-Xcode signs all components during `xcodebuild build`. No manual re-signing is needed because:
-
-- Scheme has `buildForTesting="NO"` — xctest is not embedded during build
-- Stale xctest (left by `xcodebuild test`) is removed from DerivedData before build
-- Xcode detects the missing xctest and re-signs the bundle automatically
-
-Principles (if manual re-signing is ever needed again):
-- **Never use `--deep`** — it overwrites entitlements on nested bundles (Apple: `--deep Considered Harmful`)
-- **Inner → outer order**: framework → appex → app
-- **Always use `--entitlements`** — explicit entitlements file for each component
-
-### Entitlements Verification
-
-Before LaunchServices registration, verify entitlements on both app and widget extension:
-
-- **Command**: `codesign -d --entitlements -`
-- **Required**: `com.apple.security.application-groups` on both targets
-- **Required**: `com.apple.security.app-sandbox` on widget extension (chronod refuses to load without it)
-- **Failure**: RuntimeError
-
-### Widget Registration Verification
-
-- Checks widget extension registration path from `lsregister -dump`
-- RuntimeError if registered from DerivedData
-- WARNING if not registered from /Applications
-
-### Deployment Verification Gate
-
-After all registration and process restart steps, a verification gate runs as the final check. All conditions must pass or the deploy fails with RuntimeError.
-
-| # | Condition | Command | Expected | Failure |
-|---|-----------|---------|----------|---------|
-| 1 | Widget in pluginkit manifest | `pluginkit -m -i <WIDGET_ID>` | WIDGET_ID in stdout | `GATE FAIL [1/3]` RuntimeError |
-| 2 | No DerivedData ghost in pluginkit | `pluginkit -m -i <WIDGET_ID>` | "DerivedData" not in stdout | `GATE FAIL [2/3]` RuntimeError |
-| 3 | No ghost LS registration | `dump_widget_registration()` | "DerivedData" not in output | `GATE FAIL [3/3]` RuntimeError |
-
-The gate function `_verify_widget_deployment()` is a single function that checks all conditions. WARNING-level checks are prohibited — all failures are RuntimeError.
-
-## App Group Path
+### App Group Path
 
 ```
-$HOME/Library/Group Containers/group.grad13.claudeusagetracker/Library/Application Support/ClaudeUsageTracker/
-|-- usage.db
-|-- settings.json
-|-- session-cookies.json
-|-- backups/
-|   +-- usage_YYYYMMDD_HHMMSS.db  (max 10)
-+-- app-backups/
-    +-- ClaudeUsageTracker.app.v{version}
+$HOME/Library/Group Containers/group.grad13.claudeusagetracker/
+  Library/Application Support/ClaudeUsageTracker/
+  |-- usage.db
+  |-- settings.json
+  |-- session-cookies.json
+  |-- backups/
+  |   +-- usage_YYYYMMDD_HHMMSS.db (max 10)
+  +-- app-backups/
+      +-- ClaudeUsageTracker.app.v{version}
 ```
 
-## Error Behavior
+### Error Behavior Summary
 
 | Situation | Behavior |
 |-----------|----------|
-| Test failure | RuntimeError (build and install are not performed) |
-| Build artifact not found | RuntimeError |
-| Widget appex not found in .new | RuntimeError (.new deleted, current app untouched) |
-| Widget binary stale (mtime) or size mismatch | RuntimeError |
+| Test failure | RuntimeError (build/install not performed) |
+| Build failure / artifact not found | RuntimeError |
+| Widget appex not found in .new | RuntimeError (.new deleted, current untouched) |
+| Widget binary stale/size mismatch | RuntimeError |
 | Bundle bit not set | RuntimeError |
 | Entitlements missing (application-groups) | RuntimeError |
-| Widget registered from DerivedData (LS) | RuntimeError |
-| GATE FAIL [1/3]: Widget not in pluginkit | RuntimeError |
-| GATE FAIL [2/3]: Ghost in pluginkit | RuntimeError |
-| GATE FAIL [3/3]: Ghost LS registration | RuntimeError |
-| DB row loss detected | RuntimeError (displays backup path; no automatic recovery) |
+| GATE FAIL [1-3/3] | RuntimeError |
+| DB row loss detected | RuntimeError (displays backup path) |
 | pluginkit -e use failure | WARNING (continues) |
-| Widget not in pluginkit -m (pre-gate) | WARNING (continues; gate will catch) |
-| Widget not registered from /Applications | WARNING (continues) |
-| settings.json modification detected | WARNING + restore (automatic, continues) |
-| session-cookies.json modification detected | WARNING + restore (automatic, continues) |
+| killall failure | WARNING (continues) |
+| settings/cookies modification | WARNING + auto-restore (via protect_files/shelter_file) |
 
-## Internal Functions
+### Code Signing
 
-| Function | Responsibility |
-|----------|----------------|
-| `find_derived_data_dir()` | Find correct DerivedData via WorkspacePath matching; fallback to newest by mtime |
-| `run_test_gate()` | xcodebuild test |
-| `build_app()` | Remove stale xctest from DerivedData + xcodebuild build + artifact verification; returns Path |
-| `install_app(build_app_path)` | Stop app + atomic install + widget verification + size/mtime check + bundle bit |
-| `verify_bundle_bits(app_path)` | Verify bundle bit via GetFileInfo |
-| `register_and_clean(app_path)` | Deregister stale copies + entitlements verify + LS registration + process kill |
-| `verify_deployment(app_path)` | Deployment verification gate: 3 conditions, all must pass or RuntimeError |
-| `check_data_integrity(backup_file)` | Row loss detection (ATTACH + COUNT) |
-| `refresh_and_launch(app_path)` | killall Dock (icon cache refresh) + open app |
+Xcode signs all components during `xcodebuild build`. No manual re-signing needed:
+- Scheme has `buildForTesting="NO"` — xctest not embedded during build
+- Stale xctest removed from DerivedData before build
+- Xcode re-signs automatically when xctest is missing
 
-## Related Scripts
+Principles (if manual re-signing ever needed):
+- Never use `--deep` (overwrites nested entitlements)
+- Inner → outer order: framework → appex → app
+- Always use `--entitlements` flag
 
-| Script | Responsibility |
-|--------|----------------|
-| `tools/lib/runner.py` | `run()` — subprocess wrapper with consistent error handling (check/allow_fail/label) |
-| `tools/lib/db_backup.py` | `backup_database()` + `rotate_backups()` + `check_lost_rows()` — DB backup and integrity |
-| `tools/lib/data_protection.py` | `protect_files` context manager (3-layer defense) + `shelter_file` (backup loss detection) |
-| `tools/lib/launchservices.py` | `LSREGISTER` path constant + `deregister_stale_apps()` + `register_app()` + `dump_widget_registration()` (entry boundary search) |
-| `tools/lib/version.py` | `get_app_version()` — version string retrieval via plistlib (specific exception handling) |
-| `tools/rollback.py` | Binary rollback (atomic swap). Env vars restricted to TEST_MODE. Does not cover data (DB, cookies) |
-| `tools/tests/` (pytest) | Tests for runner + data protection + deploy gate + rollback + lib functions + find_derived_data |
+### Widget Extension Process Lifecycle
+
+Kill order after registration (順序重要):
+1. `killall ClaudeUsageTrackerWidgetExtension` — old binary process
+2. `killall chronod` — launchd restarts; processes `extensionChanged`
+3. `killall NotificationCenter` — discard rendering buffer
+
+Extension must be killed before chronod to prevent reuse of old binary. `sleep(3)` after kill sequence for chronod restart.
