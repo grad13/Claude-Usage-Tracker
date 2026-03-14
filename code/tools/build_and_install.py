@@ -48,6 +48,9 @@ APPGROUP_DB = APPGROUP_DIR / "usage.db"
 APPGROUP_SETTINGS = APPGROUP_DIR / "settings.json"
 COOKIE_FILE = APPGROUP_DIR / "session-cookies.json"
 WIDGET_ID = "grad13.claudeusagetracker.widget"
+SIGNING_IDENTITY = "F45B6D9D59936DBD3B71A979D7EA110BA3969C81"
+WIDGET_ENTITLEMENTS = PROJECT_DIR / "code/ClaudeUsageTrackerWidget/ClaudeUsageTrackerWidget.entitlements"
+APP_ENTITLEMENTS = PROJECT_DIR / "code/ClaudeUsageTracker/ClaudeUsageTracker.entitlements"
 
 
 # ---------------------------------------------------------------------------
@@ -162,6 +165,62 @@ def build_app() -> Path:
     return build_app_path
 
 
+def _resign_after_xctest_removal(app_path: Path) -> None:
+    """Re-sign app bundle after xctest removal (inner → outer).
+
+    xctest deletion breaks the outer code signature seal.
+    Re-sign each component individually with --entitlements to restore
+    both signature validity and entitlements.
+    Never use --deep (strips/overwrites entitlements on nested bundles).
+    """
+    subprocess.run(["xattr", "-cr", str(app_path)], check=True)
+
+    # 1. Shared framework (innermost)
+    framework = app_path / "Contents/Frameworks/ClaudeUsageTrackerShared.framework"
+    if framework.exists():
+        subprocess.run(
+            ["codesign", "--force", "--sign", SIGNING_IDENTITY, str(framework)],
+            check=True,
+        )
+
+    # 2. Widget extension (with entitlements)
+    appex = app_path / "Contents/PlugIns/ClaudeUsageTrackerWidgetExtension.appex"
+    if appex.exists():
+        subprocess.run(
+            ["codesign", "--force", "--sign", SIGNING_IDENTITY,
+             "--entitlements", str(WIDGET_ENTITLEMENTS), str(appex)],
+            check=True,
+        )
+
+    # 3. Main app (outermost, with entitlements)
+    subprocess.run(
+        ["codesign", "--force", "--sign", SIGNING_IDENTITY,
+         "--entitlements", str(APP_ENTITLEMENTS), str(app_path)],
+        check=True,
+    )
+
+    # 4. Verify signature
+    result = subprocess.run(
+        ["codesign", "--verify", "--deep", "--strict", str(app_path)],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"Code signature verification failed after re-signing: {result.stderr}")
+
+    # 5. Verify entitlements
+    for target, name in [(app_path, "main app"), (appex, "widget extension")]:
+        if not target.exists():
+            continue
+        ent_result = subprocess.run(
+            ["codesign", "-d", "--entitlements", "-", str(target)],
+            capture_output=True, text=True,
+        )
+        if "application-groups" not in ent_result.stdout:
+            raise RuntimeError(f"Entitlements missing on {name} after re-signing")
+
+    print("==> Re-signed after xctest removal (inner → outer)")
+
+
 def install_app(build_app_path: Path) -> None:
     """Atomic install: cp .new → verify → mv swap.
 
@@ -186,10 +245,11 @@ def install_app(build_app_path: Path) -> None:
     # Copy new build to .new (cp -R for clean copy; ditto can silently merge stale files)
     subprocess.run(["cp", "-R", str(build_app_path), str(new_app)], check=True)
 
-    # Remove test bundle from .new
+    # Remove test bundle from .new and re-sign (xctest deletion breaks outer seal)
     test_xctest = new_app / "Contents/PlugIns/ClaudeUsageTrackerTests.xctest"
     if test_xctest.exists():
         shutil.rmtree(str(test_xctest))
+        _resign_after_xctest_removal(new_app)
 
     # Verify widget extension in .new (before touching current app)
     widget_appex = new_app / "Contents/PlugIns/ClaudeUsageTrackerWidgetExtension.appex"
@@ -282,13 +342,41 @@ def register_and_verify(backup_file: Path | None) -> None:
     print("==> Cleaning stale LaunchServices registrations...")
     deregister_stale_apps(APP_NAME, str(DERIVED_DATA))
 
+    # Verify entitlements before registration
+    print("==> Verifying entitlements...")
+    app_path_obj = Path(app_path)
+    widget_appex = app_path_obj / "Contents/PlugIns/ClaudeUsageTrackerWidgetExtension.appex"
+    for target, name in [(app_path_obj, "main app"), (widget_appex, "widget extension")]:
+        if not target.exists():
+            continue
+        ent_result = subprocess.run(
+            ["codesign", "-d", "--entitlements", "-", str(target)],
+            capture_output=True, text=True,
+        )
+        if "application-groups" not in ent_result.stdout:
+            raise RuntimeError(
+                f"Entitlements missing on {name}!\n"
+                f"       Expected: com.apple.security.application-groups\n"
+                f"       Widget will fail without App Group entitlement."
+            )
+    print("==> Entitlements verified: application-groups present on app and widget")
+
     # Register
     print(f"==> Registering {app_path} with LaunchServices...")
     register_app(app_path)
-    subprocess.run(["pluginkit", "-e", "use", "-i", WIDGET_ID], capture_output=True)
+    pk_result = subprocess.run(
+        ["pluginkit", "-e", "use", "-i", WIDGET_ID],
+        capture_output=True, text=True,
+    )
+    if pk_result.returncode != 0:
+        print(f"WARNING: pluginkit -e use failed (rc={pk_result.returncode}): {pk_result.stderr}")
+    # Kill widget extension process first so chronod doesn't reuse the old binary
+    subprocess.run(
+        ["killall", "ClaudeUsageTrackerWidgetExtension"], capture_output=True
+    )
     subprocess.run(["killall", "chronod"], capture_output=True)
     subprocess.run(["killall", "NotificationCenter"], capture_output=True)
-    print("==> Restarted chronod + NotificationCenter to reload widget extension")
+    print("==> Killed widget extension + chronod + NotificationCenter")
     time.sleep(3)
 
     # Verify widget registration
@@ -304,6 +392,16 @@ def register_and_verify(backup_file: Path | None) -> None:
         print(f"==> Widget registered correctly: {widget_reg}")
     else:
         print(f"WARNING: Could not verify widget registration path: {widget_reg}")
+
+    # Verify pluginkit can find the widget
+    pk_match = subprocess.run(
+        ["pluginkit", "-m", "-i", WIDGET_ID],
+        capture_output=True, text=True,
+    )
+    if WIDGET_ID in pk_match.stdout:
+        print(f"==> Widget found in pluginkit: {pk_match.stdout.strip()}")
+    else:
+        print(f"WARNING: Widget not found in pluginkit -m. chronod may not discover it.")
 
     # Data integrity check
     if backup_file and backup_file.exists() and APPGROUP_DB.exists():
