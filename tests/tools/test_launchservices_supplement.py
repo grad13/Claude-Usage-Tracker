@@ -93,12 +93,11 @@ def test_register_app(tmp_path):
 # Test 26: dump_widget_registration — widget found
 # ---------------------------------------------------------------------------
 
-def test_dump_widget_registration_found():
+def test_dump_widget_registration_found(mock_lsregister_dump):
     """Returns the path line when widget ID is found in lsregister dump."""
-    fake_dump = (
-        "path:    /Applications/TestApp.app/Contents/PlugIns/TestWidget.appex\n"
-        "name:    TestWidget\n"
-        "plugin Identifiers:         com.example.testwidget\n"
+    fake_dump = mock_lsregister_dump(
+        "com.example.testwidget",
+        path="/Applications/TestApp.app/Contents/PlugIns/TestWidget.appex",
     )
 
     with patch("launchservices.subprocess.run") as mock_run:
@@ -115,12 +114,9 @@ def test_dump_widget_registration_found():
 # Test 27: dump_widget_registration — widget not found
 # ---------------------------------------------------------------------------
 
-def test_dump_widget_registration_not_found():
+def test_dump_widget_registration_not_found(mock_lsregister_dump):
     """Returns None when widget ID is not in lsregister dump."""
-    fake_dump = (
-        "path:    /Applications/SomeOtherApp.app\n"
-        "name:    SomeOtherApp\n"
-    )
+    fake_dump = mock_lsregister_dump("com.example.testwidget")  # no path -> not found
 
     with patch("launchservices.subprocess.run") as mock_run:
         mock_run.return_value = subprocess.CompletedProcess(

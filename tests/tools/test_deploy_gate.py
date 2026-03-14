@@ -10,7 +10,6 @@ Covers:
 Spec: docs/spec/tools/build-and-install.md (Deployment Verification Gate)
 """
 
-import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -21,23 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "code" / 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "code" / "tools" / "lib"))
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
 WIDGET_ID = "grad13.claudeusagetracker.widget"
-
-
-def _make_completed_process(stdout="", stderr="", returncode=0):
-    """Create a CompletedProcess mock."""
-    return subprocess.CompletedProcess(
-        args=[], returncode=returncode, stdout=stdout, stderr=stderr,
-    )
-
-
-def _mock_run_success(cmd, **kwargs):
-    """Default mock for runner.run that always succeeds."""
-    return _make_completed_process()
 
 
 # ---------------------------------------------------------------------------
@@ -48,9 +31,8 @@ def _mock_run_success(cmd, **kwargs):
 class TestStaleXctestRemoval:
     """build_app() removes stale xctest from DerivedData before building."""
 
-    def test_removes_stale_xctest(self, tmp_path):
+    def test_removes_stale_xctest(self, tmp_path, make_run_result):
         """Test 1: Stale xctest is removed before build."""
-        # Setup: simulate DerivedData with stale xctest
         dd_dir = tmp_path / "DerivedData" / "ClaudeUsageTracker-abc"
         app_dir = dd_dir / "Build/Products/Debug/ClaudeUsageTracker.app"
         plugins = app_dir / "Contents/PlugIns"
@@ -58,22 +40,21 @@ class TestStaleXctestRemoval:
         xctest.mkdir(parents=True)
         (xctest / "dummy").touch()
 
-        # Also create widget appex so build_app can find it
         widget = plugins / "ClaudeUsageTrackerWidgetExtension.appex"
         widget.mkdir(parents=True)
 
         import build_and_install as bi
 
         with patch.object(bi, "find_derived_data_dir", return_value=dd_dir), \
-             patch.object(bi, "run", side_effect=_mock_run_success):
+             patch.object(bi, "run", return_value=make_run_result()):
             try:
                 bi.build_app()
             except Exception:
-                pass  # May fail on other checks, we only care about xctest removal
+                pass
 
         assert not xctest.exists(), "Stale xctest should be removed"
 
-    def test_no_error_when_no_xctest(self, tmp_path):
+    def test_no_error_when_no_xctest(self, tmp_path, make_run_result):
         """Test 2: No error when xctest doesn't exist."""
         dd_dir = tmp_path / "DerivedData" / "ClaudeUsageTracker-abc"
         app_dir = dd_dir / "Build/Products/Debug/ClaudeUsageTracker.app"
@@ -83,23 +64,21 @@ class TestStaleXctestRemoval:
         import build_and_install as bi
 
         with patch.object(bi, "find_derived_data_dir", return_value=dd_dir), \
-             patch.object(bi, "run", side_effect=_mock_run_success):
+             patch.object(bi, "run", return_value=make_run_result()):
             try:
                 bi.build_app()
             except Exception:
                 pass
-        # Should not raise
 
-    def test_no_error_when_no_derived_data(self):
+    def test_no_error_when_no_derived_data(self, make_run_result):
         """Test 3: No error when DerivedData doesn't exist."""
         import build_and_install as bi
 
         with patch.object(bi, "find_derived_data_dir", return_value=None), \
-             patch.object(bi, "run", side_effect=_mock_run_success):
+             patch.object(bi, "run", return_value=make_run_result()):
             try:
                 bi.build_app()
             except RuntimeError as e:
-                # Expected: "DerivedData not found after build."
                 assert "DerivedData" in str(e)
 
 
@@ -118,62 +97,61 @@ class TestVerificationGate:
         path = "/Users/x/Library/Developer/Xcode/DerivedData/..." if ghost else "/Applications/ClaudeUsageTracker.app/..."
         return f"    {WIDGET_ID}({path})"
 
-    def test_gate_all_pass(self):
-        """Test 4: All 3 conditions pass → no exception, prints 3/3."""
+    def test_gate_all_pass(self, make_run_result):
+        """Test 4: All 3 conditions pass -> no exception, prints 3/3."""
         import build_and_install as bi
 
         pk_stdout = self._make_pluginkit_stdout(found=True, ghost=False)
 
         def mock_run(cmd, **kwargs):
             if "pluginkit" in cmd:
-                return _make_completed_process(stdout=pk_stdout)
-            return _make_completed_process()
+                return make_run_result(stdout=pk_stdout)
+            return make_run_result()
 
         with patch.object(bi, "run", side_effect=mock_run), \
              patch.object(bi, "dump_widget_registration", return_value="/Applications/ClaudeUsageTracker.app"):
-            # Should not raise
             bi._verify_widget_deployment("/Applications/ClaudeUsageTracker.app")
 
-    def test_gate_pluginkit_not_found(self):
-        """Test 5: Widget not in pluginkit → GATE FAIL [1/3]."""
+    def test_gate_pluginkit_not_found(self, make_run_result):
+        """Test 5: Widget not in pluginkit -> GATE FAIL [1/3]."""
         import build_and_install as bi
 
         def mock_run(cmd, **kwargs):
             if "pluginkit" in cmd:
-                return _make_completed_process(stdout="")
-            return _make_completed_process()
+                return make_run_result(stdout="")
+            return make_run_result()
 
         with patch.object(bi, "run", side_effect=mock_run), \
              patch.object(bi, "dump_widget_registration", return_value=None):
             with pytest.raises(RuntimeError, match=r"GATE FAIL \[1/3\]"):
                 bi._verify_widget_deployment("/Applications/ClaudeUsageTracker.app")
 
-    def test_gate_ghost_pluginkit(self):
-        """Test 6: DerivedData ghost in pluginkit → GATE FAIL [2/3]."""
+    def test_gate_ghost_pluginkit(self, make_run_result):
+        """Test 6: DerivedData ghost in pluginkit -> GATE FAIL [2/3]."""
         import build_and_install as bi
 
         pk_stdout = self._make_pluginkit_stdout(found=True, ghost=True)
 
         def mock_run(cmd, **kwargs):
             if "pluginkit" in cmd:
-                return _make_completed_process(stdout=pk_stdout)
-            return _make_completed_process()
+                return make_run_result(stdout=pk_stdout)
+            return make_run_result()
 
         with patch.object(bi, "run", side_effect=mock_run), \
              patch.object(bi, "dump_widget_registration", return_value=None):
             with pytest.raises(RuntimeError, match=r"GATE FAIL \[2/3\]"):
                 bi._verify_widget_deployment("/Applications/ClaudeUsageTracker.app")
 
-    def test_gate_ghost_ls_registration(self):
-        """Test 7: Ghost LS registration → GATE FAIL [3/3]."""
+    def test_gate_ghost_ls_registration(self, make_run_result):
+        """Test 7: Ghost LS registration -> GATE FAIL [3/3]."""
         import build_and_install as bi
 
         pk_stdout = self._make_pluginkit_stdout(found=True, ghost=False)
 
         def mock_run(cmd, **kwargs):
             if "pluginkit" in cmd:
-                return _make_completed_process(stdout=pk_stdout)
-            return _make_completed_process()
+                return make_run_result(stdout=pk_stdout)
+            return make_run_result()
 
         with patch.object(bi, "run", side_effect=mock_run), \
              patch.object(bi, "dump_widget_registration", return_value="/Users/x/DerivedData/ghost"):

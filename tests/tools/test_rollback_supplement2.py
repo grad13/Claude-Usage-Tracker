@@ -18,6 +18,8 @@ from unittest.mock import patch
 
 import pytest
 
+_original_copytree = shutil.copytree
+
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(_PROJECT_ROOT / "code" / "tools" / "lib"))
 sys.path.insert(0, str(_PROJECT_ROOT / "code" / "tools"))
@@ -102,23 +104,19 @@ def test_rollback_copytree_file_exists_error_retries(tmp_path, monkeypatch):
     monkeypatch.setattr(rollback_mod, "INSTALL_DIR", install_dir)
     monkeypatch.setattr(rollback_mod, "APP_BACKUP_DIR", backup_dir)
 
-    original_copytree = shutil.copytree
-    call_count = 0
+    with patch.object(shutil, "copytree") as mock_copytree:
+        def copytree_side_effect(src, dst, **kwargs):
+            if mock_copytree.call_count == 1:
+                # Simulate race condition: .new appears between cleanup and copytree
+                Path(dst).mkdir(parents=True, exist_ok=True)
+                raise FileExistsError(f"[Errno 17] File exists: '{dst}'")
+            return _original_copytree(src, dst, **kwargs)
 
-    def copytree_fail_once(src, dst, **kwargs):
-        nonlocal call_count
-        call_count += 1
-        if call_count == 1:
-            # Simulate race condition: .new appears between cleanup and copytree
-            Path(dst).mkdir(parents=True, exist_ok=True)
-            raise FileExistsError(f"[Errno 17] File exists: '{dst}'")
-        return original_copytree(src, dst, **kwargs)
+        mock_copytree.side_effect = copytree_side_effect
 
-    monkeypatch.setattr(shutil, "copytree", copytree_fail_once)
+        rollback_mod.rollback("v0.7.0", test_mode=True)
 
-    rollback_mod.rollback("v0.7.0", test_mode=True)
-
-    assert call_count == 2, "copytree should have been called twice (fail + retry)"
+    assert mock_copytree.call_count == 2, "copytree should have been called twice (fail + retry)"
     assert (current / "marker").read_text() == "v0.7.0-content"
 
 

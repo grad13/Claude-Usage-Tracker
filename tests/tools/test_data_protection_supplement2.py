@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "code" / 
 
 from data_protection import (
     _recover_stale_backup,
+    _restore_if_changed,
     _sha256,
     protect_files,
     shelter_file,
@@ -93,21 +94,15 @@ def test_protect_files_restore_failure_does_not_block_others(tmp_path, capsys):
     file_a.write_text("original_a")
     file_b.write_text("original_b")
 
-    original_restore = __import__("data_protection", fromlist=["_restore_if_changed"])._restore_if_changed
-
     def patched_restore(file, hash_before):
         if file.name == "file_a.json":
             raise OSError("disk error on file_a")
-        return original_restore(file, hash_before)
+        return _restore_if_changed(file, hash_before)
 
     with patch("data_protection._restore_if_changed", side_effect=patched_restore):
         with protect_files(file_a, file_b):
             file_a.write_text("corrupted_a")
             file_b.write_text("corrupted_b")
-
-    # file_b should be restored by the real _restore_if_changed
-    # But since we patched the function, we need a different approach.
-    # Let's instead verify the error handling by testing the actual finally logic.
 
     captured = capsys.readouterr()
     assert "ERROR" in captured.out
