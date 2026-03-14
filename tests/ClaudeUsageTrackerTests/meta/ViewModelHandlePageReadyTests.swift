@@ -109,8 +109,8 @@ final class ViewModelHandlePageReadyTests: XCTestCase {
 
         let vm = makeVM()
 
-        // Set lastRedirectAt to now so canRedirect() returns false (within 5s cooldown).
-        vm.lastRedirectAt = Date()
+        let cooldownTime = Date()
+        vm.lastRedirectAt = cooldownTime
 
         // WebView URL is nil (not on usage page) by default after init.
         vm.handlePageReady()
@@ -121,8 +121,8 @@ final class ViewModelHandlePageReadyTests: XCTestCase {
 
         XCTAssertTrue(vm.isLoggedIn,
                       "PR-04: common side effects must still execute (isLoggedIn = true)")
-        XCTAssertEqual(stubFetcher.fetchCallCount, 0,
-                       "PR-04: fetchSilently must not be called (not on usage page)")
+        XCTAssertEqual(vm.lastRedirectAt, cooldownTime,
+                       "PR-04: lastRedirectAt must not be updated (no redirect occurred)")
         _ = vm
     }
 
