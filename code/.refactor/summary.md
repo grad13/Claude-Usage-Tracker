@@ -1,58 +1,37 @@
-# Refactor Analysis Summary
+# Refactor Analysis Summary — code/tools/
 
-Date: 2026-03-07
-Analyzed: 20 / 36 files
+**Date**: 2026-03-15
+**Scope**: code/tools/ (Python/Shell ビルドツール)
+**Files analyzed**: 6 (+ __init__.py skipped as empty)
 
 ## Results
 
-| Judgment | Count | Files |
-|----------|-------|-------|
-| must     | 0     | -     |
-| should   | 3     | see below |
-| clean    | 17    | see below |
+| File | Lines | Judgment |
+|------|-------|----------|
+| tools/build_and_install.py | 444 | **should** |
+| tools/rollback.py | 124 | clean |
+| tools/check_notarization.sh | 45 | clean |
+| tools/lib/data_protection.py | 146 | clean |
+| tools/lib/launchservices.py | 69 | clean |
+| tools/lib/version.py | 19 | clean |
 
-## should (推奨対象)
+## should (1 file)
 
-### 1. ClaudeUsageTracker/UsageFetcher.swift (282 lines)
-- org ID 取得ロジックが Swift 側と JS 側で重複
-- `readOrgId` が未使用の可能性（`fetch()` は JS 内の4段階フォールバックを直接使用）
-- `parseUnixTimestamp` と `parseResetsAt` の機能重複
-- **詳細**: `.refactor/should/ClaudeUsageTracker/UsageFetcher.swift.md`
+### tools/build_and_install.py
 
-### 2. ClaudeUsageTracker/UsageViewModel.swift (317 lines)
-- WebView 初期化・設定が ViewModel 内に埋め込み（テスト困難）
-- ナビゲーション制御とリダイレクトスロットリングの混在
-- リトライロジックが fetchSilently 内にインライン展開
-- **詳細**: `.refactor/should/ClaudeUsageTracker/UsageViewModel.swift.md`
+1. **register_and_verify に5責務が集中** — バンドルビット検証、LaunchServices登録、デプロイ検証ゲート、データ整合性チェック、Dockリフレッシュ+起動が1関数に詰まっている
+2. **DBバックアップ/整合性チェックがデプロイロジックと混在** — `backup_database`, `rotate_backups`, `check_lost_rows` が既存の `lib/` に分離可能
 
-### 3. ClaudeUsageTracker/UsageViewModel+Session.swift (201 lines)
-- Login Polling が Timer ベースの fallback（SPA 遷移補償）
-- Cookie Backup/Restore のファイルパス構築がインライン
-- **詳細**: `.refactor/should/ClaudeUsageTracker/UsageViewModel+Session.swift.md`
+詳細: `code/.refactor/should/tools/build_and_install.py.md`
 
-## clean (問題なし)
+## must (0 files)
 
-| File | Lines |
-|------|-------|
-| ClaudeUsageTracker/MenuBarLabel.swift | 83 |
-| ClaudeUsageTracker/UsageViewModel+Settings.swift | 104 |
-| ClaudeUsageTracker/MiniUsageGraph.swift | 165 |
-| ClaudeUsageTracker/MenuContent.swift | 241 |
-| ClaudeUsageTracker/Settings.swift | 242 |
-| ClaudeUsageTracker/UsageStore.swift | 322 |
-| ClaudeUsageTracker/AlertChecker.swift | 132 |
-| ClaudeUsageTracker/ClaudeUsageTrackerApp.swift | 36 |
-| ClaudeUsageTracker/AnalysisSchemeHandler.swift | 202 |
-| ClaudeUsageTrackerWidget/WidgetMediumView.swift | 105 |
-| ClaudeUsageTrackerWidget/WidgetMiniGraph.swift | 231 |
-| ClaudeUsageTrackerWidget/WidgetLargeView.swift | 121 |
-| ClaudeUsageTrackerWidget/WidgetSmallView.swift | 86 |
-| ClaudeUsageTrackerShared/AppGroupConfig.swift | 36 |
-| ClaudeUsageTrackerShared/GraphCalc.swift | 60 |
-| ClaudeUsageTrackerShared/SQLiteBackup.swift | 92 |
-| ClaudeUsageTrackerShared/DisplayHelpers.swift | 43 |
-| ClaudeUsageTrackerShared/SQLiteHelper.swift | 111 |
+500行超のファイルなし。
 
-## Not Analyzed (16 files)
+## clean (5 files)
 
-Priority が低く今回の対象外。次回以降に分析。
+- tools/rollback.py — 単一責務（ロールバック処理）
+- tools/check_notarization.sh — 単一責務（notarization確認）
+- tools/lib/data_protection.py — 単一責務（ファイル保護）
+- tools/lib/launchservices.py — 単一責務（LaunchServices操作）
+- tools/lib/version.py — 19行のユーティリティ
