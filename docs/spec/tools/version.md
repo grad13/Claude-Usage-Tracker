@@ -18,7 +18,7 @@ Source: tools/lib/version.py
 | Field | Value |
 |-------|-------|
 | Related | docs/spec/tools/build-and-install.md |
-| Test Type | pytest (code/tools/tests/) |
+| Test Type | pytest (tests/tools/test_version.py) |
 
 ## Overview
 

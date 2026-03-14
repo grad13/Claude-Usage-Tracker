@@ -14,8 +14,8 @@ from unittest.mock import patch
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
-sys.path.insert(0, str(Path(__file__).parent.parent / "lib"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "code" / "tools"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "code" / "tools" / "lib"))
 
 
 def _create_dd_dir(base: Path, suffix: str, workspace_path: str) -> Path:

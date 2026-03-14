@@ -1,4 +1,4 @@
-"""Tests for build_and_install.py logic.
+"""Tests for db_backup.py logic (check_lost_rows, rotate_backups).
 
 Covers:
   Test 1-4: Lost row detection (check_lost_rows)
@@ -13,9 +13,9 @@ from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "code" / "tools"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "code" / "tools" / "lib"))
 
-from build_and_install import check_lost_rows, rotate_backups
+from db_backup import check_lost_rows, rotate_backups
 
 
 # ---------------------------------------------------------------------------
