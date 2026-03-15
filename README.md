@@ -85,17 +85,17 @@ xcodebuild -project code/ClaudeUsageTracker.xcodeproj \
 
 ## Recent Changes
 
+### 1.0.3
+- Fix widget data sharing (UserDefaults → file I/O for sandbox compatibility)
+- Fix session cookie destruction caused by test ViewModel
+
+### 1.0.2
+- Switch widget data sharing from SQLite to UserDefaults (App Group) snapshot
+- Widget timeline policy: `.after(5min)` → `.never` (driven by `reloadTimelines()` only)
+
 ### 1.0.1
 - Fix widget not updating by throttling WidgetKit reload to 5-minute intervals
 - Refresh Dock icon cache after install
-
-### 1.0.0
-- First public release with Developer ID signing and Apple notarization
-- Consolidated Alert Settings menu
-- GitHub Actions CI
-
-### 0.10.1
-- Consolidate Alert Settings menu: unified submenu with None + threshold options
 
 ## Acknowledgments
 
