@@ -96,7 +96,7 @@ def run_test_gate() -> None:
     result = run(
         [
             "xcodebuild",
-            "-project", str(PROJECT_DIR / "code/ClaudeUsageTracker.xcodeproj"),
+            "-project", str(PROJECT_DIR / "code/app/ClaudeUsageTracker.xcodeproj"),
             "-scheme", SCHEME,
             "-destination", "platform=macOS",
             "DEVELOPMENT_TEAM=C3WA2TT222",
@@ -137,7 +137,7 @@ def build_app() -> Path:
     result = run(
         [
             "xcodebuild",
-            "-project", str(PROJECT_DIR / "code/ClaudeUsageTracker.xcodeproj"),
+            "-project", str(PROJECT_DIR / "code/app/ClaudeUsageTracker.xcodeproj"),
             "-scheme", SCHEME,
             "-destination", "platform=macOS",
             "-configuration", "Debug",

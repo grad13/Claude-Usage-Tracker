@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ClaudeUsageTracker — Usage Analysis</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
+<style>
+:root {
+  --bg-page: #0d1117;
+  --text-primary: #c9d1d9;
+  --text-secondary: #8b949e;
+  --text-label: #e6edf3;
+  --text-muted: #484f58;
+  --bg-control: #21262d;
+  --bg-control-hover: #30363d;
+  --border: #30363d;
+  --accent: #1f6feb;
+  --accent-text: #58a6ff;
+}
+body.light {
+  --bg-page: #ffffff;
+  --text-primary: #1f2328;
+  --text-secondary: #656d76;
+  --text-label: #1f2328;
+  --text-muted: #656d76;
+  --bg-control: #f6f8fa;
+  --bg-control-hover: #eaeef2;
+  --border: #d0d7de;
+  --accent: #0969da;
+  --accent-text: #0969da;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: var(--bg-page);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro', system-ui, sans-serif;
+  padding: 12px 20px;
+}
+.header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+h2 {
+  font-size: 15px;
+  font-weight: 500;
+  margin-bottom: 8px;
+  color: var(--text-secondary);
+}
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.card {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 8px 0 0 0;
+  overflow: visible;
+}
+.card.full { grid-column: 1 / -1; }
+.chart-container { position: relative; width: 100%; height: calc(100vh - 100px); overflow: visible; }
+.nav-controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.mode-toggle {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.mode-group {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+.mode-group.active { border-color: var(--accent); }
+.mode-group-label {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  pointer-events: none;
+  transition: color 0.15s;
+}
+.mode-group.active .mode-group-label { color: var(--accent-text); }
+.mode-btn {
+  background: var(--bg-control);
+  border: none;
+  border-left: 1px solid var(--border);
+  color: var(--text-secondary);
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.mode-btn:hover { color: var(--text-primary); background: var(--bg-control-hover); }
+.mode-btn.active {
+  background: var(--accent);
+  color: #fff;
+}
+.session-nav {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.nav-btn {
+  background: var(--bg-control);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  padding: 5px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.nav-btn:hover { background: var(--bg-control-hover); }
+.nav-btn:disabled { opacity: 0.3; cursor: default; }
+.nav-btn:disabled:hover { background: var(--bg-control); }
+.session-label {
+  color: var(--text-label);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 0 8px;
+  min-width: 200px;
+  text-align: center;
+}
+.session-dropdown {
+  background: var(--bg-control);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  padding: 5px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+#loading {
+  text-align: center;
+  padding: 60px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+</style>
+</head>
+<body>
+<div class="header-row">
+  <div class="nav-controls">
+    <div class="mode-toggle">
+      <div class="mode-group active" id="groupSession">
+        <span class="mode-group-label">Session</span>
+        <button class="mode-btn active" data-mode="sessionWeekly">Weekly</button>
+        <button class="mode-btn" data-mode="sessionHourly">Hourly</button>
+      </div>
+      <div class="mode-group" id="groupCalendrical">
+        <span class="mode-group-label">Calendrical</span>
+        <button class="mode-btn" data-mode="calWeek">Week</button>
+        <button class="mode-btn" data-mode="calDay">Day</button>
+      </div>
+    </div>
+    <div class="session-nav">
+      <button class="nav-btn" id="navPrev">&#9664;</button>
+      <span class="session-label" id="navLabel">Loading...</span>
+      <button class="nav-btn" id="navNext">&#9654;</button>
+    </div>
+    <select class="session-dropdown" id="sessionSelect"></select>
+  </div>
+</div>
+<div id="loading">Loading data...</div>
+<div id="app" style="display:none;">
+
+
+<div class="card full">
+<div class="chart-container"><canvas id="usageTimeline"></canvas></div>
+</div>
+
+</div>
+
+<script>
+// ============================================================
+// Data loading: JSON fetched from Swift-side AnalysisSchemeHandler
+// ============================================================
+
+async function fetchJSON(url) {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return [];
+    return await res.json();
+  } catch { return []; }
+}
+
+async function loadData(fromEpoch, toEpoch) {
+  _xMin = fromEpoch != null ? fromEpoch * 1000 : null;
+  _xMax = toEpoch != null ? toEpoch * 1000 : null;
+  document.getElementById('loading').textContent = 'Loading data...';
+  document.getElementById('loading').style.display = '';
+
+  let usageUrl = 'cut://usage.json';
+  if (fromEpoch != null && toEpoch != null) {
+    usageUrl += `?from=${fromEpoch}&to=${toEpoch}`;
+  }
+
+  const usageData = await fetchJSON(usageUrl);
+  return { usageData };
+}
+
+// ============================================================
+// Chart rendering (preserved from previous implementation)
+// ============================================================
+
+let _usageData;
+let _xMin = null, _xMax = null;
+const _charts = {};
+
+// Session navigation state
+let _navMode = 'sessionWeekly';
+let _navIndex = 0;
+let _navSlots = [];
+const _allSlots = {};        // { sessionWeekly, sessionHourly, calWeek, calDay }
+
+Chart.defaults.animation = false;
+
+Chart.register({
+  id: 'dayBoundary',
+  beforeDatasetsDraw(chart) {
+    const xScale = chart.scales.x;
+    if (!xScale || xScale.type !== 'time') return;
+    const ctx = chart.ctx;
+    const { top, bottom, left, right } = chart.chartArea;
+    const min = xScale.min;
+    const max = xScale.max;
+    const shortScale = _navMode === 'sessionHourly' || _navMode === 'calDay';
+
+    // Collect boundary edges depending on mode
+    let edges = [];
+    if (shortScale) {
+      // Hour boundaries
+      const stepH = _navMode === 'sessionHourly' ? 1 : 3;
+      const h = new Date(min);
+      h.setMinutes(0, 0, 0);
+      h.setHours(h.getHours() + stepH);
+      while (h.getTime() < max) {
+        edges.push(h.getTime());
+        h.setHours(h.getHours() + stepH);
+      }
+    } else {
+      // Midnight boundaries
+      const d = new Date(min);
+      d.setHours(0, 0, 0, 0);
+      d.setDate(d.getDate() + 1);
+      while (d.getTime() < max) {
+        edges.push(d.getTime());
+        d.setDate(d.getDate() + 1);
+      }
+    }
+
+    // Draw boundary lines (top to below chart area)
+    ctx.save();
+    ctx.strokeStyle = shortScale ? themeColor('rgba(0,0,0,0.07)', 'rgba(255,255,255,0.07)') : themeColor('#c9d1d9', '#484f58');
+    ctx.lineWidth = 1;
+    for (const e of edges) {
+      const x = xScale.getPixelForValue(e);
+      if (x >= left && x <= right) {
+        ctx.beginPath();
+        ctx.moveTo(x, top);
+        ctx.lineTo(x, xScale.bottom);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+
+    // Draw centered labels between edges
+    const allEdges = [min, ...edges, max];
+    ctx.save();
+    ctx.fillStyle = themeColor('#656d76', '#8b949e');
+    ctx.font = '11px -apple-system, BlinkMacSystemFont, "SF Pro", system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    const labelY = xScale.top + 26;
+    for (let i = 0; i < allEdges.length - 1; i++) {
+      const lx = Math.max(xScale.getPixelForValue(allEdges[i]), left);
+      const rx = Math.min(xScale.getPixelForValue(allEdges[i + 1]), right);
+      if (rx - lx < 30) continue;
+      const mid = new Date((allEdges[i] + allEdges[i + 1]) / 2);
+      let label;
+      if (shortScale) {
+        label = String(mid.getHours()).padStart(2, '0');
+      } else {
+        label = (mid.getMonth() + 1) + '/' + String(mid.getDate()).padStart(2, '0');
+      }
+      ctx.fillText(label, (lx + rx) / 2, labelY);
+    }
+    ctx.restore();
+  },
+});
+
+function timeXScale() {
+  const cfg = {
+    type: 'time',
+    ticks: { display: false },
+    grid: { display: false },
+    afterFit(scale) { scale.height = 40; },
+  };
+  if (_xMin != null) cfg.min = _xMin;
+  if (_xMax != null) cfg.max = _xMax;
+  return cfg;
+}
+
+// Weekly: split into sessions when weekly_resets_at changes
+function buildWeeklySessions(data) {
+  const sessions = [];
+  let current = [];
+  let currentResetsAt = null;
+
+  function pushSession() {
+    if (current.length === 0) return;
+    const resetsAtMs = currentResetsAt ? currentResetsAt * 1000 : null;
+    if (resetsAtMs) {
+      current.push({ x: resetsAtMs, y: 0 });
+    }
+    sessions.push({
+      data: current,
+      start: resetsAtMs ? resetsAtMs - 7 * 86400000 : current[0].x,
+      end: resetsAtMs || current[current.length - 1].x,
+    });
+    current = [];
+    currentResetsAt = null;
+  }
+
+  for (const d of data) {
+    if (d.weekly_percent == null) continue;
+    if (!d.weekly_resets_at) continue;
+    if (currentResetsAt && d.weekly_resets_at !== currentResetsAt) {
+      pushSession();
+    }
+    current.push({ x: d.timestamp * 1000, y: d.weekly_percent });
+    currentResetsAt = d.weekly_resets_at;
+  }
+  pushSession();
+  return sessions;
+}
+
+// Hourly: split into sessions when hourly_resets_at changes.
+// resets_at is now a normalized epoch (rounded to nearest hour),
+// so simple value comparison is sufficient — no tolerance needed.
+function buildHourlySessions(data) {
+  const sessions = [];
+  let current = [];
+  let currentResetsAt = null;
+
+  function pushSession() {
+    if (current.length === 0) return;
+    const resetsAtMs = currentResetsAt ? currentResetsAt * 1000 : null;
+    // Add y=0 at resets_at to show usage dropping to 0 at session end
+    if (resetsAtMs) {
+      current.push({ x: resetsAtMs, y: 0 });
+    }
+    sessions.push({
+      data: current,
+      start: resetsAtMs ? resetsAtMs - 5 * 3600000 : current[0].x,
+      end: resetsAtMs || current[current.length - 1].x,
+    });
+    current = [];
+    currentResetsAt = null;
+  }
+
+  for (const d of data) {
+    if (d.hourly_percent == null) continue;
+    // Skip records without session assignment (idle periods between sessions)
+    if (!d.hourly_resets_at) continue;
+
+    if (currentResetsAt && d.hourly_resets_at !== currentResetsAt) {
+      pushSession();
+    }
+    current.push({ x: d.timestamp * 1000, y: d.hourly_percent });
+    currentResetsAt = d.hourly_resets_at;
+  }
+  pushSession();
+  return sessions;
+}
+
+// Stripe pattern for session bands
+function createStripePattern(ctx, color, lineWidth, spacing) {
+  const size = spacing;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const pCtx = canvas.getContext('2d');
+  pCtx.strokeStyle = color;
+  pCtx.lineWidth = lineWidth;
+  pCtx.beginPath(); pCtx.moveTo(0, size); pCtx.lineTo(size, 0); pCtx.stroke();
+  pCtx.beginPath(); pCtx.moveTo(-size, size); pCtx.lineTo(size, -size); pCtx.stroke();
+  pCtx.beginPath(); pCtx.moveTo(0, size * 2); pCtx.lineTo(size * 2, 0); pCtx.stroke();
+  return ctx.createPattern(canvas, 'repeat');
+}
+
+// Binary search for nearest data point by timestamp
+function findNearest(sortedData, targetX) {
+  if (!sortedData.length) return null;
+  let lo = 0, hi = sortedData.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (sortedData[mid].x < targetX) lo = mid + 1; else hi = mid;
+  }
+  const candidates = [sortedData[lo]];
+  if (lo > 0) candidates.push(sortedData[lo - 1]);
+  let best = candidates[0];
+  for (const c of candidates) {
+    if (Math.abs(c.x - targetX) < Math.abs(best.x - targetX)) best = c;
+  }
+  return Math.abs(best.x - targetX) < 600000 ? best : null;
+}
+
+function renderUsageTab() {
+  const hourlySessions = buildHourlySessions(_usageData);
+  const weeklySessions = buildWeeklySessions(_usageData);
+  const allHourlyData = hourlySessions.flatMap(s => s.data).sort((a, b) => a.x - b.x);
+  const allWeeklyData = weeklySessions.flatMap(s => s.data).sort((a, b) => a.x - b.x);
+
+  const hourlyDatasets = hourlySessions.map((sess, i) => ({
+    label: i === 0 ? 'Hourly Usage' : '',
+    data: sess.data,
+    borderColor: _hourlyColor, backgroundColor: hexToRgba(_hourlyColor, 0.6),
+    fill: true, borderWidth: 0.75, pointRadius: 1, tension: 0, stepped: 'before',
+  }));
+
+  const weeklyDatasets = weeklySessions.map((sess, i) => ({
+    label: i === 0 ? 'Weekly Usage' : '',
+    data: sess.data,
+    borderColor: _weeklyColor, backgroundColor: hexToRgba(_weeklyColor, 0.15),
+    fill: true, borderWidth: 1.5, pointRadius: 1, tension: 0, stepped: 'before',
+    order: -1,
+  }));
+
+  // Hourly session bands: alternating stripes/translucent (for non-hourly modes)
+  const hourlyBandsPlugin = {
+    id: 'hourlyBands',
+    beforeDraw(chart) {
+      const xScale = chart.scales.x;
+      const ctx = chart.ctx;
+      const { top, bottom, left, right } = chart.chartArea;
+      const stripePattern = createStripePattern(ctx, themeColor('rgba(0,0,0,0.05)', 'rgba(255,255,255,0.07)'), 1, 8);
+      for (let i = 0; i < hourlySessions.length; i++) {
+        const x0 = Math.max(xScale.getPixelForValue(hourlySessions[i].start), left);
+        const x1 = Math.min(xScale.getPixelForValue(hourlySessions[i].end), right);
+        if (x1 <= x0) continue;
+        ctx.fillStyle = i % 2 === 0 ? stripePattern : themeColor('rgba(0,0,0,0.04)', 'rgba(255,255,255,0.06)');
+        ctx.fillRect(x0, top, x1 - x0, bottom - top);
+      }
+    },
+  };
+
+  // Future zone: stripe from current time to chart right edge (sessionHourly only)
+  const futureZonePlugin = {
+    id: 'futureZone',
+    beforeDraw(chart) {
+      const xScale = chart.scales.x;
+      const ctx = chart.ctx;
+      const { top, bottom, left, right } = chart.chartArea;
+      const nowMs = Date.now();
+      if (nowMs < xScale.min || nowMs > xScale.max) return;
+      const x0 = Math.max(xScale.getPixelForValue(nowMs), left);
+      if (right <= x0) return;
+      const stripePattern = createStripePattern(ctx, themeColor('rgba(0,0,0,0.05)', 'rgba(255,255,255,0.07)'), 1, 8);
+      ctx.fillStyle = stripePattern;
+      ctx.fillRect(x0, top, right - x0, bottom - top);
+    },
+  };
+
+  // Weekly session boundary markers (vertical dashed pink lines)
+  const weeklyBoundaryPlugin = {
+    id: 'weeklyBoundaries',
+    beforeDatasetsDraw(chart) {
+      const xScale = chart.scales.x;
+      const ctx = chart.ctx;
+      const { top, bottom, left, right } = chart.chartArea;
+      ctx.save();
+      ctx.strokeStyle = hexToRgba(_weeklyColor, 0.5);
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      for (const sess of weeklySessions) {
+        const x = xScale.getPixelForValue(sess.start);
+        if (x >= left && x <= right) {
+          ctx.beginPath();
+          ctx.moveTo(x, top);
+          ctx.lineTo(x, bottom);
+          ctx.stroke();
+        }
+      }
+      ctx.setLineDash([]);
+      ctx.restore();
+    },
+  };
+
+  // Crosshair + custom tooltip
+  const crosshairPlugin = {
+    id: 'crosshair',
+    afterDraw(chart) {
+      if (!chart._crosshairX) return;
+      const { top, bottom, left, right } = chart.chartArea;
+      const ctx = chart.ctx;
+      const xScale = chart.scales.x;
+      const yScale = chart.scales.y;
+      const tsMs = xScale.getValueForPixel(chart._crosshairX);
+
+      ctx.save();
+      ctx.strokeStyle = themeColor('rgba(0,0,0,0.3)', 'rgba(255,255,255,0.3)');
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      ctx.moveTo(chart._crosshairX, top);
+      ctx.lineTo(chart._crosshairX, bottom);
+      ctx.stroke();
+      ctx.restore();
+
+      const hourly = findNearest(allHourlyData, tsMs);
+      const weekly = findNearest(allWeeklyData, tsMs);
+      if (!hourly && !weekly) return;
+
+      ctx.save();
+      if (hourly) {
+        const hx = xScale.getPixelForValue(hourly.x);
+        const hy = yScale.getPixelForValue(hourly.y);
+        ctx.fillStyle = _hourlyColor;
+        ctx.beginPath(); ctx.arc(hx, hy, 4, 0, Math.PI * 2); ctx.fill();
+      }
+      if (weekly) {
+        const wx = xScale.getPixelForValue(weekly.x);
+        const wy = yScale.getPixelForValue(weekly.y);
+        ctx.fillStyle = _weeklyColor;
+        ctx.beginPath(); ctx.arc(wx, wy, 4, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+
+      const refTs = hourly ? hourly.x : weekly.x;
+      const d = new Date(refTs);
+      const timeStr = `${d.getMonth()+1}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+      const lines = [timeStr];
+      if (hourly) lines.push(`Hourly: ${hourly.y.toFixed(0)}%`);
+      if (weekly) lines.push(`Weekly: ${weekly.y.toFixed(0)}%`);
+
+      ctx.save();
+      ctx.font = '11px -apple-system, BlinkMacSystemFont, "SF Pro", system-ui, sans-serif';
+      const lineH = 16, pad = 8;
+      const maxW = Math.max(...lines.map(l => ctx.measureText(l).width));
+      const boxW = maxW + pad * 2;
+      const boxH = lines.length * lineH + pad * 2 - 4;
+      let bx = chart._crosshairX + 12;
+      if (bx + boxW > right) bx = chart._crosshairX - boxW - 12;
+      const by = top + 8;
+
+      ctx.fillStyle = themeColor('rgba(255,255,255,0.95)', 'rgba(22,27,34,0.92)');
+      ctx.strokeStyle = themeColor('#d0d7de', '#30363d');
+      ctx.lineWidth = 1;
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.roundRect(bx, by, boxW, boxH, 4);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.textBaseline = 'top';
+      for (let i = 0; i < lines.length; i++) {
+        ctx.fillStyle = i === 0 ? themeColor('#656d76', '#8b949e') : themeColor('#1f2328', '#c9d1d9');
+        ctx.fillText(lines[i], bx + pad, by + pad + i * lineH - 2);
+      }
+      ctx.restore();
+    },
+    afterEvent(chart, args) {
+      const evt = args.event;
+      if (evt.type === 'mousemove' && args.inChartArea) {
+        chart._crosshairX = evt.x;
+      } else if (evt.type === 'mouseout') {
+        chart._crosshairX = null;
+      }
+      chart.draw();
+    },
+  };
+
+  _charts.usageTimeline = new Chart(document.getElementById('usageTimeline'), {
+    type: 'line',
+    data: {
+      datasets: [
+        ...hourlyDatasets,
+        ...weeklyDatasets,
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      layout: { padding: { top: 8 } },
+      plugins: {
+        legend: {
+          labels: { color: themeColor('#656d76', '#8b949e'), font: { size: 11 }, filter: item => item.text !== '' },
+          onClick(e, legendItem, legend) {
+            const chart = legend.chart;
+            const ci = legendItem.datasetIndex;
+            const newVisible = !chart.isDatasetVisible(ci);
+            const targetColor = chart.data.datasets[ci].borderColor;
+            chart.data.datasets.forEach((ds, i) => {
+              if (ds.borderColor === targetColor) {
+                chart.setDatasetVisibility(i, newVisible);
+              }
+            });
+            chart.update();
+          },
+        },
+        tooltip: { enabled: false },
+      },
+      scales: {
+        x: timeXScale(),
+        y: { min: 0, max: 100, ticks: { color: themeColor('#656d76', '#484f58'), font: { size: 10 }, stepSize: 20 }, grid: { color: themeColor('#e5e7eb', '#21262d') }, title: { display: true, text: '%', color: themeColor('#656d76', '#484f58') } },
+      },
+    },
+    plugins: [
+      ...(_navMode === 'sessionHourly' ? [futureZonePlugin] : [hourlyBandsPlugin]),
+      weeklyBoundaryPlugin,
+      crosshairPlugin,
+    ],
+  });
+
+}
+
+function destroyAllCharts() {
+  for (const key of Object.keys(_charts)) {
+    if (_charts[key]) { _charts[key].destroy(); _charts[key] = null; }
+  }
+}
+
+function formatDateShort(d) {
+  return (d.getMonth() + 1) + '/' + String(d.getDate()).padStart(2, '0');
+}
+
+function formatDateTime(d) {
+  return formatDateShort(d) + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+}
+
+function formatDateFull(d) {
+  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  return days[d.getDay()] + ' ' + (d.getMonth() + 1) + '/' + String(d.getDate()).padStart(2, '0');
+}
+
+let _meta = {};
+
+// ============================================================
+// Theme & chart color helpers
+// ============================================================
+
+var _isLight = false;
+var _hourlyColor = '#64b4ff';
+var _weeklyColor = '#ff82b4';
+
+function applySettings(settings) {
+  if (!settings) return;
+  if (settings.color_theme === 'light') {
+    document.body.classList.add('light');
+    _isLight = true;
+  }
+  if (settings.hourly_color) _hourlyColor = settings.hourly_color;
+  if (settings.weekly_color) _weeklyColor = settings.weekly_color;
+}
+
+function hexToRgba(hex, alpha) {
+  if (!hex) return `rgba(0,0,0,${alpha})`;
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function themeColor(lightVal, darkVal) {
+  return _isLight ? lightVal : darkVal;
+}
+
+// ============================================================
+// Session navigation
+// ============================================================
+
+function buildSessionSlots(sessions, intervalSec, labelFn) {
+  return (sessions || []).map(s => {
+    const start = s.resets_at - intervalSec;
+    const end = s.resets_at;
+    const startDate = new Date(start * 1000);
+    const endDate = new Date(end * 1000);
+    return {
+      start,
+      end,
+      label: labelFn(startDate, endDate),
+    };
+  });
+}
+
+function buildCalendarSlots(meta, stepSec, labelFn) {
+  if (!meta.oldestTimestamp || !meta.latestTimestamp) return [];
+  const first = new Date(meta.oldestTimestamp * 1000);
+  first.setHours(0, 0, 0, 0);
+  if (stepSec === 7 * 86400) {
+    // Align to Monday
+    const day = first.getDay();
+    const offset = day === 0 ? -6 : 1 - day;
+    first.setDate(first.getDate() + offset);
+  }
+  const last = new Date(meta.latestTimestamp * 1000);
+  last.setHours(23, 59, 59, 999);
+
+  const slots = [];
+  const d = new Date(first);
+  while (d <= last) {
+    const slotStart = Math.floor(d.getTime() / 1000);
+    const slotEnd = slotStart + stepSec;
+    slots.push({
+      start: slotStart,
+      end: slotEnd,
+      label: labelFn(d, slotEnd),
+    });
+    d.setTime(d.getTime() + stepSec * 1000);
+  }
+  return slots;
+}
+
+function updateNavUI() {
+  const slots = _navSlots;
+  const slot = slots[_navIndex];
+
+  document.getElementById('navLabel').textContent = slot ? slot.label : 'No data';
+  document.getElementById('navPrev').disabled = _navIndex <= 0;
+  document.getElementById('navNext').disabled = _navIndex >= slots.length - 1;
+
+  const select = document.getElementById('sessionSelect');
+  select.innerHTML = '';
+  for (let i = 0; i < slots.length; i++) {
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = slots[i].label;
+    if (i === _navIndex) opt.selected = true;
+    select.appendChild(opt);
+  }
+}
+
+async function navigateTo(index) {
+  if (index < 0 || index >= _navSlots.length) return;
+  _navIndex = index;
+  const slot = _navSlots[_navIndex];
+
+  destroyAllCharts();
+  const { usageData } = await loadData(slot.start, slot.end);
+  renderMain(usageData);
+  updateNavUI();
+}
+
+function switchMode(mode) {
+  if (_navMode === mode) return;
+  _navMode = mode;
+  _navSlots = _allSlots[mode] || [];
+  _navIndex = _navSlots.length - 1;
+
+  // Update button active states
+  document.querySelectorAll('.mode-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.mode === mode);
+  });
+  // Update group active states
+  const isSession = mode.startsWith('session');
+  document.getElementById('groupSession').classList.toggle('active', isSession);
+  document.getElementById('groupCalendrical').classList.toggle('active', !isSession);
+
+  navigateTo(_navIndex);
+}
+
+function initNavigation() {
+  // Mode toggle — delegate from all mode buttons
+  document.querySelectorAll('.mode-btn[data-mode]').forEach(btn => {
+    btn.addEventListener('click', () => switchMode(btn.dataset.mode));
+  });
+
+  // Nav buttons
+  document.getElementById('navPrev').addEventListener('click', () => navigateTo(_navIndex - 1));
+  document.getElementById('navNext').addEventListener('click', () => navigateTo(_navIndex + 1));
+
+  // Dropdown
+  document.getElementById('sessionSelect').addEventListener('change', (e) => {
+    navigateTo(parseInt(e.target.value));
+  });
+
+  // Keyboard shortcuts
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowLeft') navigateTo(_navIndex - 1);
+    if (e.key === 'ArrowRight') navigateTo(_navIndex + 1);
+  });
+}
+
+function renderMain(usageData) {
+  document.getElementById('loading').textContent = 'Drawing charts...';
+  document.getElementById('app').style.display = '';
+
+  _usageData = usageData;
+  renderUsageTab();
+  document.getElementById('loading').style.display = 'none';
+}
+
+// Backward-compatible alias (used by tests that call main() directly)
+const main = renderMain;
+
+// ============================================================
+// Entry point: fetch meta → build session slots → load initial session
+// ============================================================
+(async () => {
+  try {
+    const metaRes = await fetch('cut://meta.json');
+    _meta = metaRes.ok ? await metaRes.json() : {};
+    applySettings(_meta.settings);
+
+    _allSlots.sessionWeekly = buildSessionSlots(_meta.weeklySessions, 7 * 86400,
+      (s, e) => formatDateShort(s) + ' \u2014 ' + formatDateShort(e));
+    _allSlots.sessionHourly = buildSessionSlots(_meta.hourlySessions, 5 * 3600,
+      (s, e) => formatDateTime(s) + ' \u2014 ' + formatDateTime(e));
+    _allSlots.calWeek = buildCalendarSlots(_meta, 7 * 86400, (d, endEpoch) => {
+      return formatDateShort(d) + ' \u2014 ' + formatDateShort(new Date(endEpoch * 1000));
+    });
+    _allSlots.calDay = buildCalendarSlots(_meta, 86400, (d) => formatDateShort(d));
+    _navSlots = _allSlots.sessionWeekly;
+    _navIndex = _navSlots.length - 1;
+
+    initNavigation();
+
+    if (_navSlots.length === 0) {
+      // Fallback: load last 7 days
+      const nowEpoch = Math.floor(Date.now() / 1000);
+      const { usageData } = await loadData(nowEpoch - 7 * 86400, nowEpoch);
+      renderMain(usageData);
+    } else {
+      await navigateTo(_navIndex);
+    }
+
+  } catch (err) {
+    document.getElementById('loading').textContent = 'Error: ' + err.message;
+    console.error(err);
+  }
+})();
+</script>
+</body>
+</html>

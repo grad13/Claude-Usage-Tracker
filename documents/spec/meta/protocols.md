@@ -1,10 +1,10 @@
 ---
 Created: 2026-02-26
-Updated: 2026-03-14
+Updated: 2026-03-16
 Checked: -
 Deprecated: -
 Format: spec-v2.1
-Source: code/ClaudeUsageTracker/Protocols.swift
+Source: code/app/ClaudeUsageTracker/Protocols.swift
 ---
 
 # Specification: Protocols (DI Protocols & Default Implementations)
@@ -13,7 +13,7 @@ Source: code/ClaudeUsageTracker/Protocols.swift
 
 | Source | Runtime |
 |--------|---------|
-| code/ClaudeUsageTracker/Protocols.swift | Swift |
+| code/app/ClaudeUsageTracker/Protocols.swift | Swift |
 
 | Field | Value |
 |-------|-------|

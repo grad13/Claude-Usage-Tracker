@@ -1,10 +1,10 @@
 ---
 Created: 2026-02-26
-Updated: 2026-03-07
+Updated: 2026-03-16
 Checked: -
 Deprecated: -
 Format: spec-v2.1
-Source: code/ClaudeUsageTracker/ClaudeUsageTrackerApp.swift
+Source: code/app/ClaudeUsageTracker/ClaudeUsageTrackerApp.swift
 ---
 
 # App Windows, Menu Bar Label, and Graph UI
@@ -13,7 +13,7 @@ Source: code/ClaudeUsageTracker/ClaudeUsageTrackerApp.swift
 
 | Source | Runtime |
 |--------|---------|
-| code/ClaudeUsageTracker/ClaudeUsageTrackerApp.swift | macOS |
+| code/app/ClaudeUsageTracker/ClaudeUsageTrackerApp.swift | macOS |
 
 | Field | Value |
 |-------|-------|

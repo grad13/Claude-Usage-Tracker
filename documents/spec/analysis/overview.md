@@ -1,10 +1,10 @@
 ---
 Created: 2026-02-26
-Updated: 2026-03-06
+Updated: 2026-03-16
 Checked: -
 Deprecated: -
 Format: spec-v2.1
-Source: code/ClaudeUsageTracker/AnalysisExporter.swift
+Source: code/app/ClaudeUsageTracker/AnalysisExporter.swift
 ---
 
 # Analysis Page
@@ -13,9 +13,9 @@ Source: code/ClaudeUsageTracker/AnalysisExporter.swift
 
 | Source | Runtime |
 |--------|---------|
-| code/ClaudeUsageTracker/AnalysisExporter.swift | macOS |
-| code/ClaudeUsageTracker/AnalysisSchemeHandler.swift | macOS |
-| code/ClaudeUsageTracker/Resources/analysis.html | macOS |
+| code/app/ClaudeUsageTracker/AnalysisExporter.swift | macOS |
+| code/app/ClaudeUsageTracker/AnalysisSchemeHandler.swift | macOS |
+| code/app/ClaudeUsageTracker/Resources/analysis.html | macOS |
 
 | Field | Value |
 |-------|-------|
@@ -71,11 +71,11 @@ When no usage data is available, an empty chart is displayed.
 
 | Component | File | Responsibility |
 |-----------|------|----------------|
-| `AnalysisExporter` | `code/ClaudeUsageTracker/AnalysisExporter.swift` | Loads analysis.html from bundle resource |
-| `AnalysisSchemeHandler` | `code/ClaudeUsageTracker/AnalysisSchemeHandler.swift` | Serves JSON data to WKWebView via cut:// scheme |
-| `analysis.html` | `code/ClaudeUsageTracker/Resources/analysis.html` | HTML/CSS/JS (Chart.js) for usage visualization |
-| `AnalysisWebView` | `code/ClaudeUsageTracker/ClaudeUsageTrackerApp.swift` L265-288 | NSViewRepresentable wrapper |
-| `AnalysisWindowView` | `code/ClaudeUsageTracker/AnalysisWindowView.swift` | SwiftUI Window definition |
+| `AnalysisExporter` | `code/app/ClaudeUsageTracker/AnalysisExporter.swift` | Loads analysis.html from bundle resource |
+| `AnalysisSchemeHandler` | `code/app/ClaudeUsageTracker/AnalysisSchemeHandler.swift` | Serves JSON data to WKWebView via cut:// scheme |
+| `analysis.html` | `code/app/ClaudeUsageTracker/Resources/analysis.html` | HTML/CSS/JS (Chart.js) for usage visualization |
+| `AnalysisWebView` | `code/app/ClaudeUsageTracker/ClaudeUsageTrackerApp.swift` L265-288 | NSViewRepresentable wrapper |
+| `AnalysisWindowView` | `code/app/ClaudeUsageTracker/AnalysisWindowView.swift` | SwiftUI Window definition |
 
 ## Known Limitations
 

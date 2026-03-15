@@ -1,10 +1,10 @@
 ---
 Created: 2026-02-26
-Updated: 2026-03-06
+Updated: 2026-03-16
 Checked: -
 Deprecated: -
 Format: spec-v2.1
-Source: code/ClaudeUsageTracker/MenuContent.swift
+Source: code/app/ClaudeUsageTracker/MenuContent.swift
 ---
 
 # MenuContent Specification
@@ -13,7 +13,7 @@ Source: code/ClaudeUsageTracker/MenuContent.swift
 
 | Source | Runtime |
 |--------|---------|
-| code/ClaudeUsageTracker/MenuContent.swift | macOS |
+| code/app/ClaudeUsageTracker/MenuContent.swift | macOS |
 
 | Field | Value |
 |-------|-------|

@@ -70,7 +70,7 @@ Uses a WKWebView to maintain a browser session with claude.ai, then calls the in
 Requires Xcode 16+.
 
 ```bash
-xcodebuild -project code/ClaudeUsageTracker.xcodeproj \
+xcodebuild -project code/app/ClaudeUsageTracker.xcodeproj \
   -scheme ClaudeUsageTracker \
   -destination 'platform=macOS' build
 ```

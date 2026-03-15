@@ -1,10 +1,10 @@
 ---
 Created: 2026-02-26
-Updated: 2026-03-07
+Updated: 2026-03-16
 Checked: -
 Deprecated: -
 Format: spec-v2.1
-Source: code/ClaudeUsageTracker/MiniUsageGraph.swift
+Source: code/app/ClaudeUsageTracker/MiniUsageGraph.swift
 ---
 
 # Specification: MiniUsageGraph
@@ -13,11 +13,11 @@ Source: code/ClaudeUsageTracker/MiniUsageGraph.swift
 
 | Source | Runtime |
 |--------|---------|
-| code/ClaudeUsageTracker/MiniUsageGraph.swift | Swift |
+| code/app/ClaudeUsageTracker/MiniUsageGraph.swift | Swift |
 
 | Field | Value |
 |-------|-------|
-| Related | code/ClaudeUsageTracker/UsageStore.swift (DataPoint) |
+| Related | code/app/ClaudeUsageTracker/UsageStore.swift (DataPoint) |
 | Test Type | Unit |
 
 ## 1. Contract (Swift)
@@ -55,7 +55,7 @@ struct MiniUsageGraph: View {
 ### Dependent Type
 
 ```swift
-// UsageStore.DataPoint (code/ClaudeUsageTracker/UsageStore.swift)
+// UsageStore.DataPoint (code/app/ClaudeUsageTracker/UsageStore.swift)
 struct DataPoint {
     let timestamp: Date
     let fiveHourPercent: Double?

@@ -1,10 +1,10 @@
 ---
 Created: 2026-02-26
-Updated: 2026-03-07
+Updated: 2026-03-16
 Checked: -
 Deprecated: -
 Format: spec-v2.1
-Source: code/ClaudeUsageTracker/UsageFetcher.swift
+Source: code/app/ClaudeUsageTracker/UsageFetcher.swift
 ---
 
 # Specification: UsageFetcher
@@ -13,7 +13,7 @@ Source: code/ClaudeUsageTracker/UsageFetcher.swift
 
 | Source | Runtime |
 |--------|---------|
-| code/ClaudeUsageTracker/UsageFetcher.swift | macOS |
+| code/app/ClaudeUsageTracker/UsageFetcher.swift | macOS |
 
 | Field | Value |
 |-------|-------|

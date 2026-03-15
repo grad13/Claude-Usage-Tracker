@@ -1,10 +1,10 @@
 ---
 Created: 2026-02-21
-Updated: 2026-03-07
+Updated: 2026-03-16
 Checked: -
 Deprecated: -
 Format: spec-v2.1
-Source: code/ClaudeUsageTracker/Settings.swift, code/ClaudeUsageTracker/UsageViewModel+Settings.swift
+Source: code/app/ClaudeUsageTracker/Settings.swift, code/app/ClaudeUsageTracker/UsageViewModel+Settings.swift
 ---
 
 # Specification: Settings
@@ -13,8 +13,8 @@ Source: code/ClaudeUsageTracker/Settings.swift, code/ClaudeUsageTracker/UsageVie
 
 | Source | Runtime |
 |--------|---------|
-| code/ClaudeUsageTracker/Settings.swift | macOS |
-| code/ClaudeUsageTracker/UsageViewModel+Settings.swift | macOS |
+| code/app/ClaudeUsageTracker/Settings.swift | macOS |
+| code/app/ClaudeUsageTracker/UsageViewModel+Settings.swift | macOS |
 
 | Field | Value |
 |-------|-------|

@@ -1,10 +1,10 @@
 ---
 Created: 2026-03-03
-Updated: 2026-03-06
+Updated: 2026-03-16
 Checked: -
 Deprecated: -
 Format: spec-v2.1
-Source: code/ClaudeUsageTracker/UsageViewModel+Session.swift
+Source: code/app/ClaudeUsageTracker/UsageViewModel+Session.swift
 ---
 
 # UsageViewModel Session Management
@@ -13,7 +13,7 @@ Source: code/ClaudeUsageTracker/UsageViewModel+Session.swift
 
 | Source | Runtime |
 |--------|---------|
-| code/ClaudeUsageTracker/UsageViewModel+Session.swift | macOS |
+| code/app/ClaudeUsageTracker/UsageViewModel+Session.swift | macOS |
 
 | Field | Value |
 |-------|-------|

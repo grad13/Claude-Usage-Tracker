@@ -1,10 +1,10 @@
 ---
 Created: 2026-02-22
-Updated: 2026-03-15
+Updated: 2026-03-16
 Checked: -
 Deprecated: -
 Format: spec-v2.1
-Source: code/ClaudeUsageTrackerWidget/UsageWidget.swift, code/ClaudeUsageTrackerWidget/WidgetMediumView.swift, code/ClaudeUsageTrackerWidget/WidgetMiniGraph.swift, code/ClaudeUsageTrackerWidget/WidgetColorThemeResolver.swift, code/ClaudeUsageTrackerWidget/RefreshIntent.swift
+Source: code/app/ClaudeUsageTrackerWidget/UsageWidget.swift, code/app/ClaudeUsageTrackerWidget/WidgetMediumView.swift, code/app/ClaudeUsageTrackerWidget/WidgetMiniGraph.swift, code/app/ClaudeUsageTrackerWidget/WidgetColorThemeResolver.swift, code/app/ClaudeUsageTrackerWidget/RefreshIntent.swift
 ---
 
 # Widget Design Specification
@@ -13,11 +13,11 @@ Source: code/ClaudeUsageTrackerWidget/UsageWidget.swift, code/ClaudeUsageTracker
 
 | Source | Runtime |
 |--------|---------|
-| code/ClaudeUsageTrackerWidget/UsageWidget.swift | macOS |
-| code/ClaudeUsageTrackerWidget/WidgetMediumView.swift | macOS |
-| code/ClaudeUsageTrackerWidget/WidgetMiniGraph.swift | macOS |
-| code/ClaudeUsageTrackerWidget/WidgetColorThemeResolver.swift | macOS |
-| code/ClaudeUsageTrackerWidget/RefreshIntent.swift | macOS |
+| code/app/ClaudeUsageTrackerWidget/UsageWidget.swift | macOS |
+| code/app/ClaudeUsageTrackerWidget/WidgetMediumView.swift | macOS |
+| code/app/ClaudeUsageTrackerWidget/WidgetMiniGraph.swift | macOS |
+| code/app/ClaudeUsageTrackerWidget/WidgetColorThemeResolver.swift | macOS |
+| code/app/ClaudeUsageTrackerWidget/RefreshIntent.swift | macOS |
 
 | Field | Value |
 |-------|-------|
@@ -158,7 +158,7 @@ let nextRefresh = snapshot.timestamp.addingTimeInterval(Double(intervalMinutes) 
 
 ## RefreshIntent (AppIntent)
 
-`code/ClaudeUsageTrackerWidget/RefreshIntent.swift`
+`code/app/ClaudeUsageTrackerWidget/RefreshIntent.swift`
 
 ```swift
 struct RefreshIntent: AppIntent {
@@ -258,7 +258,7 @@ Only Medium size is supported. No size branching.
 
 ## WidgetColorThemeResolver
 
-`code/ClaudeUsageTrackerWidget/WidgetColorThemeResolver.swift`
+`code/app/ClaudeUsageTrackerWidget/WidgetColorThemeResolver.swift`
 
 Resolves chart color presets from `settings.json` via App Group for the Widget target. Since `SwiftUI.Color` cannot be shared via the Shared framework (it's a View type), the RGB mapping is duplicated in the Widget target.
 
@@ -276,7 +276,7 @@ Supported presets: `blue`, `pink`, `green`, `teal`, `purple`, `orange`, `white` 
 
 ## WidgetMediumView
 
-`code/ClaudeUsageTrackerWidget/WidgetMediumView.swift`
+`code/app/ClaudeUsageTrackerWidget/WidgetMediumView.swift`
 
 ### notFetchedView (When snapshot is nil)
 
@@ -307,7 +307,7 @@ Used to calculate the x-coordinate for the remaining time text (multiplied by `G
 
 ## WidgetMiniGraph Type Interface and Drawing Details
 
-`code/ClaudeUsageTrackerWidget/WidgetMiniGraph.swift`
+`code/app/ClaudeUsageTrackerWidget/WidgetMiniGraph.swift`
 
 ### Type Interface
 

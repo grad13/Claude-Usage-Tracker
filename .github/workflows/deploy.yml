@@ -3,7 +3,7 @@ name: Deploy
 on:
   push:
     branches: [main]
-    paths: ['code/.face/**']
+    paths: ['code/app/.face/**']
   workflow_dispatch:
 
 jobs:
@@ -26,4 +26,4 @@ jobs:
         run: |
           ssh ${{ secrets.SAKURA_USER }}@${{ secrets.SAKURA_HOST }} "mkdir -p ~/www/ClaudeUsageTracker/"
           rsync -avz --chmod=F644,D755 \
-            code/.face/ ${{ secrets.SAKURA_USER }}@${{ secrets.SAKURA_HOST }}:~/www/ClaudeUsageTracker/.face/
+            code/app/.face/ ${{ secrets.SAKURA_USER }}@${{ secrets.SAKURA_HOST }}:~/www/ClaudeUsageTracker/.face/

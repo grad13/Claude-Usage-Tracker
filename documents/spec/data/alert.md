@@ -1,10 +1,10 @@
 ---
 Created: 2026-02-27
-Updated: 2026-03-03
+Updated: 2026-03-16
 Checked: -
 Deprecated: -
 Format: spec-v2.1
-Source: code/ClaudeUsageTracker/AlertChecker.swift, code/ClaudeUsageTracker/NotificationManager.swift
+Source: code/app/ClaudeUsageTracker/AlertChecker.swift, code/app/ClaudeUsageTracker/NotificationManager.swift
 ---
 
 # Specification: Alert (AlertChecker + NotificationManager)
@@ -13,8 +13,8 @@ Source: code/ClaudeUsageTracker/AlertChecker.swift, code/ClaudeUsageTracker/Noti
 
 | Source | Runtime |
 |--------|---------|
-| code/ClaudeUsageTracker/AlertChecker.swift | Swift |
-| code/ClaudeUsageTracker/NotificationManager.swift | Swift |
+| code/app/ClaudeUsageTracker/AlertChecker.swift | Swift |
+| code/app/ClaudeUsageTracker/NotificationManager.swift | Swift |
 
 | Field | Value |
 |-------|-------|

@@ -1,10 +1,10 @@
 ---
 Created: 2026-03-03
-Updated: 2026-03-04
+Updated: 2026-03-16
 Checked: -
 Deprecated: -
 Format: spec-v2.1
-Source: code/ClaudeUsageTracker/WebViewCoordinator.swift
+Source: code/app/ClaudeUsageTracker/WebViewCoordinator.swift
 ---
 
 # WebViewCoordinator
@@ -13,7 +13,7 @@ Source: code/ClaudeUsageTracker/WebViewCoordinator.swift
 
 | Source | Runtime |
 |--------|---------|
-| code/ClaudeUsageTracker/WebViewCoordinator.swift | Swift |
+| code/app/ClaudeUsageTracker/WebViewCoordinator.swift | Swift |
 
 | Field | Value |
 |-------|-------|

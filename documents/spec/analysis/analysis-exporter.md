@@ -1,10 +1,10 @@
 ---
 Created: 2026-02-26
-Updated: 2026-03-07
+Updated: 2026-03-16
 Checked: -
 Deprecated: -
 Format: spec-v2.1
-Source: code/ClaudeUsageTracker/AnalysisExporter.swift
+Source: code/app/ClaudeUsageTracker/AnalysisExporter.swift
 ---
 
 # Specification: AnalysisExporter
@@ -13,11 +13,11 @@ Source: code/ClaudeUsageTracker/AnalysisExporter.swift
 
 | Source | Runtime |
 |--------|---------|
-| `code/ClaudeUsageTracker/AnalysisExporter.swift` | Swift (container) + JavaScript/HTML/CSS (core) |
+| `code/app/ClaudeUsageTracker/AnalysisExporter.swift` | Swift (container) + JavaScript/HTML/CSS (core) |
 
 | Field | Value |
 |-------|-------|
-| Related | `documents/spec/analysis/overview.md`, `code/ClaudeUsageTracker/AnalysisSchemeHandler.swift` |
+| Related | `documents/spec/analysis/overview.md`, `code/app/ClaudeUsageTracker/AnalysisSchemeHandler.swift` |
 | Test Type | Unit (JS function logic) + Integration (end-to-end data flow) |
 
 ### Runtime Definition

@@ -1,6 +1,6 @@
 ---
 Created: 2026-02-21
-Updated: 2026-03-04
+Updated: 2026-03-16
 Checked: -
 Deprecated: -
 Format: spec-v2.1
@@ -13,9 +13,9 @@ Source: Multiple files (architecture overview)
 
 | Source | Runtime |
 |--------|---------|
-| code/ClaudeUsageTracker/ClaudeUsageTrackerApp.swift | macOS |
-| code/ClaudeUsageTracker/UsageViewModel.swift | macOS |
-| code/ClaudeUsageTracker/WebViewCoordinator.swift | macOS |
+| code/app/ClaudeUsageTracker/ClaudeUsageTrackerApp.swift | macOS |
+| code/app/ClaudeUsageTracker/UsageViewModel.swift | macOS |
+| code/app/ClaudeUsageTracker/WebViewCoordinator.swift | macOS |
 
 | Field | Value |
 |-------|-------|
@@ -57,7 +57,7 @@ After OAuth login
 ## File Structure
 
 ```
-code/ClaudeUsageTracker/
+code/app/ClaudeUsageTracker/
 ├── ClaudeUsageTrackerApp.swift              # Entry point, Scene definitions, AppDelegate
 ├── MenuContent.swift               # Dropdown menu UI
 ├── MenuBarLabel.swift              # Menu bar label + MenuBarGraphsContent

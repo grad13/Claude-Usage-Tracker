@@ -1,10 +1,10 @@
 ---
 Created: 2026-02-26
-Updated: 2026-03-07
+Updated: 2026-03-16
 Checked: -
 Deprecated: -
 Format: spec-v2.1
-Source: code/ClaudeUsageTracker/AnalysisSchemeHandler.swift
+Source: code/app/ClaudeUsageTracker/AnalysisSchemeHandler.swift
 ---
 
 # Specification: AnalysisSchemeHandler
@@ -13,11 +13,11 @@ Source: code/ClaudeUsageTracker/AnalysisSchemeHandler.swift
 
 | Source | Runtime |
 |--------|---------|
-| `code/ClaudeUsageTracker/AnalysisSchemeHandler.swift` | Swift |
+| `code/app/ClaudeUsageTracker/AnalysisSchemeHandler.swift` | Swift |
 
 | Field | Value |
 |-------|-------|
-| Related | `code/ClaudeUsageTracker/AnalysisExporter.swift`, `code/ClaudeUsageTrackerShared/SQLiteHelper.swift`, `documents/spec/analysis/overview.md` |
+| Related | `code/app/ClaudeUsageTracker/AnalysisExporter.swift`, `code/app/ClaudeUsageTrackerShared/SQLiteHelper.swift`, `documents/spec/analysis/overview.md` |
 | Test Type | Unit |
 
 ## 1. Contract (Swift)
@@ -326,7 +326,7 @@ private func parseQueryParams(_ url: URL) -> [String: String]
 - The `fail` method uses `cut://error` as a fallback URL when the URL is nil
 - `serializeJSON` converts Optional nil to `NSNull()`. `JSONSerialization` cannot handle Swift Optionals directly
 - `SQLiteHelper.columnText`, `SQLiteHelper.columnDouble`, `SQLiteHelper.columnInt` include `SQLITE_NULL` checks. NULL columns return `nil`
-- SQLite operations are abstracted through the `SQLiteHelper` enum (`code/ClaudeUsageTrackerShared/SQLiteHelper.swift`). `withDatabase`/`withStatement` automatically manage the open/prepare/close/finalize lifecycle
+- SQLite operations are abstracted through the `SQLiteHelper` enum (`code/app/ClaudeUsageTrackerShared/SQLiteHelper.swift`). `withDatabase`/`withStatement` automatically manage the open/prepare/close/finalize lifecycle
 - `queryUsageJSON` reads epoch timestamps as `Int64` from SQLite, converts to `Int`, and includes them in the JSON
 - Without filters, all records are SELECTed (performance depends on data volume)
 - `queryMetaJSON` always returns either a single row (aggregate query) or `{}` on failure
