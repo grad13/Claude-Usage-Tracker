@@ -2,7 +2,7 @@
 
 macOS menu bar app for monitoring Claude Code usage limits — log, track, and analyze your usage trends.
 
-<img src="docs/images/Screen-3.png" width="800">
+<img src="documents/images/Screen-3.png" width="800">
 
 ## Download
 
@@ -28,13 +28,13 @@ ClaudeUsageTracker logs your usage over time and provides three levels of detail
 
 5h and 7d usage trend graphs, always visible in the menu bar. Step-interpolated area charts with session boundaries and reset points. Auto-refresh at configurable intervals (default: 5 min).
 
-<img src="docs/images/Menu-Tray.png" width="200">
+<img src="documents/images/Menu-Tray.png" width="200">
 
 ### Widgets (WidgetKit)
 
 Small / Medium / Large sizes for your desktop. Current usage %, time until reset, trend graphs with session markers.
 
-<img src="docs/images/Wiget.png" width="360">
+<img src="documents/images/Wiget.png" width="360">
 
 ### Analysis page
 
@@ -42,11 +42,11 @@ Usage timeline with hourly and weekly usage overlaid. 4-mode navigation with int
 
 | Session Weekly | Session Hourly |
 |:-:|:-:|
-| <img src="docs/images/Session-Weekly.png" width="400"> | <img src="docs/images/Session-Hourly.png" width="400"> |
+| <img src="documents/images/Session-Weekly.png" width="400"> | <img src="documents/images/Session-Hourly.png" width="400"> |
 
 | Calendrical Week | Calendrical Day |
 |:-:|:-:|
-| <img src="docs/images/Calendrical-Week.png" width="400"> | <img src="docs/images/Calendrical-Day.png" width="400"> |
+| <img src="documents/images/Calendrical-Week.png" width="400"> | <img src="documents/images/Calendrical-Day.png" width="400"> |
 
 ### Other
 - Start at Login (SMAppService)
