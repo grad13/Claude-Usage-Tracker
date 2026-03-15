@@ -397,7 +397,7 @@
 			children = (
 				BB200002 /* ClaudeUsageTrackerTests */,
 			);
-			path = ../tests;
+			path = ../../tests;
 			sourceTree = "<group>";
 		};
 		BB200002 /* ClaudeUsageTrackerTests */ = {
