@@ -1,4 +1,4 @@
-// meta: created=2026-02-21 updated=2026-03-15 checked=2026-03-03
+// meta: created=2026-02-21 updated=2026-03-15 checked=2026-03-15
 import AppIntents
 import SwiftUI
 import WidgetKit
@@ -53,7 +53,6 @@ struct WidgetMediumView: View {
 
                     footerRow(timestamp: snapshot.timestamp)
                         .frame(height: footerHeight)
-                        .background(Color.red)
                 }
             }
         } else {

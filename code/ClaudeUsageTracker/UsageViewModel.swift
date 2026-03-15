@@ -1,4 +1,4 @@
-// meta: created=2026-02-21 updated=2026-03-14 checked=2026-02-26
+// meta: created=2026-02-21 updated=2026-03-15 checked=2026-02-26
 import Foundation
 import WebKit
 import Combine
@@ -260,7 +260,7 @@ final class UsageViewModel: ObservableObject, WebViewCoordinatorDelegate {
         usageStore.save(result)
         reloadHistory()
 
-        // Phase 2.5: Write snapshot to UserDefaults for widget
+        // Phase 2.5: Write snapshot file to App Group container for widget
         writeWidgetSnapshot(result: result, isLoggedIn: true)
 
         // Phase 3: Evaluate alert thresholds
