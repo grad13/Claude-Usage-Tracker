@@ -17,7 +17,7 @@ Source: tools/build_and_install.py
 
 | Field | Value |
 |-------|-------|
-| Related | docs/spec/tools/rollback.md, docs/spec/tools/data-protection.md, docs/spec/tools/db-backup.md, docs/spec/tools/launchservices.md, docs/spec/tools/version.md, docs/spec/tools/runner.md |
+| Related | documents/spec/tools/rollback.md, documents/spec/tools/data-protection.md, documents/spec/tools/db-backup.md, documents/spec/tools/launchservices.md, documents/spec/tools/version.md, documents/spec/tools/runner.md |
 | Test Type | pytest (tests/tools/) |
 
 ## Overview

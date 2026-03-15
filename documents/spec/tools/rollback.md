@@ -17,7 +17,7 @@ Source: tools/rollback.py
 
 | 項目 | 値 |
 |------|-----|
-| Related | docs/spec/tools/build-and-install.md, tools/lib/launchservices.py, tools/lib/runner.py |
+| Related | documents/spec/tools/build-and-install.md, tools/lib/launchservices.py, tools/lib/runner.py |
 | Test Type | pytest (tests/tools/test_rollback.py) |
 
 ## 1. Contract (Python)

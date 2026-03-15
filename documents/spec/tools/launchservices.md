@@ -17,7 +17,7 @@ Source: tools/lib/launchservices.py
 
 | Field | Value |
 |-------|-------|
-| Related | docs/spec/tools/build-and-install.md, docs/spec/tools/rollback.md, docs/spec/tools/runner.md |
+| Related | documents/spec/tools/build-and-install.md, documents/spec/tools/rollback.md, documents/spec/tools/runner.md |
 | Test Type | pytest (tests/tools/test_launchservices.py) |
 
 ## Overview

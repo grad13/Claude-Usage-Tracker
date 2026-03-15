@@ -17,7 +17,7 @@ Source: tools/lib/db_backup.py
 
 | Field | Value |
 |-------|-------|
-| Related | docs/spec/tools/build-and-install.md |
+| Related | documents/spec/tools/build-and-install.md |
 | Test Type | pytest (tests/tools/test_build_and_install.py) |
 
 ## Overview

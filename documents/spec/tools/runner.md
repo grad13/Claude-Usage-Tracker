@@ -17,7 +17,7 @@ Source: tools/lib/runner.py
 
 | 項目 | 値 |
 |------|-----|
-| Related | docs/spec/tools/build-and-install.md, docs/spec/tools/rollback.md |
+| Related | documents/spec/tools/build-and-install.md, documents/spec/tools/rollback.md |
 | Test Type | pytest (tests/tools/test_runner.py) |
 
 ## 1. Contract (Python)
