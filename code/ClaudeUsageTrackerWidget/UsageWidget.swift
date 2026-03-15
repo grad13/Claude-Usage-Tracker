@@ -6,6 +6,7 @@ import ClaudeUsageTrackerShared
 struct UsageEntry: TimelineEntry {
     let date: Date
     let snapshot: UsageSnapshot?
+    var isRefreshing: Bool = false
 }
 
 struct UsageTimelineProvider: TimelineProvider {
@@ -27,7 +28,15 @@ struct UsageTimelineProvider: TimelineProvider {
     func getTimeline(in context: Context, completion: @escaping (Timeline<UsageEntry>) -> Void) {
         let snapshot = UsageReader.load()
         let now = Date()
-        var entries = [UsageEntry(date: now, snapshot: snapshot)]
+        var entries: [UsageEntry] = []
+
+        // Show "updating..." briefly if refresh was just tapped
+        if RefreshState.isRefreshing, let expiresAt = RefreshState.expiresAt {
+            entries.append(UsageEntry(date: now, snapshot: snapshot, isRefreshing: true))
+            entries.append(UsageEntry(date: expiresAt, snapshot: snapshot, isRefreshing: false))
+        } else {
+            entries.append(UsageEntry(date: now, snapshot: snapshot))
+        }
 
         // Add a future entry at the earliest reset time so the widget
         // refreshes automatically when a usage window resets.
@@ -46,7 +55,7 @@ struct UsageWidgetEntryView: View {
     var entry: UsageEntry
 
     var body: some View {
-        WidgetMediumView(snapshot: entry.snapshot)
+        WidgetMediumView(snapshot: entry.snapshot, isRefreshing: entry.isRefreshing)
     }
 }
 
@@ -62,5 +71,6 @@ struct UsageWidget: Widget {
         .configurationDisplayName("Claude Usage")
         .description("Monitor Claude Code usage limits")
         .supportedFamilies([.systemMedium])
+        .contentMarginsDisabled()
     }
 }

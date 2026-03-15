@@ -3,6 +3,14 @@
 
 ## [Unreleased]
 
+### Improved
+- **Widget footer**: Compact layout (reduced height, font size unified with chart labels)
+- **Widget footer**: Removed system content margins (`contentMarginsDisabled`) to maximize chart area
+- **Widget refresh**: Entire footer row acts as refresh button (larger tap target)
+- **Widget refresh**: Show "updating..." feedback for 1.5 seconds after tap
+- **Widget refresh**: Blue refresh icon to indicate tappability
+- **Widget countdown**: Short minute-based format for Next display ("23 sec" → "2m")
+
 ## [1.0.3] - 2026-03-14
 
 ### Fixed

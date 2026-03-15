@@ -6,6 +6,7 @@ import ClaudeUsageTrackerShared
 
 struct WidgetMediumView: View {
     let snapshot: UsageSnapshot?
+    var isRefreshing: Bool = false
     @Environment(\.colorScheme) private var envColorScheme
 
     private var resolvedColorScheme: ColorScheme {
@@ -22,7 +23,7 @@ struct WidgetMediumView: View {
         WidgetColorThemeResolver.resolveChartColor(forKey: "weekly_color_preset", default: Self.defaultSevenDayColor)
     }
 
-    private let footerHeight: CGFloat = 18
+    private let footerHeight: CGFloat = 16
 
     var body: some View {
         if let snapshot {
@@ -49,6 +50,8 @@ struct WidgetMediumView: View {
                             opacity: 0.65
                         )
                     }
+                    .padding(.horizontal, 12)
+                    .padding(.top, 8)
                     .frame(height: geo.size.height - footerHeight)
 
                     footerRow(timestamp: snapshot.timestamp)
@@ -102,34 +105,42 @@ struct WidgetMediumView: View {
     private func footerRow(timestamp: Date) -> some View {
         let intervalMinutes = AppGroupConfig.settingsInt(forKey: "refresh_interval_minutes") ?? 5
         let nextRefresh = timestamp.addingTimeInterval(Double(intervalMinutes) * 60)
+        let remaining = max(0, Int(nextRefresh.timeIntervalSinceNow / 60))
+        let nextText = remaining == 0 ? "due" : "\(remaining)m"
 
-        HStack(spacing: 6) {
-            Spacer(minLength: 0)
+        Button(intent: RefreshIntent()) {
+            HStack(spacing: 6) {
+                Spacer(minLength: 0)
 
-            HStack(spacing: 3) {
-                Text("update")
-                Text(timestamp, style: .time)
-            }
-            .font(.system(size: 9))
-            .foregroundStyle(.secondary)
-
-            HStack(spacing: 3) {
-                Text("Next")
-                Text(nextRefresh, style: .relative)
-            }
-            .font(.system(size: 9))
-            .foregroundStyle(.secondary)
-
-            Button(intent: RefreshIntent()) {
-                Image(systemName: "arrow.clockwise")
-                    .font(.system(size: 10))
+                if isRefreshing {
+                    Text("updating...")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.blue)
+                } else {
+                    HStack(spacing: 3) {
+                        Text("update")
+                        Text(timestamp, style: .time)
+                    }
+                    .font(.system(size: 9))
                     .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain)
 
-            Spacer(minLength: 0)
+                    HStack(spacing: 3) {
+                        Text("Next")
+                        Text(nextText)
+                    }
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
+
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.blue)
+                }
+
+                Spacer(minLength: 0)
+            }
         }
-        .frame(height: 18)
+        .buttonStyle(.plain)
+        .padding(.bottom, 4)
     }
 
     private var notFetchedView: some View {
