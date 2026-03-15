@@ -41,13 +41,10 @@ __pycache__/
 /documents/README.md
 /documents/plan/
 /documents/reference/
-/documents/archive/
 /documents/handoff/
-/documents/reports/
 /externals/
-**/.refactor-*/
-**/.*-from-*/
-**/_*/
+/archive/
+/code/prototypes/
 
 # Coverage / profiling
 *.profraw
