@@ -33,11 +33,20 @@ __pycache__/
 
 # Local tools
 .serena/
-.claude/
-CLAUDE.md
 
-# _ prefix = not published to GitHub
-_*/
+# Private (not tracked on main branch, tracked on local branch)
+/.claude/
+/CLAUDE.md
+/documents/CLAUDE.md
+/documents/README.md
+/documents/plan/
+/documents/reference/
+/documents/archive/
+/documents/handoff/
+/documents/reports/
+/externals/
+**/.refactor-*/
+**/.*-from-*/
 **/_*/
 
 # Coverage / profiling
