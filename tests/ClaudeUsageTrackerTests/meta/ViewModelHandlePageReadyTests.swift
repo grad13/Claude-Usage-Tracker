@@ -52,9 +52,10 @@ final class ViewModelHandlePageReadyTests: XCTestCase {
         XCTAssertFalse(vm.isLoggedIn)
 
         // Wait for init's async side effects (loadUsagePage → handlePageReady) to settle
+        // CI runners are slower; 1.5s ensures init's async chain completes before counter reset
         let settle = expectation(description: "init settles")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { settle.fulfill() }
-        wait(for: [settle], timeout: 2.0)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { settle.fulfill() }
+        wait(for: [settle], timeout: 3.0)
 
         // Reset counters after init's side effects
         stubFetcher.hasValidSessionCallCount = 0
