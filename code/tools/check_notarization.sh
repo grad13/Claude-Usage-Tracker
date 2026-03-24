@@ -1,4 +1,5 @@
 #!/bin/bash
+# meta: updated=2026-03-15 06:58 checked=-
 # Check notarization status and staple if accepted.
 # Usage: check_notarization.sh <submission-id>
 # Intended to be run via cron or launchd.

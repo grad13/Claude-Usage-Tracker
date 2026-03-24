@@ -1,3 +1,4 @@
+// meta: updated=2026-03-07 04:54 checked=-
 // Tests for: MiniUsageGraph pure logic (usageValue, fillEndFrac)
 // Source spec: spec/ui/mini-usage-graph.md
 // Generated: 2026-03-06

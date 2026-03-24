@@ -1,3 +1,4 @@
+// meta: updated=2026-03-07 15:36 checked=-
 // Supplement tests for: docs/spec/widget/design.md
 // Covers: WidgetColorThemeResolver colorMap RGB values (tested via ChartColorPreset),
 //         WidgetColorThemeResolver resolve decision table (logic contract),

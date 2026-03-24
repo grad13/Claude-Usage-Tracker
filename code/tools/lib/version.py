@@ -1,3 +1,4 @@
+# meta: updated=2026-03-15 06:58 checked=-
 """Version extraction from .app bundles using plistlib."""
 from __future__ import annotations
 

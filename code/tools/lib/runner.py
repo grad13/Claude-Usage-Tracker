@@ -1,3 +1,4 @@
+# meta: updated=2026-03-15 07:19 checked=-
 """Subprocess runner with consistent logging and error handling."""
 from __future__ import annotations
 

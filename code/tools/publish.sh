@@ -1,4 +1,5 @@
 #!/bin/bash
+# meta: updated=2026-03-16 06:47 checked=-
 set -e
 
 # local ブランチにいることを確認

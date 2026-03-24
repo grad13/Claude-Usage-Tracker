@@ -1,3 +1,4 @@
+# meta: updated=2026-03-15 08:49 checked=-
 """Supplement tests for lib/launchservices.py.
 
 Supplement for: tests/tools/test_lib_functions.py

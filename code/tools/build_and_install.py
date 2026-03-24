@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# meta: updated=2026-03-16 06:59 checked=-
 """Build, test, and install ClaudeUsageTracker.
 
 Replaces build-and-install.sh with proper error handling:

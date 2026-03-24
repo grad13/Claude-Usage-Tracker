@@ -1,5 +1,4 @@
-// meta: created=2026-02-24 updated=2026-03-04 checked=2026-03-03
-// changed: 2026-02-27 JOIN query for normalized sessions, epoch timestamps, new JSON key names
+// meta: updated=2026-03-16 06:52 checked=2026-03-03 00:00
 import Foundation
 import SQLite3
 import WebKit

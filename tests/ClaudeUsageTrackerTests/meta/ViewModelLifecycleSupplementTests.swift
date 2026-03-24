@@ -1,3 +1,4 @@
+// meta: updated=2026-03-06 09:14 checked=-
 // Supplement for: tests/ClaudeUsageTrackerTests/ViewModelTests.swift
 // Source spec: _documents/spec/meta/viewmodel-lifecycle.md
 // Covers: startAutoRefresh / restartAutoRefresh timer control, fetchSilently() vs fetch() diff

@@ -1,3 +1,4 @@
+// meta: updated=2026-03-06 09:14 checked=-
 // Supplement for: protocol conformance tests
 // Source spec: spec/meta/protocols.md
 // Generated: 2026-03-03

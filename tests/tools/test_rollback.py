@@ -1,3 +1,4 @@
+# meta: updated=2026-03-04 17:38 checked=-
 """Tests for rollback.py.
 
 Covers:

@@ -1,5 +1,7 @@
 # Claude Usage Tracker
 
+🌐 [ORBITAL-Q](https://orbital-q.sakura.ne.jp/)
+
 macOS menu bar app for monitoring Claude Code usage limits — log, track, and analyze your usage trends.
 
 <img src="documents/images/Screen-3.png" width="800">

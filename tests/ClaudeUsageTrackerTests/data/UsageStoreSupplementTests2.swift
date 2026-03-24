@@ -1,3 +1,4 @@
+// meta: updated=2026-03-07 08:17 checked=-
 // Supplement 2 for: docs/spec/data/usage-store.md
 // Covers: checkIntegrity() corruption recovery, withDatabase double-Optional resolution
 // Skipped: shared singleton test-env path (static let, not unit-testable)

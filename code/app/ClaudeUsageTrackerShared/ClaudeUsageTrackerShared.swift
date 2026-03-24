@@ -1,4 +1,4 @@
-//
+// meta: updated=2026-03-16 06:52 checked=-
 //  ClaudeUsageTrackerShared.swift
 //  ClaudeUsageTrackerShared
 //

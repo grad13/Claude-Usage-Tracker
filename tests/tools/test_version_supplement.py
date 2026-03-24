@@ -1,3 +1,4 @@
+# meta: updated=2026-03-15 08:04 checked=-
 # Supplement for: tests/tools/test_version.py
 """Supplementary tests for lib/version.py.
 

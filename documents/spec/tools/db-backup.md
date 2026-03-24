@@ -1,7 +1,6 @@
 ---
-Created: 2026-03-15
-Updated: 2026-03-15
-Checked: -
+updated: 2026-03-15 09:41
+checked: -
 Deprecated: -
 Format: spec-v2.1
 Source: tools/lib/db_backup.py

@@ -1,3 +1,4 @@
+// meta: updated=2026-03-07 08:17 checked=-
 // Supplement for: docs/spec/data/settings.md
 // Covers: corrupt file .bak rename, GraphColorTheme.displayName,
 //         GraphColorTheme.resolvedColorScheme(), widgetReloader on color/theme setters,

@@ -1,3 +1,4 @@
+// meta: updated=2026-03-04 06:28 checked=-
 // Supplement for: tests/ClaudeUsageTrackerTests/AlertCheckerTests.swift
 // Source spec:    _documents/spec/data/alert.md  sections 3.3, 3.4, 3.5
 // Covers: DA-07, DU-01–05, NI-02–03

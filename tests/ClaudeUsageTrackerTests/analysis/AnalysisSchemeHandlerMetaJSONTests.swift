@@ -1,3 +1,4 @@
+// meta: updated=2026-03-07 08:52 checked=-
 // Supplement for: tests/ClaudeUsageTrackerTests/AnalysisSchemeHandlerTests.swift
 // Generated from: _documents/spec/analysis/analysis-scheme-handler.md
 // Coverage: queryMetaJSON all paths (UT-M01–M05), Query parameter filtering (UT-F01–F04),

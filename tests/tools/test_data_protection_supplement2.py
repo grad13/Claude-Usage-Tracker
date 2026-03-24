@@ -1,3 +1,4 @@
+# meta: updated=2026-03-15 08:26 checked=-
 # Supplement for: tests/tools/test_data_protection.py
 """Supplement tests (batch 2) for lib/data_protection.py.
 

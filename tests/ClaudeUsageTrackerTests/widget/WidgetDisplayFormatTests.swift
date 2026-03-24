@@ -1,3 +1,4 @@
+// meta: updated=2026-03-06 18:36 checked=-
 // Supplement for: widget design integration tests
 // Source spec: _documents/spec/widget/design.md
 //

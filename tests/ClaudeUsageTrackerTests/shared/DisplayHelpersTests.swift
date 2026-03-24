@@ -1,3 +1,4 @@
+// meta: updated=2026-03-04 16:54 checked=-
 import XCTest
 import ClaudeUsageTrackerShared
 

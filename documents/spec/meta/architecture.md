@@ -1,7 +1,6 @@
 ---
-Created: 2026-02-21
-Updated: 2026-03-16
-Checked: -
+updated: 2026-03-16 06:59
+checked: -
 Deprecated: -
 Format: spec-v2.1
 Source: Multiple files (architecture overview)

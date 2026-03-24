@@ -1,3 +1,4 @@
+// meta: updated=2026-03-04 06:28 checked=-
 // Supplement for: architecture integration tests (ViewModel state)
 // Source spec: spec/meta/architecture.md
 // Generated: 2026-03-03

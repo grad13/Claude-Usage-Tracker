@@ -1,3 +1,4 @@
+# meta: updated=2026-03-15 08:26 checked=-
 """Supplement tests for verify_bundle_bits() edge cases.
 
 Split from: test_build_and_install_supplement2.py

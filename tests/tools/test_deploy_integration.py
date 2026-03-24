@@ -1,3 +1,4 @@
+# meta: updated=2026-03-15 07:39 checked=-
 """Integration tests for deploy pipeline.
 
 These tests verify the actual deployed app state.

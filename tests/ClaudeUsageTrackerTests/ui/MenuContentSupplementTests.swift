@@ -1,3 +1,4 @@
+// meta: updated=2026-03-06 18:11 checked=-
 // Supplement for: MenuContent UI logic tests
 
 import XCTest

@@ -1,3 +1,4 @@
+// meta: updated=2026-03-06 18:11 checked=-
 // Tests for ChartColorPreset enum display names
 // Split from: ui/MenuContentSupplementTests.swift (S6: responsibility separation)
 

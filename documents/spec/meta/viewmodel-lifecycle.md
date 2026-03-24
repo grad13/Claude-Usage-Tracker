@@ -1,7 +1,6 @@
 ---
-Created: 2026-02-26
-Updated: 2026-03-16
-Checked: -
+updated: 2026-03-16 06:59
+checked: -
 Deprecated: -
 Format: spec-v2.1
 Source: code/app/ClaudeUsageTracker/UsageViewModel.swift, code/app/ClaudeUsageTracker/UsageViewModel+Session.swift, code/app/ClaudeUsageTracker/UsageViewModel+Settings.swift, code/app/ClaudeUsageTracker/UsageViewModel+Debug.swift

@@ -1,3 +1,4 @@
+# meta: updated=2026-03-15 08:26 checked=-
 """Tests for verify_installed_widget().
 
 Split from: test_build_and_install_supplement2.py

@@ -1,3 +1,4 @@
+// meta: updated=2026-03-04 06:28 checked=-
 // Supplement for: tests/ClaudeUsageTrackerTests/ViewModelTests+Settings.swift
 
 import XCTest

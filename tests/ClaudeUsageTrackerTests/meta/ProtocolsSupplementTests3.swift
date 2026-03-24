@@ -1,3 +1,4 @@
+// meta: updated=2026-03-06 14:45 checked=-
 // Supplement for: tests/ClaudeUsageTrackerTests/meta/ProtocolsSupplementTests2.swift
 // Source spec: spec/meta/protocols.md
 // Generated: 2026-03-06

@@ -1,4 +1,7 @@
-<!-- meta: created=2026-02-21 updated=2026-03-14 checked=never -->
+---
+updated: 2026-03-15 11:11
+checked: -
+---
 # Changelog
 
 ## [Unreleased]

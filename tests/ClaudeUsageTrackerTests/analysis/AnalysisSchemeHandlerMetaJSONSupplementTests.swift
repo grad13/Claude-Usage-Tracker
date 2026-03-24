@@ -1,3 +1,4 @@
+// meta: updated=2026-03-07 05:54 checked=-
 // Supplement for: tests/ClaudeUsageTrackerTests/analysis/AnalysisSchemeHandlerMetaJSONTests.swift
 // Source spec: spec/analysis/analysis-scheme-handler.md
 // Generated: 2026-03-06

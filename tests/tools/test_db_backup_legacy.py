@@ -1,3 +1,4 @@
+# meta: updated=2026-03-15 08:26 checked=-
 """Tests for db_backup.py logic (check_lost_rows, rotate_backups).
 
 Covers:

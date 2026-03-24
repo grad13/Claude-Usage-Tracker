@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# meta: updated=2026-03-15 07:19 checked=-
 """Rollback ClaudeUsageTracker to a previous version.
 
 Atomic swap: cp .new → mv swap (never leaves broken app in /Applications).

@@ -1,8 +1,7 @@
 ---
-作成日: 2026-03-15
-更新日: 2026-03-15
-確認日: -
-使用終了日: -
+updated: 2026-03-15 09:41
+checked: -
+Deprecated: -
 Format: spec-v2.1
 Source: tools/rollback.py
 ---

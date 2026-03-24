@@ -1,3 +1,4 @@
+# meta: updated=2026-03-04 18:05 checked=-
 """Tests for lib/version.py.
 
 Covers:

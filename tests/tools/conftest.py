@@ -1,3 +1,4 @@
+# meta: updated=2026-03-15 08:26 checked=-
 """Shared fixtures for tools tests."""
 
 import os

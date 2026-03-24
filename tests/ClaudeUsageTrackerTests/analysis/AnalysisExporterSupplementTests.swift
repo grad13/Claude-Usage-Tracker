@@ -1,3 +1,4 @@
+// meta: updated=2026-03-07 15:13 checked=-
 // Supplement tests for: JS function logic in analysis.html (loaded via AnalysisExporter.htmlTemplate)
 // Source spec: spec/analysis/analysis-exporter.md
 // Analysis: tests/.tests-from-spec/analysis/analysis-exporter.md

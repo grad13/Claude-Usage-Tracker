@@ -1,3 +1,4 @@
+# meta: updated=2026-03-04 17:53 checked=-
 """Supplement tests for rollback.py.
 
 Supplement for: tests/tools/test_rollback.py

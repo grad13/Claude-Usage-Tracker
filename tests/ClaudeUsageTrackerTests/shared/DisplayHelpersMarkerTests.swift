@@ -1,3 +1,4 @@
+// meta: updated=2026-03-06 18:11 checked=-
 // Tests for DisplayHelpers marker text positioning logic
 // Split from: widget/WidgetMiniGraphCalcTests.swift (S6: responsibility separation)
 

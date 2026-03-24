@@ -1,3 +1,4 @@
+// meta: updated=2026-03-07 08:49 checked=-
 // Supplement for: docs/spec/meta/viewmodel-lifecycle.md
 // Covers: fetchSilently backupSessionCookies on success,
 //         fetchSilently retry/retryCount reset, debug() logging

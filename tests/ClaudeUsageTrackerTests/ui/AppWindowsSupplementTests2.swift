@@ -1,3 +1,4 @@
+// meta: updated=2026-03-07 08:17 checked=-
 // Supplement 2 for: app-windows UI spec
 // Source spec: docs/spec/ui/app-windows.md
 //

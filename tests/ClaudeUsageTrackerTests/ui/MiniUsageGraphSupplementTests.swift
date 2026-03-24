@@ -1,3 +1,4 @@
+// meta: updated=2026-03-07 15:36 checked=-
 // Tests for: MiniUsageGraph pure logic — supplement coverage
 // Source spec: spec/ui/mini-usage-graph.md
 // Generated: 2026-03-07

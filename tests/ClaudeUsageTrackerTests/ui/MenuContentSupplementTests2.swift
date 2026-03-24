@@ -1,3 +1,4 @@
+// meta: updated=2026-03-07 15:13 checked=-
 // Supplement 2 for: MenuContent UI logic tests
 // Covers: ViewModel setter methods (graph show toggles, chart width, color presets),
 //         Start at Login toggle, version format with fallback

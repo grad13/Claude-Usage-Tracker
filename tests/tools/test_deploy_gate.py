@@ -1,3 +1,4 @@
+# meta: updated=2026-03-15 08:26 checked=-
 """Tests for deployment verification gate and stale xctest removal.
 
 Covers:

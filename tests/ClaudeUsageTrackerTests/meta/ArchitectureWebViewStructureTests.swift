@@ -1,3 +1,4 @@
+// meta: updated=2026-03-14 11:31 checked=-
 // Supplement for: architecture integration tests (WebView structure)
 // Source spec: spec/meta/architecture.md
 // Generated: 2026-03-03

@@ -1,3 +1,4 @@
+// meta: updated=2026-03-06 18:36 checked=-
 // Supplement for: app-windows UI logic tests
 // Source spec: _documents/spec/ui/app-windows.md
 //

@@ -1,3 +1,4 @@
+// meta: updated=2026-03-07 08:49 checked=-
 // Supplement for: docs/spec/meta/viewmodel-lifecycle.md
 // Covers: setGraphColorTheme, settings widgetReloader side effects,
 //         applyResult phase 4 widgetReloader

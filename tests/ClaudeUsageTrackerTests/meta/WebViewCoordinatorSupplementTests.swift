@@ -1,3 +1,4 @@
+// meta: updated=2026-03-06 17:37 checked=-
 // Supplement for: tests/ClaudeUsageTrackerTests/meta/WebViewCoordinatorTests.swift
 //
 // Covers Section 3.1 didFinish (WKNavigationDelegate) — 4 scenarios:

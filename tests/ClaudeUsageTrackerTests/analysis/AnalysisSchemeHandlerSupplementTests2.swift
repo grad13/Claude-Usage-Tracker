@@ -1,3 +1,4 @@
+// meta: updated=2026-03-06 17:45 checked=-
 // Supplement for: tests/ClaudeUsageTrackerTests/analysis/AnalysisSchemeHandlerTests.swift
 //
 // Covers spec cases not present in the main test file:

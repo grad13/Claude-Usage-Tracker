@@ -1,3 +1,4 @@
+// meta: updated=2026-03-14 11:31 checked=-
 // Supplement for: docs/spec/meta/viewmodel-lifecycle.md
 // Covers: handlePageReady decision table (PR-01~04), common side effects,
 //         canRedirect cooldown, isOnUsagePage

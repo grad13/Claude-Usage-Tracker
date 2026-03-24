@@ -1,4 +1,4 @@
-// meta: created=2026-02-21 updated=2026-02-27 checked=2026-02-26
+// meta: ref=UsageViewModel
 import SwiftUI
 import WebKit
 

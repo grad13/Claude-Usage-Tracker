@@ -1,3 +1,4 @@
+// meta: updated=2026-03-07 07:47 checked=-
 // Supplement for: tests/ClaudeUsageTrackerTests/FetcherTests.swift
 // Generated from: _documents/spec/data/usage-fetcher.md
 // Generated: 2026-03-03

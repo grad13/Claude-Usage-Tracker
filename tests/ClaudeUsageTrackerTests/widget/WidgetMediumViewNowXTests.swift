@@ -1,3 +1,4 @@
+// meta: updated=2026-03-06 18:36 checked=-
 // Tests for GraphCalc.nowXFraction calculation
 // Split from: widget/WidgetMiniGraphCalcTests.swift (S6: responsibility separation)
 

@@ -1,3 +1,4 @@
+# meta: updated=2026-03-15 08:26 checked=-
 # Supplement for: tests/tools/test_binary_backup.py
 """Supplement tests for db_backup.py — cases missing from existing tests.
 
