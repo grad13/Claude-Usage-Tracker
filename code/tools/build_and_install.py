@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# meta: updated=2026-03-16 06:59 checked=-
+# meta: updated=2026-03-26 checked=-
 """Build, test, and install ClaudeUsageTracker.
 
 Replaces build-and-install.sh with proper error handling:
@@ -89,6 +89,40 @@ def find_derived_data_dir() -> Path | None:
               f"PROJECT_DIR={PROJECT_DIR}. Will build fresh.")
     return None
 
+
+def cleanup_stale_derived_data() -> None:
+    """Delete DerivedData directories whose WorkspacePath does not match PROJECT_DIR.
+
+    Walks DERIVED_DATA / "{APP_NAME}-*", reads info.plist → WorkspacePath.
+    If WorkspacePath does not contain str(PROJECT_DIR), deletes the directory.
+    Directories without info.plist are also deleted (orphaned).
+    """
+    if not DERIVED_DATA.exists():
+        return
+    import plistlib
+    for d in DERIVED_DATA.iterdir():
+        if not (d.is_dir() and d.name.startswith(f"{APP_NAME}-")):
+            continue
+        info_plist = d / "info.plist"
+        if info_plist.exists():
+            try:
+                with open(info_plist, "rb") as f:
+                    info = plistlib.load(f)
+                workspace = info.get("WorkspacePath", "")
+                if str(PROJECT_DIR) in workspace:
+                    continue  # Current project — keep
+                if not workspace:
+                    print(f"WARNING: {d.name} has no WorkspacePath — deleting as orphan")
+            except Exception:
+                print(f"WARNING: Failed to read {info_plist} — skipping")
+                continue
+        else:
+            print(f"WARNING: {d.name} has no info.plist — deleting as orphan")
+        try:
+            shutil.rmtree(d)
+            print(f"  Deleted stale DerivedData: {d.name}")
+        except Exception as e:
+            print(f"WARNING: Failed to delete {d.name}: {e}")
 
 
 def run_test_gate() -> None:
@@ -413,6 +447,8 @@ def main() -> None:
     # protect_files guarantees restore even if run_test_gate raises
 
     # Phase 2: Build (after test passes, after files are restored)
+    print("==> Cleaning up stale DerivedData...")
+    cleanup_stale_derived_data()
     # Deregister DerivedData from LS before build so xcodebuild doesn't
     # reuse stale code signature info from previous builds
     print("==> Deregistering DerivedData from LaunchServices...")

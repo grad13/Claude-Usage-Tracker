@@ -87,6 +87,10 @@ xcodebuild -project code/app/ClaudeUsageTracker.xcodeproj \
 
 ## Recent Changes
 
+### Unreleased
+- Fix menu bar double icon caused by stale DerivedData ghost registrations
+- Widget footer improvements (compact layout, tap-to-refresh, visual feedback)
+
 ### 1.0.3
 - Fix widget data sharing (UserDefaults → file I/O for sandbox compatibility)
 - Fix session cookie destruction caused by test ViewModel
@@ -94,10 +98,6 @@ xcodebuild -project code/app/ClaudeUsageTracker.xcodeproj \
 ### 1.0.2
 - Switch widget data sharing from SQLite to UserDefaults (App Group) snapshot
 - Widget timeline policy: `.after(5min)` → `.never` (driven by `reloadTimelines()` only)
-
-### 1.0.1
-- Fix widget not updating by throttling WidgetKit reload to 5-minute intervals
-- Refresh Dock icon cache after install
 
 ## Acknowledgments
 

@@ -1,5 +1,5 @@
 ---
-updated: 2026-03-15 11:11
+updated: 2026-03-26
 checked: -
 ---
 # Changelog
@@ -13,6 +13,9 @@ checked: -
 - **Widget refresh**: Show "updating..." feedback for 1.5 seconds after tap
 - **Widget refresh**: Blue refresh icon to indicate tappability
 - **Widget countdown**: Short minute-based format for Next display ("23 sec" → "2m")
+
+### Fixed
+- **Menu bar double icon**: Stale DerivedData directories causing LaunchServices to register ghost .app copies, displaying duplicate menu bar icons. Added `cleanup_stale_derived_data()` to build pipeline for automatic prevention
 
 ## [1.0.3] - 2026-03-14
 

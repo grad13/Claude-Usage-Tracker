@@ -1,5 +1,5 @@
 ---
-updated: 2026-03-15 09:41
+updated: 2026-03-26
 checked: -
 Deprecated: -
 Format: spec-v2.1
@@ -51,6 +51,20 @@ def find_derived_data_dir() -> Path | None:
     Search: DERIVED_DATA / "{APP_NAME}-*" directories
     Match: info.plist → WorkspacePath contains PROJECT_DIR
     Fallback: None (logs WARNING if candidates exist but none match)
+    """
+    ...
+
+def cleanup_stale_derived_data() -> None:
+    """Delete DerivedData directories whose WorkspacePath does not match PROJECT_DIR.
+
+    Search: DERIVED_DATA / "{APP_NAME}-*" directories
+    For each: read info.plist → WorkspacePath
+      - If WorkspacePath contains PROJECT_DIR → keep (current project)
+      - If WorkspacePath missing or does not match → shutil.rmtree (stale)
+      - If info.plist missing → shutil.rmtree (orphaned)
+      - If info.plist unreadable → skip (WARNING, safe side)
+      - If rmtree fails → WARNING, continue to next
+    Noop: if DERIVED_DATA does not exist
     """
     ...
 
@@ -172,7 +186,7 @@ def main() -> None:
     """Entry point: orchestrates full deploy pipeline.
 
     Phase 1: backup_database + protect_files(settings) + shelter_file(cookies) + test gate
-    Phase 2: deregister DerivedData + build_app
+    Phase 2: cleanup stale DerivedData + deregister DerivedData + build_app
     Phase 3: quit → install → verify widget → verify bundle bits → register → verify deployment → check integrity → launch
     """
     ...
@@ -266,6 +280,18 @@ stateDiagram-v2
 | FD-05 | info.plist なし | candidates に追加、最終的に None | |
 | FD-06 | info.plist 読み取りエラー | 例外握りつぶし → candidates に追加 | |
 
+### cleanup_stale_derived_data()
+
+| Case ID | Input | Expected | Notes |
+|---------|-------|----------|-------|
+| CS-01 | 旧パスDD + 現在DD | 旧パスのみ rmtree、現在は残る | |
+| CS-02 | 現在DDのみ | 削除なし | |
+| CS-03 | info.plist なしのDD | 孤立として rmtree + WARNING | |
+| CS-04 | info.plist 読み取りエラー | スキップ + WARNING | 安全側 |
+| CS-05 | DERIVED_DATA 不存在 | 即 return | |
+| CS-06 | rmtree 失敗 (PermissionError) | WARNING + 続行 | |
+| CS-07 | WorkspacePath キーなし | 孤立として rmtree | |
+
 ### run_test_gate()
 
 | Case ID | Input | Expected | Notes |
@@ -352,7 +378,7 @@ stateDiagram-v2
 | Process | `pluginkit -e use` — ウィジェット有効化 |
 | Process | `killall` — widget extension, chronod, NotificationCenter, Dock |
 | Process | `open` — アプリ起動 |
-| FileSystem | `shutil.rmtree` — stale xctest 削除、.new 削除 |
+| FileSystem | `shutil.rmtree` — stale xctest 削除、.new 削除、stale DerivedData 削除 |
 | FileSystem | `shutil.move` — 現行アプリのバックアップ |
 | FileSystem | `Path.rename` — .app.new → .app スワップ |
 | FileSystem | `plistlib.load` — info.plist の読み取り（find_derived_data_dir） |
@@ -377,18 +403,19 @@ Phase 1: Data Protection + Test
   4. (auto-restore on exit)
 
 Phase 2: Build
-  5. deregister_stale_apps (before build)
-  6. build_app() — remove stale xctest + xcodebuild clean build
+  5. cleanup_stale_derived_data() — delete stale DerivedData dirs
+  6. deregister_stale_apps (before build)
+  7. build_app() — remove stale xctest + xcodebuild clean build
 
 Phase 3: Deploy
-  7. quit_running_app()
-  8. install_app(build_app_path) — atomic swap
-  9. verify_installed_widget() — size + mtime + bundle bit
-  10. verify_bundle_bits() — GetFileInfo
-  11. register_and_clean() — entitlements + LS register + process kill
-  12. verify_deployment() — 3-condition gate
-  13. check_data_integrity() — row loss detection
-  14. refresh_and_launch() — Dock refresh + open
+  8. quit_running_app()
+  9. install_app(build_app_path) — atomic swap
+  10. verify_installed_widget() — size + mtime + bundle bit
+  11. verify_bundle_bits() — GetFileInfo
+  12. register_and_clean() — entitlements + LS register + process kill
+  13. verify_deployment() — 3-condition gate
+  14. check_data_integrity() — row loss detection
+  15. refresh_and_launch() — Dock refresh + open
 ```
 
 ### App Group Path
