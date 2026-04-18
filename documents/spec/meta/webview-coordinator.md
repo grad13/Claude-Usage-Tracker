@@ -1,5 +1,5 @@
 ---
-updated: 2026-03-16 06:59
+updated: 2026-04-19 02:25
 checked: -
 Deprecated: -
 Format: spec-v2.1
@@ -31,6 +31,8 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
 
     // WKNavigationDelegate
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!)
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error)
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error)
 
     // WKUIDelegate
     func webView(
@@ -81,6 +83,18 @@ stateDiagram-v2
 
 Main vs popup distinction is made via identity check: `webView === viewModel.popupWebView`.
 
+### 3.1.b didFailProvisionalNavigation / didFail (WKNavigationDelegate)
+
+| Condition | WebView type | Called method |
+|-----------|-------------|--------------|
+| viewModel == nil | - | (return) |
+| viewModel != nil | popup (=== viewModel.popupWebView) | `viewModel.debug("didFail[Provisional]?[popup]: error=...")` |
+| viewModel != nil | main | `viewModel.debug("didFail[Provisional]?[main]: error=...")` |
+
+**Observation only — no retry logic.** Page-load failures during reboot recovery (e.g., NSURLErrorNotConnectedToInternet, code -1009) are retried by `loginPollTimer` (see viewmodel-session.md "Login Polling"), so the Coordinator simply logs the error for diagnostics.
+
+`didFailProvisionalNavigation` fires when navigation fails before the page starts loading (e.g., DNS lookup failure, no network). `didFail` fires after content has begun loading but the load could not complete.
+
 ### 3.2 createWebViewWith (WKUIDelegate — OAuth Popup Creation)
 
 | Condition | Return Value | Side Effects |
@@ -114,6 +128,8 @@ CookieChangeObserver is a pure callback forwarder with no conditional logic. Eva
 | `didFinish` (popup) | Log output via `viewModel.debug()`, potential login state check and popup close via `viewModel.checkPopupLogin()` |
 | `didFinish` (main, claude.ai) | Potential session check, fetch, and redirect via `viewModel.handlePageReady()` |
 | `didFinish` (main, other host) | Log output via `viewModel.debug()` only |
+| `didFailProvisionalNavigation` (main / popup) | Log output via `viewModel.debug("didFailProvisionalNavigation[main\|popup]: error=...")` only — no retry |
+| `didFail` (main / popup) | Log output via `viewModel.debug("didFail[main\|popup]: error=...")` only — no retry |
 | `createWebViewWith` | Modifies `configuration.preferences`, assigns new WKWebView to `viewModel.popupWebView`, returning the new WKWebView to WebKit triggers sheet display |
 | `webViewDidClose` | Sheet closure via `viewModel.closePopup()`, potential `handleSessionDetected()` call after 1 second via `viewModel.handlePopupClosed()` |
 | `cookiesDidChange` | Invokes the `onChange` closure (on the UsageViewModel side, this evaluates cookie validity and may lead to `handleSessionDetected()`) |

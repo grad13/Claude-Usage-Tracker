@@ -1,5 +1,5 @@
 ---
-updated: 2026-03-16 06:59
+updated: 2026-04-19 02:25
 checked: -
 Deprecated: -
 Format: spec-v2.1
@@ -39,9 +39,8 @@ Source: code/app/ClaudeUsageTracker/UsageViewModel.swift, code/app/ClaudeUsageTr
 2. WKWebView creation
    - If webViewConfiguration is provided, use it directly (tests pass .nonPersistent() to avoid touching real cookie store)
    - Otherwise, create production config:
-     - Generate app-specific data store via WKWebsiteDataStore(forIdentifier: UUID)
-       → .default() is avoided because it shares data with Safari and triggers macOS TCC prompts
-     - UUID is a fixed value "A1B2C3D4-E5F6-7890-ABCD-EF1234567890"
+     - Use `.default()` data store (managed by macOS `cookied` daemon; survives PC reboot)
+       → Sandbox is disabled, which avoids the TCC prompts that `.default()` would otherwise trigger
      - javaScriptCanOpenWindowsAutomatically = true (for OAuth popups)
 
 3. Load settings
@@ -56,10 +55,9 @@ Source: code/app/ClaudeUsageTracker/UsageViewModel.swift, code/app/ClaudeUsageTr
    c. syncLoginItem()              ← Sync auto-launch setting via SMAppService
    d. startCookieObservation()     ← Register WKHTTPCookieStoreObserver
 
-6. Asynchronous operations (Task)
-   a. restoreSessionCookies()      ← Restore cookies from App Group
-   b. loadUsagePage()              ← Load claude.ai in WebView
-   c. startLoginPolling()          ← Start login detection polling at 3-second intervals
+6. Synchronous page load + polling
+   a. loadUsagePage()              ← Load claude.ai in WebView
+   b. startLoginPolling()          ← Start login detection polling at 3-second intervals
 ```
 
 ## SQLiteBackup at Launch
@@ -78,7 +76,6 @@ Both methods call `fetcher.fetch(from: webView)`, but differ in the following wa
 |--------|---------|------------------|
 | **Trigger** | Manual (Refresh button), auto-refresh | Automatic (at launch, after login) |
 | **isAutoRefreshEnabled guard** | None (always executes) | None (guard is in startAutoRefresh) |
-| **Additional processing on success** | None | Calls `backupSessionCookies()` |
 | **Error display** | Always sets `self.error` | Sets `self.error` only when `isLoggedIn == true` |
 | **On auth error** | `isAutoRefreshEnabled = false` | Same |
 | **Retry on failure** | No | Yes (non-auth errors only, exponential backoff) |
@@ -101,11 +98,12 @@ On non-auth errors, `fetchSilently()` automatically retries with exponential bac
 - **Concurrency**: `isFetching` is set to `false` before the sleep, so manual `fetch()` can proceed. However, `fetchSilently()` re-checks `isFetching` guard on retry.
 - **Task cancellation**: `Task.sleep` respects cancellation (e.g., app backgrounding)
 
-Shared success processing (within `applyResult`, 4 phases):
+Shared success processing (within `applyResult`, 5 phases):
 1. Update `@Published` properties (5h/7d percent, resetsAt)
 2. Save to SQLite via `usageStore.save(result)` + `reloadHistory()`
 3. Evaluate thresholds and send notifications via `alertChecker.checkAlerts(result:settings:)`
 4. Update widget via `widgetReloader.reloadAllTimelines()`
+5. Stop login polling: `loginPollTimer?.invalidate(); loginPollTimer = nil`. This is the SOLE place the timer is stopped — `handleSessionDetected()` and `handlePageReady()` keep it alive so any failure between cookie detection and successful data fetch is automatically retried by the next polling tick.
 
 ## statusText Calculation Logic
 
@@ -161,14 +159,22 @@ func debug(_ message: String)
 Records logs using a dual-output approach.
 
 1. **NSLog**: Outputs to macOS unified log with format `[ClaudeUsageTracker] {message}`
-2. **File**: Appends to a temporary file with format `{ISO8601 timestamp} {message}\n`
+2. **File**: Appends to App Group container with format `{ISO8601 timestamp} {message}\n`
 
 Log file details:
-- **Path**: `FileManager.default.temporaryDirectory` / `ClaudeUsageTracker-debug.log`
-- **Lifecycle**: Initialized as an empty file at app launch (writes `""` during `logURL` lazy initialization)
+- **Path**: App Group container (`group.grad13.claudeusagetracker`) / `Library/Application Support` / `ClaudeUsageTracker` / `debug.log`. Falls back to `FileManager.default.temporaryDirectory` / `ClaudeUsageTracker-debug.log` if App Group is unavailable.
+- **Lifecycle**: Append mode — logs persist across app restarts and PC reboots. Each launch is marked by `markLaunch()`.
 - **Writing**: Appends at end of file via FileHandle. Creates the file if it doesn't exist.
 - **Timestamp**: Default `ISO8601DateFormatter()` format (e.g., `2026-02-26T12:34:56Z`)
-- **Rotation**: None (cleared on each launch)
+- **Rotation**: None (append-only)
+
+### markLaunch()
+
+```swift
+static func markLaunch()
+```
+
+Appends a `========== LAUNCH {ISO8601 timestamp} ==========` separator to the log file. Called once at the beginning of `init()`. Allows distinguishing between multiple app sessions in the same log file.
 
 ## @Published Properties
 
@@ -216,9 +222,7 @@ handlePageReady()
   |     |     +-- false → return (skip all subsequent steps)
   |     |     +-- true →
   |     |           +-- isLoggedIn = true
-  |     |           +-- loginPollTimer?.invalidate() + set nil
   |     |           +-- startAutoRefresh()
-  |     |           +-- backupSessionCookies()
   |     |           +-- isOnUsagePage()?
   |     |                 +-- false → canRedirect()?
   |     |                 |           +-- false → return (cooldown active)
@@ -246,9 +250,9 @@ When `hasValidSession` returns true (all cases except PR-01), the following side
 | Order | Side Effect | Description |
 |-------|-------------|-------------|
 | 1 | `isLoggedIn = true` | Update login state |
-| 2 | `loginPollTimer` invalidate + nil | Stop login polling (no longer needed) |
-| 3 | `startAutoRefresh()` | Start periodic auto-refresh timer (no-op if already running) |
-| 4 | `backupSessionCookies()` | Persist session cookies to App Group for recovery |
+| 2 | `startAutoRefresh()` | Start periodic auto-refresh timer (no-op if already running) |
+
+`loginPollTimer` is intentionally NOT stopped here — see viewmodel-session.md "Login Polling" for the lifecycle. The timer is stopped only in `applyResult()` (Phase 5), after data has been successfully fetched. This keeps polling alive across PR-03 (redirect) and PR-04 (cooldown), so any subsequent network failure retries automatically.
 
 ### Redirect Cooldown (canRedirect)
 

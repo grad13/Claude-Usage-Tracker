@@ -1,10 +1,14 @@
 ---
-updated: 2026-03-26
+updated: 2026-04-19
 checked: -
 ---
 # Changelog
 
 ## [Unreleased]
+
+### Fixed
+- **Login not restored after reboot**: `loginPollTimer` was stopped on cookie detection, but if the subsequent `loadUsagePage` failed (e.g., -1009 right after boot), polling no longer retried — leaving the app stuck without usage data. Timer lifetime extended to "data fetch success" (`applyResult`); polling tick now also retries `loadUsagePage` when logged in but data is missing. Added observation-only `didFailProvisionalNavigation` / `didFail` handlers to `WebViewCoordinator` for diagnostics
+- **Stale spec entries** (residual from 4/9 plan): `viewmodel-lifecycle.md` references to the removed `forIdentifier:` data store and `backupSessionCookies()` method updated to reflect `.default()` reality
 
 ### Improved
 - **Widget footer**: Compact layout (reduced height, font size unified with chart labels)

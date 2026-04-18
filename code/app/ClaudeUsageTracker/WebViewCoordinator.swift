@@ -1,4 +1,4 @@
-// meta: updated=2026-03-16 06:52 checked=2026-02-26 00:00
+// meta: updated=2026-04-19 02:25 checked=2026-02-26 00:00
 import Foundation
 import WebKit
 
@@ -32,6 +32,20 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
         } else {
             viewModel.debug("didFinish[main]: host is not claude.ai, skipping")
         }
+    }
+
+    // MARK: Navigation Failures (observation only — retries are handled by loginPollTimer)
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        guard let viewModel else { return }
+        let kind = (webView === viewModel.popupWebView) ? "popup" : "main"
+        viewModel.debug("didFailProvisionalNavigation[\(kind)]: error=\(error)")
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        guard let viewModel else { return }
+        let kind = (webView === viewModel.popupWebView) ? "popup" : "main"
+        viewModel.debug("didFail[\(kind)]: error=\(error)")
     }
 
     // MARK: OAuth Popup (sheet modal)

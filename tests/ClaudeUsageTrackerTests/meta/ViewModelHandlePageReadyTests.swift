@@ -139,10 +139,11 @@ final class ViewModelHandlePageReadyTests: XCTestCase {
 
     // MARK: - Common Side Effects (when hasValidSession=true)
 
-    /// Spec: When hasValidSession returns true, the 4 common side effects must
-    /// execute: isLoggedIn=true, loginPollTimer invalidated, startAutoRefresh called,
-    /// backupSessionCookies called.
-    func testHandlePageReady_commonSideEffects_loginPollTimerInvalidated() {
+    /// Spec: When hasValidSession returns true, the common side effects must
+    /// execute: isLoggedIn=true, startAutoRefresh called.
+    /// loginPollTimer must remain alive — it is stopped only by applyResult() so that
+    /// post-cookie failures (page load / fetch) can still be retried by polling.
+    func testHandlePageReady_commonSideEffects_keepsLoginPollTimerAlive() {
         stubFetcher.hasValidSessionResult = true
 
         var settings = AppSettings()
@@ -164,8 +165,8 @@ final class ViewModelHandlePageReadyTests: XCTestCase {
 
         XCTAssertTrue(vm.isLoggedIn,
                       "Common side effect 1: isLoggedIn must be true")
-        XCTAssertNil(vm.loginPollTimer,
-                     "Common side effect 2: loginPollTimer must be invalidated and set to nil")
+        XCTAssertNotNil(vm.loginPollTimer,
+                        "Common side effect 2: loginPollTimer must remain alive — stopped only by applyResult()")
         XCTAssertNotNil(vm.refreshTimer,
                         "Common side effect 3: startAutoRefresh must create a refresh timer")
         _ = vm
@@ -229,11 +230,13 @@ final class ViewModelIsOnUsagePageTests: XCTestCase {
     }
 
     /// Spec: Returns false when webView.url is nil.
-    func testIsOnUsagePage_nilURL_returnsFalse() {
+    /// Note: init() now calls loadUsagePage() which sets webView.url to claude.ai.
+    /// We load about:blank to simulate a state where host != claude.ai.
+    func testIsOnUsagePage_nonClaudeURL_returnsFalse() {
         let vm = makeVM()
-        // Fresh WebView has no URL loaded.
+        vm.webView.load(URLRequest(url: URL(string: "about:blank")!))
         XCTAssertFalse(vm.isOnUsagePage(),
-                       "isOnUsagePage must return false when webView.url is nil")
+                       "isOnUsagePage must return false when webView.url is not claude.ai")
         _ = vm
     }
 }

@@ -16,9 +16,7 @@ import ClaudeUsageTrackerShared
 //   4. Login polling: 3-second interval verification
 //
 // Skipped (require WKHTTPCookieStore runtime):
-//   - Cookie backup domain filter (backupSessionCookies reads from live WKHTTPCookieStore)
 //   - signOut 3-stage WebView cleanup (removeData/getAllCookies/delete)
-//   - Cookie restore full integration (restoreSessionCookies writes to live WKHTTPCookieStore)
 
 @MainActor
 final class ViewModelSessionSupplementTests: XCTestCase {
@@ -148,119 +146,6 @@ final class ViewModelSessionSupplementTests: XCTestCase {
         XCTAssertEqual(vm.lastRedirectAt!.timeIntervalSince1970,
             recentRedirect.timeIntervalSince1970, accuracy: 0.001,
             "lastRedirectAt should not be updated when canRedirect returns false")
-    }
-
-    // MARK: - CookieData → HTTPCookie: Expired cookie skip logic
-
-    /// Spec: Cookies with expiresDate at or before the current time are skipped during restore.
-    /// Verified via CookieData with a past expiresDate — HTTPCookie creation succeeds but
-    /// the restore logic should skip it. We test the skip condition directly.
-    func testCookieData_expiredCookie_isDetectedAsPast() {
-        let pastTimestamp = Date(timeIntervalSinceNow: -3600).timeIntervalSince1970  // 1 hour ago
-        let cookieData = UsageViewModel.CookieData(
-            name: "expired",
-            value: "val",
-            domain: ".claude.ai",
-            path: "/",
-            expiresDate: pastTimestamp,
-            isSecure: false
-        )
-
-        let expiresDate = Date(timeIntervalSince1970: cookieData.expiresDate!)
-        let now = Date()
-        XCTAssertTrue(expiresDate <= now,
-            "Cookie with past expiresDate should be detected as expired (skip condition)")
-    }
-
-    /// Spec: Cookies with expiresDate in the future should NOT be skipped.
-    func testCookieData_futureCookie_isNotExpired() {
-        let futureTimestamp = Date(timeIntervalSinceNow: 3600).timeIntervalSince1970  // 1 hour from now
-        let cookieData = UsageViewModel.CookieData(
-            name: "valid",
-            value: "val",
-            domain: ".claude.ai",
-            path: "/",
-            expiresDate: futureTimestamp,
-            isSecure: false
-        )
-
-        let expiresDate = Date(timeIntervalSince1970: cookieData.expiresDate!)
-        let now = Date()
-        XCTAssertTrue(expiresDate > now,
-            "Cookie with future expiresDate should NOT be detected as expired")
-    }
-
-    /// Spec: Session cookies (expiresDate: nil) are never skipped as expired.
-    func testCookieData_sessionCookie_nilExpiresDate_isNeverExpired() {
-        let cookieData = UsageViewModel.CookieData(
-            name: "session",
-            value: "val",
-            domain: ".claude.ai",
-            path: "/",
-            expiresDate: nil,
-            isSecure: false
-        )
-
-        // The restore logic: `if let exp = backup.expiresDate, ... { continue }`
-        // nil expiresDate means the `if let` guard fails, so the cookie is never skipped.
-        XCTAssertNil(cookieData.expiresDate,
-            "Session cookie expiresDate is nil — restore logic should never skip it")
-    }
-
-    // MARK: - CookieData → HTTPCookie: Secure attribute
-
-    /// Spec: When isSecure == true, restore sets HTTPCookiePropertyKey.secure: "TRUE".
-    /// Verify that an HTTPCookie created with the .secure property has isSecure == true.
-    func testCookieData_secureAttribute_producesSecureCookie() {
-        var props: [HTTPCookiePropertyKey: Any] = [
-            .name: "secureKey",
-            .value: "secureVal",
-            .domain: ".claude.ai",
-            .path: "/",
-        ]
-        props[.secure] = "TRUE"
-
-        let cookie = HTTPCookie(properties: props)
-        XCTAssertNotNil(cookie, "HTTPCookie should be creatable with .secure property")
-        XCTAssertTrue(cookie!.isSecure,
-            "Cookie created with .secure = \"TRUE\" should have isSecure == true")
-    }
-
-    /// Spec: When isSecure == false, restore does NOT set HTTPCookiePropertyKey.secure.
-    /// Verify that an HTTPCookie created without .secure has isSecure == false.
-    func testCookieData_nonSecure_producesNonSecureCookie() {
-        let props: [HTTPCookiePropertyKey: Any] = [
-            .name: "normalKey",
-            .value: "normalVal",
-            .domain: ".claude.ai",
-            .path: "/",
-        ]
-
-        let cookie = HTTPCookie(properties: props)
-        XCTAssertNotNil(cookie, "HTTPCookie should be creatable without .secure property")
-        XCTAssertFalse(cookie!.isSecure,
-            "Cookie created without .secure should have isSecure == false")
-    }
-
-    /// Spec: CookieData → HTTPCookieProperties with future expiresDate sets .expires key.
-    /// Verify that the resulting HTTPCookie has the correct expiresDate.
-    func testCookieData_futureExpiresDate_setsExpiresProperty() {
-        let futureDate = Date(timeIntervalSinceNow: 86400)  // 24 hours from now
-        var props: [HTTPCookiePropertyKey: Any] = [
-            .name: "expiring",
-            .value: "val",
-            .domain: ".claude.ai",
-            .path: "/",
-        ]
-        props[.expires] = futureDate
-
-        let cookie = HTTPCookie(properties: props)
-        XCTAssertNotNil(cookie)
-        XCTAssertNotNil(cookie!.expiresDate,
-            "Cookie with .expires property should have non-nil expiresDate")
-        XCTAssertEqual(cookie!.expiresDate!.timeIntervalSince1970,
-            futureDate.timeIntervalSince1970, accuracy: 1.0,
-            "Cookie expiresDate should match the provided future date")
     }
 
     // MARK: - signOut: refreshTimer stop and nil-out

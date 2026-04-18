@@ -1,7 +1,6 @@
 // meta: updated=2026-03-07 08:49 checked=-
 // Supplement for: docs/spec/meta/viewmodel-lifecycle.md
-// Covers: fetchSilently backupSessionCookies on success,
-//         fetchSilently retry/retryCount reset, debug() logging
+// Covers: fetchSilently success/error state, retry/retryCount reset, debug() logging
 
 import XCTest
 import ClaudeUsageTrackerShared
@@ -60,8 +59,7 @@ final class ViewModelFetchSilentlyRetryTests: XCTestCase {
         _ = vm
     }
 
-    /// Spec: fetchSilently calls backupSessionCookies on success (unlike fetch()).
-    /// Observable via the side effects after a successful fetch.
+    /// Spec: fetchSilently on success sets isLoggedIn, clears error, applies result.
     func testFetchSilently_success_setsIsLoggedInAndClearsError() {
         stubFetcher.fetchResult = .success(UsageResultFactory.make(
             fiveHourPercent: 50.0, sevenDayPercent: 25.0
@@ -134,13 +132,16 @@ final class ViewModelFetchSilentlyRetryTests: XCTestCase {
 
 final class ViewModelDebugLoggingTests: XCTestCase {
 
-    /// Spec: Log file path is temporaryDirectory/ClaudeUsageTracker-debug.log.
+    /// Spec: Log file path is in App Group container (survives PC reboot).
     @MainActor
     func testDebugLogFilePath() {
-        let expectedPath = FileManager.default.temporaryDirectory
-            .appendingPathComponent("ClaudeUsageTracker-debug.log")
-        XCTAssertEqual(UsageViewModel.logURL, expectedPath,
-                       "Log file must be at temporaryDirectory/ClaudeUsageTracker-debug.log")
+        let url = UsageViewModel.logURL
+        XCTAssertTrue(url.path.contains("debug.log"),
+                      "Log file must be named debug.log")
+        // App Group container path or fallback to tmp
+        XCTAssertTrue(url.path.contains("group.grad13.claudeusagetracker") ||
+                      url.path.contains("ClaudeUsageTracker-debug.log"),
+                      "Log file must be in App Group container or tmp fallback")
     }
 
     /// Spec: debug() appends to the log file with ISO8601 timestamp + message format.

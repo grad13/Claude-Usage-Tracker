@@ -89,14 +89,11 @@ final class ViewModelSessionTests: XCTestCase {
         XCTAssertNil(vm.isAutoRefreshEnabled)
     }
 
-    // MARK: - handleSessionDetected: backupSessionCookies の呼び出し順序
+    // MARK: - handleSessionDetected: 基本動作
 
-    /// handleSessionDetected() は backupSessionCookies() をリダイレクト前に実行する。
-    /// ナビゲーション失敗しても Cookie は保存済みの状態を保つことが設計意図。
-    /// 直接検証は困難だが、メソッド呼び出し自体がクラッシュしないことを確認する。
+    /// handleSessionDetected() がクラッシュしないことを確認する。
     func testHandleSessionDetected_doesNotCrash() {
         let vm = makeVM()
-        // backupSessionCookies が内部で呼ばれても例外が出ないことを確認
         XCTAssertNoThrow(vm.handleSessionDetected())
     }
 
@@ -117,70 +114,6 @@ final class ViewModelSessionTests: XCTestCase {
             "without resetting isAutoRefreshEnabled")
     }
 
-    // MARK: - CookieData: Codable 構造体
-
-    /// CookieData は Codable であり、encode → decode のラウンドトリップが成立する。
-    func testCookieData_roundTripCodable() throws {
-        let original = UsageViewModel.CookieData(
-            name: "sessionKey",
-            value: "abc123",
-            domain: ".claude.ai",
-            path: "/",
-            expiresDate: 1_800_000_000.0,
-            isSecure: true
-        )
-        let encoder = JSONEncoder()
-        let decoder = JSONDecoder()
-        let data = try encoder.encode(original)
-        let decoded = try decoder.decode(UsageViewModel.CookieData.self, from: data)
-
-        XCTAssertEqual(decoded.name, "sessionKey")
-        XCTAssertEqual(decoded.value, "abc123")
-        XCTAssertEqual(decoded.domain, ".claude.ai")
-        XCTAssertEqual(decoded.path, "/")
-        XCTAssertEqual(decoded.expiresDate, 1_800_000_000.0)
-        XCTAssertEqual(decoded.isSecure, true)
-    }
-
-    /// CookieData の expiresDate は nil 許容（セッション Cookie）。nil のまま encode/decode できる。
-    func testCookieData_nilExpiresDate_roundTrip() throws {
-        let original = UsageViewModel.CookieData(
-            name: "sessionKey",
-            value: "abc123",
-            domain: ".claude.ai",
-            path: "/",
-            expiresDate: nil,
-            isSecure: false
-        )
-        let encoder = JSONEncoder()
-        let decoder = JSONDecoder()
-        let data = try encoder.encode(original)
-        let decoded = try decoder.decode(UsageViewModel.CookieData.self, from: data)
-
-        XCTAssertNil(decoded.expiresDate,
-            "Session cookie (expiresDate: nil) should round-trip as nil")
-        XCTAssertFalse(decoded.isSecure)
-    }
-
-    /// UsageViewModel.cookieBackupName は "session-cookies.json" である。
-    func testCookieData_cookieBackupName() {
-        XCTAssertEqual(UsageViewModel.cookieBackupName, "session-cookies.json")
-    }
-
-    // MARK: - restoreSessionCookies: 戻り値
-
-    /// restoreSessionCookies() は Cookie が1つも存在しない（バックアップファイルなし）場合に false を返す。
-    /// NOTE: This test may return true if the real App Group container has cookie backups
-    /// from previous production runs. We verify the return type is Bool (contract test)
-    /// rather than asserting a specific value, since the test cannot control the App Group state.
-    func testRestoreSessionCookies_returnsBool() async {
-        let vm = makeVM()
-        let result = await vm.restoreSessionCookies()
-        // Verify the method returns a Bool (contract conformance).
-        // The actual value depends on App Group state (may have production data).
-        _ = result // Bool return confirmed by compilation
-    }
-
     // MARK: - Login Polling: 二重起動防止
 
     /// startLoginPolling() は loginPollTimer が nil のときのみタイマーを起動する（二重起動防止）。
@@ -197,23 +130,30 @@ final class ViewModelSessionTests: XCTestCase {
     }
 
     /// startLoginPolling() 後、loginPollTimer は nil でない。
+    /// Note: init() now calls startLoginPolling() synchronously, so timer is already set.
     func testStartLoginPolling_setsTimer() {
         let vm = makeVM()
-        XCTAssertNil(vm.loginPollTimer)
+        // init() calls startLoginPolling(), so timer is already set
+        XCTAssertNotNil(vm.loginPollTimer)
+        // Invalidate and nil it, then verify startLoginPolling re-creates it
+        vm.loginPollTimer?.invalidate()
+        vm.loginPollTimer = nil
         vm.startLoginPolling()
         XCTAssertNotNil(vm.loginPollTimer)
     }
 
-    /// handleSessionDetected() は loginPollTimer を無効化し nil にする。
-    func testHandleSessionDetected_invalidatesLoginPollTimer() {
+    /// handleSessionDetected() は loginPollTimer を停止しない。
+    /// Cookie 検出後にページロード・データ取得が失敗しても polling が継続して再試行できるよう、
+    /// timer は applyResult() 成功時のみ停止する仕様。
+    func testHandleSessionDetected_keepsLoginPollTimerAlive() {
         let vm = makeVM()
         vm.startLoginPolling()
         XCTAssertNotNil(vm.loginPollTimer, "Timer should be set before handleSessionDetected")
 
         vm.handleSessionDetected()
 
-        XCTAssertNil(vm.loginPollTimer,
-            "handleSessionDetected should invalidate and nil loginPollTimer")
+        XCTAssertNotNil(vm.loginPollTimer,
+            "handleSessionDetected must keep loginPollTimer alive — it is stopped only by applyResult()")
     }
 
     /// ログイン済み状態（isLoggedIn == true）では Login Polling 内のガードが働き、
@@ -436,6 +376,12 @@ final class ViewModelSessionTests: XCTestCase {
     /// signOut() は非同期コールバック完了後に startLoginPolling() を呼び、loginPollTimer を再設定する。
     func testSignOut_restartsLoginPolling() async throws {
         let vm = makeVM()
+        // init() calls startLoginPolling(), so timer is already set
+        XCTAssertNotNil(vm.loginPollTimer)
+
+        // Simulate state where polling has been stopped (e.g., by applyResult).
+        vm.loginPollTimer?.invalidate()
+        vm.loginPollTimer = nil
         XCTAssertNil(vm.loginPollTimer)
 
         vm.signOut()

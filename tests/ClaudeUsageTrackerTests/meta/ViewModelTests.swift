@@ -42,11 +42,11 @@ final class ViewModelTests: XCTestCase {
     // Note: These tests use production config (webViewConfiguration: nil) to verify
     // the real data store behavior. Test VMs use nonPersistent() to avoid destroying
     // real session cookies during signOut() calls.
-    func testWebView_usesAppSpecificDataStore() {
+    func testWebView_usesDefaultDataStore() {
         let vm = UsageViewModel(webViewConfiguration: nil)
         let store = vm.webView.configuration.websiteDataStore
-        XCTAssertNotEqual(store, WKWebsiteDataStore.default(),
-                          "WebView should NOT use .default() (causes TCC prompt for cross-app data access)")
+        XCTAssertEqual(store, WKWebsiteDataStore.default(),
+                       "WebView should use .default() (managed by cookied daemon, survives PC reboot)")
     }
 
     func testWebView_dataStoreIsPersistent() {

@@ -106,6 +106,7 @@
 		BB800037 /* WidgetDesignSupplementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB800036 /* WidgetDesignSupplementTests.swift */; };
 		BB800039 /* WidgetMediumViewNowXTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB800038 /* WidgetMediumViewNowXTests.swift */; };
 		BB80003B /* MiniUsageGraphSupplementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB80003A /* MiniUsageGraphSupplementTests.swift */; };
+		BB80003D /* LoginPollTimerLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB80003C /* LoginPollTimerLifecycleTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -276,6 +277,7 @@
 		BB800036 /* WidgetDesignSupplementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetDesignSupplementTests.swift; sourceTree = "<group>"; };
 		BB800038 /* WidgetMediumViewNowXTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetMediumViewNowXTests.swift; sourceTree = "<group>"; };
 		BB80003A /* MiniUsageGraphSupplementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniUsageGraphSupplementTests.swift; sourceTree = "<group>"; };
+		BB80003C /* LoginPollTimerLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginPollTimerLifecycleTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -437,6 +439,7 @@
 						BB800030 /* ViewModelHandlePageReadyTests.swift */,
 						BB800032 /* ViewModelSessionSupplementTests.swift */,
 						BB800034 /* ViewModelSettingsWidgetReloaderTests.swift */,
+						BB80003C /* LoginPollTimerLifecycleTests.swift */,
 			);
 			path = meta;
 			sourceTree = "<group>";
@@ -816,6 +819,7 @@
 				BB800037 /* WidgetDesignSupplementTests.swift in Sources */,
 				BB800039 /* WidgetMediumViewNowXTests.swift in Sources */,
 				BB80003B /* MiniUsageGraphSupplementTests.swift in Sources */,
+				BB80003D /* LoginPollTimerLifecycleTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

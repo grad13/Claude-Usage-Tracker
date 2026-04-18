@@ -1,4 +1,4 @@
-// meta: updated=2026-03-07 15:25 checked=-
+// meta: updated=2026-04-19 02:25 checked=-
 import XCTest
 import WebKit
 @testable import ClaudeUsageTracker
@@ -14,6 +14,7 @@ final class MockUsageViewModel: WebViewCoordinatorDelegate {
     var handlePageReadyCallCount = 0
     var closePopupCallCount = 0
     var handlePopupClosedCallCount = 0
+    var debugMessages: [String] = []
 
     func checkPopupLogin() {
         checkPopupLoginCallCount += 1
@@ -33,7 +34,7 @@ final class MockUsageViewModel: WebViewCoordinatorDelegate {
     }
 
     func debug(_ message: String) {
-        // no-op: side effects limited to logging, not verified in unit tests
+        debugMessages.append(message)
     }
 }
 
@@ -280,6 +281,56 @@ final class WebViewCoordinatorTests: XCTestCase {
         )
 
         XCTAssertNotNil(popup, "Idle→PopupOpen transition must produce a non-nil popup WebView")
+    }
+
+    // MARK: - Navigation failures (didFailProvisionalNavigation / didFail)
+
+    /// Spec 3.1.b: didFailProvisionalNavigation logs to viewModel.debug as "main".
+    func testDidFailProvisionalNavigation_main_logsToDebug() {
+        let coordinator = makeCoordinator()
+        let webView = WKWebView(frame: .zero)
+        let error = NSError(domain: NSURLErrorDomain, code: -1009, userInfo: nil)
+
+        coordinator.webView(webView, didFailProvisionalNavigation: nil, withError: error)
+
+        XCTAssertTrue(
+            mockViewModel.debugMessages.contains(where: { $0.contains("didFailProvisionalNavigation[main]") }),
+            "didFailProvisionalNavigation must log to debug with [main] tag"
+        )
+    }
+
+    /// Spec 3.1.b: didFail logs to viewModel.debug as "main".
+    func testDidFail_main_logsToDebug() {
+        let coordinator = makeCoordinator()
+        let webView = WKWebView(frame: .zero)
+        let error = NSError(domain: NSURLErrorDomain, code: -1009, userInfo: nil)
+
+        coordinator.webView(webView, didFail: nil, withError: error)
+
+        XCTAssertTrue(
+            mockViewModel.debugMessages.contains(where: { $0.contains("didFail[main]") }),
+            "didFail must log to debug with [main] tag"
+        )
+    }
+
+    /// Spec 3.1.b: didFail with the popup WebView logs as "popup".
+    func testDidFail_popup_logsToDebugAsPopup() {
+        let (coordinator, configuration, action, features) = makePopupScenario()
+        let popup = coordinator.webView(
+            WKWebView(frame: .zero),
+            createWebViewWith: configuration,
+            for: action,
+            windowFeatures: features
+        )!
+        mockViewModel.debugMessages.removeAll()
+
+        let error = NSError(domain: NSURLErrorDomain, code: -1009, userInfo: nil)
+        coordinator.webView(popup, didFail: nil, withError: error)
+
+        XCTAssertTrue(
+            mockViewModel.debugMessages.contains(where: { $0.contains("didFail[popup]") }),
+            "didFail on the popup WebView must log with [popup] tag"
+        )
     }
 
     // MARK: - Multiple cookiesDidChange calls are independent

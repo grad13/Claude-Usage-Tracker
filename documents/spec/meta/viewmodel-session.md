@@ -1,5 +1,5 @@
 ---
-updated: 2026-03-16 06:59
+updated: 2026-04-19 02:25
 checked: -
 Deprecated: -
 Format: spec-v2.1
@@ -48,9 +48,6 @@ handleSessionDetected()
   +-- guard !isLoggedIn else { return }     ← Idempotency guard
   +-- isLoggedIn = true                      ← Transition to logged-in state
   +-- isAutoRefreshEnabled = nil             ← Reset to undetermined (next handlePageReady will evaluate)
-  +-- loginPollTimer?.invalidate()           ← Stop login polling
-  +-- loginPollTimer = nil
-  +-- backupSessionCookies()                 ← Back up cookies to App Group
   +-- startAutoRefresh()                     ← Start auto-refresh timer
   +-- guard canRedirect() else { return }    ← 5-second cooldown check
   +-- lastRedirectAt = Date()                ← Record redirect time
@@ -60,8 +57,8 @@ handleSessionDetected()
 ### Design Intent
 
 - Resetting `isAutoRefreshEnabled` to nil allows the next `handlePageReady()` call to re-evaluate session validity.
-- Executing `backupSessionCookies()` before the redirect ensures cookies are saved even if the navigation fails.
 - The `canRedirect()` guard ensures that even with multiple rapid invocations (e.g., cookie observation + polling racing), the usage page navigation occurs only once.
+- **`loginPollTimer` is intentionally NOT stopped here.** Cookie detection is only an intermediate step — the page load and API fetch that follow can still fail. Only `applyResult()` (i.e. successful data fetch) stops the timer, so any failure between cookie detection and data arrival is automatically retried by the next polling tick.
 
 ### Difference from handlePageReady()
 
@@ -69,83 +66,20 @@ handleSessionDetected()
 - `handleSessionDetected()` is called "the moment a session cookie is detected" and navigates to the usage page.
 - They are complementary: handleSessionDetected() → loadUsagePage() → didFinish → handlePageReady() → fetchSilently()
 
-## Cookie Backup/Restore
-
-Cookie persistence via `WKWebsiteDataStore(forIdentifier:)` is lost upon app reinstallation. Cookies are backed up as a JSON file to the App Group container, enabling restoration after reinstallation.
-
-### CookieData Struct
-
-`CookieData`, defined in `UsageViewModel+Session.swift`, is a Codable struct used for cookie backup and restore via App Group.
-
-```swift
-struct CookieData: Codable {
-    let name: String
-    let value: String
-    let domain: String
-    let path: String
-    let expiresDate: Double?   // Date.timeIntervalSince1970. nil = session cookie
-    let isSecure: Bool
-}
-```
-
-| Field | Type | Nullable | Description |
-|-------|------|----------|-------------|
-| `name` | `String` | No | Cookie name |
-| `value` | `String` | No | Cookie value |
-| `domain` | `String` | No | Cookie domain (e.g., `.claude.ai`) |
-| `path` | `String` | No | Cookie path (e.g., `/`) |
-| `expiresDate` | `Double?` | Yes | UNIX timestamp (seconds). nil = session cookie (expires when browser closes) |
-| `isSecure` | `Bool` | No | Whether the `Secure` attribute is set |
-
-Constant:
-
-```swift
-static let cookieBackupName = "session-cookies.json"
-```
-
-File name used by both `backupSessionCookies()` and `restoreSessionCookies()`.
-
-Conversion rules (HTTPCookie <-> CookieData):
-
-- **Backup (HTTPCookie → CookieData)**: `expiresDate` is `HTTPCookie.expiresDate?.timeIntervalSince1970` (nullable), `isSecure` is `HTTPCookie.isSecure`
-- **Restore (CookieData → HTTPCookieProperties)**: If `expiresDate` is non-nil and in the past → skip cookie (expired). If `expiresDate` is non-nil and in the future → set `.expires` key to `Date(timeIntervalSince1970: exp)`. If `isSecure == true` → set `.secure` key to `"TRUE"`
-
-### Backup (backupSessionCookies)
-
-- **Timing**: Runs on every login success within `handleSessionDetected()`
-- **Filter**: Only cookies whose `domain` ends with `claude.ai`
-- **Destination**: `AppGroupConfig.containerURL` / `Library/Application Support` / `AppGroupConfig.appName` / `session-cookies.json`
-- **Format**: JSON array of `CookieData` structs (name, value, domain, path, expiresDate, isSecure)
-- **expiresDate**: Stored as `Date.timeIntervalSince1970` (Double). nil for session cookies.
-
-### Restore (restoreSessionCookies)
-
-- **Timing**: At app launch (depends on call site of `restoreSessionCookies()`)
-- **Return value**: `async -> Bool` (returns `true` if at least one cookie was restored)
-- **Expired cookie handling**: Cookies with `expiresDate` at or before the current time are skipped
-- **Restore target**: Set individually via `setCookie()` on `webView.configuration.websiteDataStore.httpCookieStore`
-- **Secure attribute**: When `isSecure == true`, sets `HTTPCookiePropertyKey.secure: "TRUE"`
-
-### Directory Structure
-
-```
-{App Group Container}/
-+-- Library/Application Support/
-    +-- {AppGroupConfig.appName}/
-        +-- session-cookies.json
-```
-
 ## Login Polling
 
-In SPA navigation (e.g., client-side transitions after OAuth completion), the `didFinish` delegate may not fire. Cookie changes may also go undetected during SPA internal state changes. Login Polling serves as a fallback to bridge these gaps.
+In SPA navigation (e.g., client-side transitions after OAuth completion), the `didFinish` delegate may not fire. Cookie changes may also go undetected during SPA internal state changes. Login Polling serves as a fallback to bridge these gaps. It also acts as the universal retry path for **any** failure between cookie detection and successful data fetch (e.g., post-reboot network outage causing `loadUsagePage` to fail with NSURLErrorNotConnectedToInternet).
 
 ### Specification
 
 - **Interval**: 3 seconds (`Timer.scheduledTimer(withTimeInterval: 3, repeats: true)`)
 - **Start condition**: Only when `loginPollTimer == nil` (guard against double-start)
-- **Stop condition**: `invalidate()` + nil assignment within `handleSessionDetected()`
-- **Evaluation**: Calls `handleSessionDetected()` when `fetcher.hasValidSession(using: webView)` returns `true`
-- **Guard**: Checks `!self.isLoggedIn` within the polling tick; no-op if already logged in
+- **Stop condition**: `invalidate()` + nil assignment **only inside `applyResult()`** (i.e. successful data fetch). Cookie detection alone does NOT stop the timer.
+- **Tick logic** (3-way branch, evaluated each tick):
+  1. `fiveHourPercent != nil && sevenDayPercent != nil` → early return (data already fetched; stragglers before invalidate land here)
+  2. `hasValidSession == false` → wait (no cookie yet)
+  3. `hasValidSession == true && !isLoggedIn` → call `handleSessionDetected()` (transitions to logged-in + redirects to usage page)
+  4. `hasValidSession == true && isLoggedIn` → call `loadUsagePage()` (logged in but data not yet fetched; previous load likely failed). Also clears `lastRedirectAt` so `canRedirect()` cooldown does not block the retry.
 
 ### Login Detection Paths Overview
 

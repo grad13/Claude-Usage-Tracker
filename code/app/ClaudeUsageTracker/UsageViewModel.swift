@@ -1,4 +1,4 @@
-// meta: updated=2026-03-16 06:52 checked=2026-02-26 00:00
+// meta: updated=2026-04-19 02:25 checked=2026-02-26 00:00
 import Foundation
 import WebKit
 import Combine
@@ -97,14 +97,15 @@ final class UsageViewModel: ObservableObject, WebViewCoordinatorDelegate {
         self.loginItemManager = loginItemManager
         self.alertChecker = alertChecker
 
+        Self.markLaunch()
+
         let config = webViewConfiguration ?? {
             let c = WKWebViewConfiguration()
-            // Use app-specific persistent data store to avoid macOS TCC prompt
-            // ("ClaudeUsageTracker would like to access data from other apps")
-            // .default() shares data with Safari/other WebKit apps → triggers prompt every launch.
-            // forIdentifier: creates an isolated persistent store scoped to this app.
-            let storeId = UUID(uuidString: "A1B2C3D4-E5F6-7890-ABCD-EF1234567890")!
-            c.websiteDataStore = WKWebsiteDataStore(forIdentifier: storeId)
+            // Use default data store — managed by macOS cookied daemon which reliably
+            // flushes cookies to disk during shutdown (survives PC reboot).
+            // forIdentifier: used WebKit Network Process (XPC) which could lose cookies
+            // on shutdown due to incomplete flush. Sandbox OFF avoids TCC prompts.
+            c.websiteDataStore = .default()
             c.preferences.javaScriptCanOpenWindowsAutomatically = true
             return c
         }()
@@ -124,14 +125,9 @@ final class UsageViewModel: ObservableObject, WebViewCoordinatorDelegate {
         syncLoginItem()
         startCookieObservation()
 
-        // Restore cookies from App Group backup, then load page
-        Task { [weak self] in
-            guard let self else { return }
-            let restored = await self.restoreSessionCookies()
-            self.debug("init: cookieRestore=\(restored)")
-            self.loadUsagePage()
-            self.startLoginPolling()
-        }
+        // .default() DataStore auto-loads persisted cookies — no restore needed
+        loadUsagePage()
+        startLoginPolling()
     }
 
     // MARK: - Page Ready (called by coordinator when claude.ai page finishes loading)
@@ -147,10 +143,7 @@ final class UsageViewModel: ObservableObject, WebViewCoordinatorDelegate {
                 return
             }
             self.isLoggedIn = true
-            loginPollTimer?.invalidate()
-            loginPollTimer = nil
             startAutoRefresh()
-            backupSessionCookies()
 
             if !isOnUsagePage() {
                 debug("handlePageReady: not on usage page, redirecting")
@@ -220,7 +213,6 @@ final class UsageViewModel: ObservableObject, WebViewCoordinatorDelegate {
                 error = nil
                 retryCount = 0
                 startAutoRefresh()
-                backupSessionCookies()
             } catch {
                 let isAuthError = (error as? UsageFetchError)?.isAuthError == true
                 if let fetchError = error as? UsageFetchError {
@@ -269,6 +261,11 @@ final class UsageViewModel: ObservableObject, WebViewCoordinatorDelegate {
         // Phase 4: Notify widget to reload (reads from same usage.db)
         widgetReloader.reloadAllTimelines()
 
+        // Phase 5: Stop login polling — data fetch fully succeeded.
+        // This is the SOLE place the timer is invalidated; intermediate steps
+        // (handleSessionDetected, handlePageReady) keep it alive so failures retry.
+        loginPollTimer?.invalidate()
+        loginPollTimer = nil
     }
 
     // MARK: - Navigation

@@ -1,5 +1,5 @@
 ---
-updated: 2026-03-16 06:59
+updated: 2026-04-13 03:50
 checked: -
 Deprecated: -
 Format: spec-v2.1
@@ -157,7 +157,9 @@ Colors change from green to orange to red based on usage level.
 
 ### Cookie Persistence
 
-Uses `WKWebsiteDataStore(forIdentifier:)` (creates an app-specific persistent store with a fixed UUID). `.default()` is not used because it shares data with Safari and triggers an access permission prompt on every launch.
+Uses `WKWebsiteDataStore.default()`, managed by macOS's `cookied` daemon which reliably flushes cookies to disk during system shutdown. This ensures cookies survive PC reboot.
+
+Previously used `WKWebsiteDataStore(forIdentifier:)` (isolated persistent store with fixed UUID), but this was unreliable across reboots — the WebKit Network Process (XPC) could fail to flush cookies during shutdown. Changed to `.default()` in v0.3.1. Sandbox OFF avoids TCC prompts that `.default()` would otherwise trigger.
 
 ### Login Detection
 
@@ -244,7 +246,7 @@ Detailed investigation: `reports/sandbox-data-sharing.md`
 The following require real-device testing. **All are unverified.**
 See `archive/phase1-verification-plan.md` for detailed analysis.
 
-- [ ] Login persistence after reboot (cookie persistence)
+- [ ] Login persistence after reboot (cookie persistence + post-reboot data fetch) — `.default()` DataStore preserves cookies across reboot (2026-04-09), but 2026-04-17 clean reboot revealed a separate bug: `loginPollTimer` was stopped on cookie detection while `loadUsagePage` failed with -1009. Fix in progress — see `plan/2026-04-19-reboot-network-failure-recovery.md`
 - [ ] Data retrieval from the usage API (field name verification → `reference/api-response.md`)
 - [ ] OAuth popup behavior (Google OAuth WKWebView blocking issue)
 - [ ] Redirect control after login
