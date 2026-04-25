@@ -1,4 +1,4 @@
-// meta: updated=2026-03-16 06:52 checked=2026-03-03 00:00
+// meta: updated=2026-04-25 05:00 checked=-
 import SwiftUI
 import ClaudeUsageTrackerShared
 
@@ -7,6 +7,8 @@ struct WidgetMiniGraph: View {
     let history: [HistoryPoint]
     let windowSeconds: TimeInterval
     let resetsAt: Date?
+    /// Session-scoped start for the 7d window. Nil for 5h or fallback.
+    let startedAt: Date?
     let areaColor: Color
     let areaOpacity: Double
     let isLoggedIn: Bool
@@ -107,7 +109,12 @@ struct WidgetMiniGraph: View {
     }
 
     private func resolveWindowStart() -> Date? {
-        GraphCalc.resolveWindowStart(resetsAt: resetsAt, windowSeconds: windowSeconds, history: history)
+        GraphCalc.resolveWindowStart(
+            resetsAt: resetsAt,
+            windowSeconds: windowSeconds,
+            history: history,
+            startedAt: startedAt
+        )
     }
 
     private func drawTicks(_ context: inout GraphicsContext, w: CGFloat, h: CGFloat) {

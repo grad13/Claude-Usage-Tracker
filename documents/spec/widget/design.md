@@ -1,5 +1,5 @@
 ---
-updated: 2026-03-16 06:59
+updated: 2026-04-25 05:00
 checked: -
 Deprecated: -
 Format: spec-v2.1
@@ -197,6 +197,7 @@ struct RefreshIntent: AppIntent {
 - **2026-02-22**: Percent text top clipping prevention (if within 14pt topMargin, display below)
 - **2026-02-25**: Area extension -- horizontal extension from the last data point to min(current time, reset time). Restricted no-data gray to post-reset only. Moved marker position to the extension endpoint
 - **2026-03-15**: Removed Small and Large sizes (Medium only). Added diagnostic footer row (update time + next refresh countdown + manual refresh button via AppIntent)
+- **2026-04-25**: 7d chart switched to session-scoped window. `UsageSnapshot.sevenDayStartedAt: Date?` added (Optional, backward-compatible via `decodeIfPresent`). `WidgetMiniGraph` gains a `startedAt` prop; `WidgetMediumView` computes dynamic `sevenDayWindowSeconds = resetsAt - startedAt` (fallback `7 * 24 * 3600` when snapshot has nil). Fixes cross-session rendering in the 7d chart that showed previous session's peaks alongside current session data
 
 ## WidgetKit Structure (UsageWidget.swift)
 
@@ -314,8 +315,9 @@ Used to calculate the x-coordinate for the remaining time text (multiplied by `G
 struct WidgetMiniGraph: View {
     let label: String            // Label displayed at the graph's top left (e.g., "5h", "7d")
     let history: [HistoryPoint]  // Usage rate time-series data
-    let windowSeconds: TimeInterval  // Display window width (seconds)
+    let windowSeconds: TimeInterval  // Display window width (seconds; dynamic for 7d)
     let resetsAt: Date?          // Window reset time (nil = unknown)
+    let startedAt: Date?         // Session-scoped start (7d only; nil for 5h / fallback)
     let areaColor: Color         // Area fill color
     let areaOpacity: Double      // Area base opacity
     let isLoggedIn: Bool         // When false, background uses a reddish color
@@ -336,21 +338,26 @@ All drawing is done within `Canvas { context, size in ... }` (no SwiftUI subview
 
 ### resolveWindowStart Logic
 
+Delegates to shared `GraphCalc.resolveWindowStart(resetsAt:windowSeconds:history:startedAt:)`.
+
 ```swift
 private func resolveWindowStart() -> Date? {
-    if let resetsAt {
-        return resetsAt.addingTimeInterval(-windowSeconds)
-    } else if let first = history.first {
-        return first.timestamp
-    }
-    return nil
+    GraphCalc.resolveWindowStart(
+        resetsAt: resetsAt,
+        windowSeconds: windowSeconds,
+        history: history,
+        startedAt: startedAt
+    )
 }
 ```
 
-Priority:
-1. `resetsAt` is non-nil -> use `resetsAt - windowSeconds` as the start time
-2. `resetsAt` is nil but `history` is non-empty -> use the first data point's `timestamp` as the start time
-3. Neither is available -> return `nil`, aborting graph drawing early
+Priority (shared with `MiniUsageGraph`):
+1. `startedAt` is non-nil -> use it as the start time (session-scoped 7d)
+2. `resetsAt` is non-nil -> use `resetsAt - windowSeconds` (legacy fixed-window fallback)
+3. `history.first` -> use first data point's `timestamp`
+4. Otherwise -> nil, aborting graph drawing early
+
+The same priority is applied inside `GraphCalc.nowXFraction` so that the graph body, marker, and remaining-time label all share a single window-start reference.
 
 ### drawTicks Logic
 

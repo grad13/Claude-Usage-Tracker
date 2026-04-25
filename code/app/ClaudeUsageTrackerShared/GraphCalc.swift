@@ -1,4 +1,4 @@
-// meta: updated=2026-03-16 06:52 checked=-
+// meta: updated=2026-04-25 05:00 checked=-
 import Foundation
 
 /// Pure computation helpers for graph coordinate calculations.
@@ -6,12 +6,17 @@ import Foundation
 public enum GraphCalc {
 
     /// Resolve the window start date for a graph.
-    /// Priority: 1) resetsAt - windowSeconds, 2) first history timestamp, 3) nil
+    /// Priority: 1) explicit startedAt (session-scoped), 2) resetsAt - windowSeconds
+    ///           (fixed-window fallback), 3) first history timestamp, 4) nil
     public static func resolveWindowStart(
         resetsAt: Date?,
         windowSeconds: TimeInterval,
-        history: [HistoryPoint]
+        history: [HistoryPoint],
+        startedAt: Date? = nil
     ) -> Date? {
+        if let startedAt {
+            return startedAt
+        }
         if let resetsAt {
             return resetsAt.addingTimeInterval(-windowSeconds)
         } else if let first = history.first {
@@ -43,12 +48,15 @@ public enum GraphCalc {
     }
 
     /// Calculate now-position as a fraction (0..1) within the window.
+    /// When `startedAt` is provided, windowStart = startedAt (session-scoped).
+    /// Otherwise windowStart = resetsAt - windowSeconds (legacy fixed-window).
     public static func nowXFraction(
         resetsAt: Date,
         windowSeconds: TimeInterval,
+        startedAt: Date? = nil,
         now: Date = Date()
     ) -> Double {
-        let windowStart = resetsAt.addingTimeInterval(-windowSeconds)
+        let windowStart = startedAt ?? resetsAt.addingTimeInterval(-windowSeconds)
         let nowElapsed = now.timeIntervalSince(windowStart)
         return min(max(nowElapsed / windowSeconds, 0.0), 1.0)
     }

@@ -1,4 +1,4 @@
-// meta: updated=2026-03-16 06:52 checked=2026-03-15 00:00
+// meta: updated=2026-04-25 05:00 checked=-
 import AppIntents
 import SwiftUI
 import WidgetKit
@@ -27,6 +27,16 @@ struct WidgetMediumView: View {
 
     var body: some View {
         if let snapshot {
+            // 7d window is session-scoped: bounds = [startedAt, resetsAt].
+            // Fallback to 7-day fixed when no session data is available (e.g., first
+            // install, or an old main-app binary that didn't write the field).
+            let sevenDayWindowSeconds: TimeInterval = {
+                if let started = snapshot.sevenDayStartedAt,
+                   let reset = snapshot.sevenDayResetsAt {
+                    return reset.timeIntervalSince(started)
+                }
+                return 7 * 24 * 3600
+            }()
             GeometryReader { geo in
                 VStack(spacing: 0) {
                     HStack(spacing: 8) {
@@ -34,6 +44,7 @@ struct WidgetMediumView: View {
                             label: "5h",
                             percent: snapshot.fiveHourPercent,
                             resetsAt: snapshot.fiveHourResetsAt,
+                            startedAt: nil,
                             history: snapshot.fiveHourHistory,
                             windowSeconds: 5 * 3600,
                             color: fiveHourColor,
@@ -44,8 +55,9 @@ struct WidgetMediumView: View {
                             label: "7d",
                             percent: snapshot.sevenDayPercent,
                             resetsAt: snapshot.sevenDayResetsAt,
+                            startedAt: snapshot.sevenDayStartedAt,
                             history: snapshot.sevenDayHistory,
-                            windowSeconds: 7 * 24 * 3600,
+                            windowSeconds: sevenDayWindowSeconds,
                             color: sevenDayColor,
                             opacity: 0.65
                         )
@@ -68,6 +80,7 @@ struct WidgetMediumView: View {
         label: String,
         percent: Double?,
         resetsAt: Date?,
+        startedAt: Date?,
         history: [HistoryPoint],
         windowSeconds: TimeInterval,
         color: Color,
@@ -79,6 +92,7 @@ struct WidgetMediumView: View {
                 history: history,
                 windowSeconds: windowSeconds,
                 resetsAt: resetsAt,
+                startedAt: startedAt,
                 areaColor: color,
                 areaOpacity: opacity,
                 isLoggedIn: snapshot?.isLoggedIn ?? true,
@@ -89,7 +103,11 @@ struct WidgetMediumView: View {
 
             if let resetsAt {
                 GeometryReader { geo in
-                    let xFrac = GraphCalc.nowXFraction(resetsAt: resetsAt, windowSeconds: windowSeconds)
+                    let xFrac = GraphCalc.nowXFraction(
+                        resetsAt: resetsAt,
+                        windowSeconds: windowSeconds,
+                        startedAt: startedAt
+                    )
                     Text(DisplayHelpers.remainingText(until: resetsAt))
                         .font(.caption2)
                         .foregroundStyle(.secondary)

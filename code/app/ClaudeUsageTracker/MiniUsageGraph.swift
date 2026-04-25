@@ -1,10 +1,15 @@
-// meta: updated=2026-03-16 06:52 checked=2026-02-26 00:00
+// meta: updated=2026-04-25 05:00 checked=-
 import SwiftUI
 
 struct MiniUsageGraph: View {
     let history: [UsageStore.DataPoint]
     let windowSeconds: TimeInterval
     let resetsAt: Date?
+    /// Session start for the 7d window. When non-nil, the chart uses
+    /// [startedAt, resetsAt] as its bounds (session-scoped).
+    /// Nil for 5h chart or when no weekly session exists yet (falls back to
+    /// `resetsAt - windowSeconds` legacy behavior).
+    let startedAt: Date?
     let areaColor: Color
     let areaOpacity: Double
     let divisions: Int
@@ -66,9 +71,13 @@ struct MiniUsageGraph: View {
             // Background
             context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(bgColor))
 
-            // Determine window start
+            // Determine window start.
+            // Priority: 1) explicit startedAt (session-scoped), 2) resetsAt - windowSeconds
+            //           (fixed-window fallback), 3) first history timestamp, 4) return.
             let windowStart: Date
-            if let resetsAt {
+            if let startedAt {
+                windowStart = startedAt
+            } else if let resetsAt {
                 windowStart = resetsAt.addingTimeInterval(-windowSeconds)
             } else if let first = history.first {
                 windowStart = first.timestamp

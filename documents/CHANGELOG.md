@@ -1,5 +1,5 @@
 ---
-updated: 2026-04-19
+updated: 2026-04-25
 checked: -
 ---
 # Changelog
@@ -7,6 +7,7 @@ checked: -
 ## [Unreleased]
 
 ### Fixed
+- **7d chart cross-session rendering**: Menu bar and widget 7d charts mixed previous-session data (e.g., a 73% peak from the prior week) with the current session, drawing them as a single continuous line. Root cause: `loadHistory(windowSeconds: 7*24*3600)` returned rows across session boundaries because the chart had no session awareness. Added `UsageStore.loadCurrentWeeklySession()` and switched the 7d chart to render only the current session's data, with bounds anchored to `[startedAt, resetsAt]`. Widget receives a new `sevenDayStartedAt: Date?` field via `UsageSnapshot` (Codable backward-compatible)
 - **Login not restored after reboot**: `loginPollTimer` was stopped on cookie detection, but if the subsequent `loadUsagePage` failed (e.g., -1009 right after boot), polling no longer retried — leaving the app stuck without usage data. Timer lifetime extended to "data fetch success" (`applyResult`); polling tick now also retries `loadUsagePage` when logged in but data is missing. Added observation-only `didFailProvisionalNavigation` / `didFail` handlers to `WebViewCoordinator` for diagnostics
 - **Stale spec entries** (residual from 4/9 plan): `viewmodel-lifecycle.md` references to the removed `forIdentifier:` data store and `backupSessionCookies()` method updated to reflect `.default()` reality
 

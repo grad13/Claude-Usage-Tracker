@@ -1,4 +1,4 @@
-// meta: updated=2026-03-16 06:52 checked=2026-03-03 00:00
+// meta: updated=2026-04-25 05:00 checked=-
 import Foundation
 import SQLite3
 import ClaudeUsageTrackerShared
@@ -87,6 +87,7 @@ final class UsageStore {
     static func save(_ result: UsageResult) { shared.save(result) }
     static func loadAllHistory() -> [DataPoint] { shared.loadAllHistory() }
     static func loadHistory(windowSeconds: TimeInterval) -> [DataPoint] { shared.loadHistory(windowSeconds: windowSeconds) }
+    static func loadCurrentWeeklySession() -> WeeklySession? { shared.loadCurrentWeeklySession() }
 
     // MARK: - normalizeResetsAt
 
@@ -199,6 +200,49 @@ final class UsageStore {
                 return readDataPoints(stmt)
             } ?? []
         } ?? []
+    }
+
+    // MARK: - WeeklySession
+
+    struct WeeklySession {
+        let dataPoints: [DataPoint]
+        let startedAt: Date
+        let resetsAt: Date
+    }
+
+    // MARK: - Load Current Weekly Session
+
+    /// Return data points belonging only to the latest weekly_session_id, plus session bounds.
+    /// Used by the 7d chart to avoid rendering cross-session data.
+    /// Returns nil when no weekly session has ever been recorded.
+    func loadCurrentWeeklySession() -> WeeklySession? {
+        withDatabase { db -> WeeklySession? in
+            let sql = """
+                SELECT u.timestamp, u.hourly_percent, u.weekly_percent,
+                       hs.resets_at AS hourly_resets_at,
+                       ws.resets_at AS weekly_resets_at
+                FROM usage_log u
+                INNER JOIN weekly_sessions ws ON u.weekly_session_id = ws.id
+                LEFT JOIN hourly_sessions hs ON u.hourly_session_id = hs.id
+                WHERE u.weekly_session_id = (
+                    SELECT weekly_session_id FROM usage_log
+                    WHERE weekly_session_id IS NOT NULL AND weekly_percent IS NOT NULL
+                    ORDER BY id DESC LIMIT 1
+                )
+                AND u.weekly_percent IS NOT NULL
+                ORDER BY u.timestamp ASC;
+                """
+            return SQLiteHelper.withStatement(db: db, sql: sql) { stmt -> WeeklySession? in
+                let points = readDataPoints(stmt)
+                guard let first = points.first,
+                      let resetsAt = first.sevenDayResetsAt else { return nil }
+                return WeeklySession(
+                    dataPoints: points,
+                    startedAt: first.timestamp,
+                    resetsAt: resetsAt
+                )
+            } ?? nil
+        } ?? nil
     }
 
     // MARK: - Load Daily Usage

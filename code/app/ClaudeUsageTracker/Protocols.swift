@@ -1,4 +1,4 @@
-// meta: updated=2026-03-16 06:52 checked=2026-03-03 00:00
+// meta: updated=2026-04-25 05:00 checked=-
 // Dependency injection protocols.
 // Enables testing UsageViewModel without touching production state.
 import Foundation
@@ -21,6 +21,7 @@ extension SettingsStore: SettingsStoring {}
 protocol UsageStoring {
     func save(_ result: UsageResult)
     func loadHistory(windowSeconds: TimeInterval) -> [UsageStore.DataPoint]
+    func loadCurrentWeeklySession() -> UsageStore.WeeklySession?
     func loadDailyUsage(since: Date) -> Double?
 }
 

@@ -88,6 +88,7 @@ xcodebuild -project code/app/ClaudeUsageTracker.xcodeproj \
 ## Recent Changes
 
 ### Unreleased
+- Fix 7d chart cross-session rendering — chart now shows only the current weekly session's data
 - Fix menu bar double icon caused by stale DerivedData ghost registrations
 - Widget footer improvements (compact layout, tap-to-refresh, visual feedback)
 

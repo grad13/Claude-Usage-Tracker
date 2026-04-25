@@ -85,12 +85,19 @@ final class ViewModelTests: XCTestCase {
             timestamp: Date(),
             fiveHourPercent: 20.0, sevenDayPercent: 10.0
         )
+        // 5h chart still uses loadHistory; 7d switched to loadCurrentWeeklySession.
         usageStore.historyToReturn = [dp1, dp2]
+        usageStore.weeklySessionToReturn = UsageStore.WeeklySession(
+            dataPoints: [dp1, dp2],
+            startedAt: dp1.timestamp,
+            resetsAt: Date().addingTimeInterval(6 * 24 * 3600)
+        )
 
         let vm = makeVM()
         XCTAssertEqual(vm.fiveHourHistory.count, 2,
-                       "init should load history from injected store")
-        XCTAssertEqual(vm.sevenDayHistory.count, 2)
+                       "init should load 5h history from injected store")
+        XCTAssertEqual(vm.sevenDayHistory.count, 2,
+                       "init should load 7d history via loadCurrentWeeklySession")
     }
 
     func testInit_emptyHistory() {

@@ -15,9 +15,11 @@ final class InMemorySettingsStore: SettingsStoring {
 final class InMemoryUsageStore: UsageStoring {
     var savedResults: [UsageResult] = []
     var historyToReturn: [UsageStore.DataPoint] = []
+    var weeklySessionToReturn: UsageStore.WeeklySession?
     var dailyUsageToReturn: Double?
     func save(_ result: UsageResult) { savedResults.append(result) }
     func loadHistory(windowSeconds: TimeInterval) -> [UsageStore.DataPoint] { historyToReturn }
+    func loadCurrentWeeklySession() -> UsageStore.WeeklySession? { weeklySessionToReturn }
     func loadDailyUsage(since: Date) -> Double? { dailyUsageToReturn }
 }
 

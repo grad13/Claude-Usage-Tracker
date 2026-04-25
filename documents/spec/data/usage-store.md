@@ -1,5 +1,5 @@
 ---
-updated: 2026-03-16 06:59
+updated: 2026-04-25 05:00
 checked: -
 Deprecated: -
 Format: spec-v2.1
@@ -168,6 +168,58 @@ struct DataPoint {
 | Use case | Analysis view (full history needed) | Menu bar graph (only recent N seconds needed) |
 
 Both methods use the same JOIN query and `readDataPoints()` helper (code duplication eliminated).
+
+## loadCurrentWeeklySession()
+
+Returns data points belonging only to the current weekly session (the latest `weekly_session_id` observed in `usage_log`), plus session bounds. Used by the menu bar / widget 7d chart to avoid rendering cross-session data.
+
+### Return Type
+
+```swift
+struct WeeklySession {
+    let dataPoints: [DataPoint]
+    let startedAt: Date   // MIN(timestamp) within the session
+    let resetsAt: Date    // weekly_sessions.resets_at for the session
+}
+func loadCurrentWeeklySession() -> WeeklySession?
+```
+
+Returns `nil` when no weekly session has ever been recorded (empty DB, or all rows have NULL `weekly_session_id` / NULL `weekly_percent`).
+
+### Query
+
+```sql
+SELECT u.timestamp, u.hourly_percent, u.weekly_percent,
+       hs.resets_at AS hourly_resets_at,
+       ws.resets_at AS weekly_resets_at
+FROM usage_log u
+INNER JOIN weekly_sessions ws ON u.weekly_session_id = ws.id
+LEFT JOIN hourly_sessions hs ON u.hourly_session_id = hs.id
+WHERE u.weekly_session_id = (
+    SELECT weekly_session_id FROM usage_log
+    WHERE weekly_session_id IS NOT NULL AND weekly_percent IS NOT NULL
+    ORDER BY id DESC LIMIT 1
+)
+AND u.weekly_percent IS NOT NULL
+ORDER BY u.timestamp ASC;
+```
+
+- `INNER JOIN weekly_sessions` (not LEFT): the WHERE sub-select guarantees non-NULL `weekly_session_id`, and the returned row must carry a `resets_at` for the chart to render correctly.
+- `LEFT JOIN hourly_sessions`: matches existing `loadHistory` behavior — hourly session may be absent.
+- Filter `weekly_percent IS NOT NULL` excludes rows from fetches that returned only `hourly_percent`.
+
+### Logic
+
+1. Run the query above.
+2. If no rows: return `nil`.
+3. Build `[DataPoint]` from rows via the shared `readDataPoints(stmt)` helper.
+4. `startedAt = dataPoints.first?.timestamp` (guaranteed non-nil when rows exist, since `ORDER BY u.timestamp ASC`).
+5. `resetsAt = ws.resets_at` from any row (stable within the session).
+6. Return `WeeklySession(dataPoints:, startedAt:, resetsAt:)`.
+
+### Interaction with loadHistory
+
+`loadHistory(windowSeconds:)` is **unchanged**. The new method coexists: 7d consumers (menu bar / widget) switch to `loadCurrentWeeklySession`, while 5h stays on `loadHistory`.
 
 ## shared singleton initialization path
 

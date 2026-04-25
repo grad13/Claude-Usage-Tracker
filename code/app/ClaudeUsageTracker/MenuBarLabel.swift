@@ -1,4 +1,4 @@
-// meta: updated=2026-03-16 06:52 checked=2026-02-26 00:00
+// meta: updated=2026-04-25 05:00 checked=-
 import SwiftUI
 
 // MARK: - Menu Bar Label (mini graphs)
@@ -51,12 +51,22 @@ struct MenuBarGraphsContent: View {
     var body: some View {
         let s = viewModel.settings
         let loggedIn = viewModel.isLoggedIn
+        // 7d window is session-scoped: bounds = [startedAt, resetsAt].
+        // Fallback to 7-day fixed when no session data is available yet.
+        let sevenDayWindowSeconds: TimeInterval = {
+            if let started = viewModel.sevenDayStartedAt,
+               let reset = viewModel.sevenDayResetsAt {
+                return reset.timeIntervalSince(started)
+            }
+            return 7 * 24 * 3600
+        }()
         HStack(spacing: 4) {
             if s.showHourlyGraph {
                 MiniUsageGraph(
                     history: viewModel.fiveHourHistory,
                     windowSeconds: 5 * 3600,
                     resetsAt: viewModel.fiveHourResetsAt,
+                    startedAt: nil,
                     areaColor: s.hourlyColorPreset.color,
                     areaOpacity: 0.7,
                     divisions: 5,
@@ -68,8 +78,9 @@ struct MenuBarGraphsContent: View {
             if s.showWeeklyGraph {
                 MiniUsageGraph(
                     history: viewModel.sevenDayHistory,
-                    windowSeconds: 7 * 24 * 3600,
+                    windowSeconds: sevenDayWindowSeconds,
                     resetsAt: viewModel.sevenDayResetsAt,
+                    startedAt: viewModel.sevenDayStartedAt,
                     areaColor: s.weeklyColorPreset.color,
                     areaOpacity: 0.65,
                     divisions: 7,

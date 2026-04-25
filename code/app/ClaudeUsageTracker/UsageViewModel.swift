@@ -1,4 +1,4 @@
-// meta: updated=2026-04-19 02:25 checked=2026-02-26 00:00
+// meta: updated=2026-04-25 05:00 checked=-
 import Foundation
 import WebKit
 import Combine
@@ -18,6 +18,9 @@ final class UsageViewModel: ObservableObject, WebViewCoordinatorDelegate {
     @Published var popupWebView: WKWebView?
     @Published var fiveHourHistory: [UsageStore.DataPoint] = []
     @Published var sevenDayHistory: [UsageStore.DataPoint] = []
+    /// Start of the current weekly session (from DB). Nil if no session exists yet.
+    /// Used by the 7d chart to render only the current session's data.
+    @Published var sevenDayStartedAt: Date?
     static let usageURL = URL(string: "https://claude.ai")!
     static let targetHost = "claude.ai"
     let webView: WKWebView
@@ -291,7 +294,19 @@ final class UsageViewModel: ObservableObject, WebViewCoordinatorDelegate {
 
     func reloadHistory() {
         fiveHourHistory = usageStore.loadHistory(windowSeconds: 5 * 3600)
-        sevenDayHistory = usageStore.loadHistory(windowSeconds: 7 * 24 * 3600)
+        if let session = usageStore.loadCurrentWeeklySession() {
+            sevenDayHistory = session.dataPoints
+            sevenDayStartedAt = session.startedAt
+            // Use session-scoped resetsAt (from DB) — stable across fetches within the
+            // session. Falls through to the API-provided value only when no session
+            // exists yet (nil branch below).
+            sevenDayResetsAt = session.resetsAt
+        } else {
+            sevenDayHistory = []
+            sevenDayStartedAt = nil
+            // sevenDayResetsAt: leave as-is (may be API-provided for the current fetch
+            // before the first save creates a session row).
+        }
     }
 
     // MARK: - Auto Refresh
@@ -327,7 +342,10 @@ final class UsageViewModel: ObservableObject, WebViewCoordinatorDelegate {
             fiveHourPercent: result.fiveHourPercent,
             sevenDayPercent: result.sevenDayPercent,
             fiveHourResetsAt: result.fiveHourResetsAt,
-            sevenDayResetsAt: result.sevenDayResetsAt,
+            // Prefer the session-scoped resetsAt (propagated via reloadHistory).
+            // Falls back to API-provided value when no session exists yet.
+            sevenDayResetsAt: sevenDayResetsAt ?? result.sevenDayResetsAt,
+            sevenDayStartedAt: sevenDayStartedAt,
             fiveHourHistory: fiveHourHistory.map { HistoryPoint(timestamp: $0.timestamp, percent: $0.fiveHourPercent ?? 0) },
             sevenDayHistory: sevenDayHistory.map { HistoryPoint(timestamp: $0.timestamp, percent: $0.sevenDayPercent ?? 0) },
             isLoggedIn: isLoggedIn

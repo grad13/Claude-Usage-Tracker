@@ -237,4 +237,48 @@ final class SnapshotModelTests: XCTestCase {
         XCTAssertEqual(decoded.fiveHourHistory[0].percent, 0.0, accuracy: 0.01)
         XCTAssertEqual(decoded.fiveHourHistory[499].percent, 99.8, accuracy: 0.01)
     }
+
+    // MARK: - sevenDayStartedAt backward compatibility
+
+    func testDecode_missingSevenDayStartedAt_decodesAsNil() throws {
+        // Simulate an old snapshot written before the sevenDayStartedAt field existed.
+        let legacyJSON = """
+        {
+          "timestamp": 765504000,
+          "fiveHourPercent": 30.0,
+          "sevenDayPercent": 12.0,
+          "fiveHourResetsAt": 765507600,
+          "sevenDayResetsAt": 766108800,
+          "fiveHourHistory": [],
+          "sevenDayHistory": [],
+          "isLoggedIn": true
+        }
+        """
+        let data = legacyJSON.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(UsageSnapshot.self, from: data)
+        XCTAssertNil(decoded.sevenDayStartedAt,
+                     "Missing optional field should decode as nil")
+        XCTAssertEqual(decoded.sevenDayPercent, 12.0)
+    }
+
+    func testEncode_withSevenDayStartedAt_roundtrip() throws {
+        let now = Date(timeIntervalSince1970: 1740000000)
+        let started = now.addingTimeInterval(-5 * 24 * 3600)
+        let snapshot = UsageSnapshot(
+            timestamp: now,
+            fiveHourPercent: 50.0,
+            sevenDayPercent: 15.0,
+            fiveHourResetsAt: nil,
+            sevenDayResetsAt: now.addingTimeInterval(2 * 24 * 3600),
+            sevenDayStartedAt: started,
+            fiveHourHistory: [],
+            sevenDayHistory: [],
+            isLoggedIn: true
+        )
+        let data = try JSONEncoder().encode(snapshot)
+        let decoded = try JSONDecoder().decode(UsageSnapshot.self, from: data)
+        XCTAssertNotNil(decoded.sevenDayStartedAt)
+        XCTAssertEqual(decoded.sevenDayStartedAt!.timeIntervalSince1970,
+                       started.timeIntervalSince1970, accuracy: 1.0)
+    }
 }

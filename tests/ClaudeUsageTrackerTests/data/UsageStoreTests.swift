@@ -406,4 +406,101 @@ final class UsageStoreTests: XCTestCase {
         XCTAssertEqual(history[2].fiveHourPercent, 30.0)
         XCTAssertEqual(history[2].sevenDayPercent, 50.0)
     }
+
+    // MARK: - loadCurrentWeeklySession
+
+    func testLoadCurrentWeeklySession_emptyDB_returnsNil() {
+        XCTAssertNil(store.loadCurrentWeeklySession())
+    }
+
+    func testLoadCurrentWeeklySession_singleSession() {
+        let weeklyResets = Date(timeIntervalSince1970: 1_740_096_000) // 2025-02-20 22:00 UTC
+        store.save(makeResult(sevenDayPercent: 5.0, sevenDayResetsAt: weeklyResets))
+        usleep(1_100_000)
+        store.save(makeResult(sevenDayPercent: 10.0, sevenDayResetsAt: weeklyResets))
+        usleep(1_100_000)
+        store.save(makeResult(sevenDayPercent: 15.0, sevenDayResetsAt: weeklyResets))
+
+        guard let session = store.loadCurrentWeeklySession() else {
+            XCTFail("Expected session")
+            return
+        }
+        XCTAssertEqual(session.dataPoints.count, 3)
+        XCTAssertEqual(session.resetsAt.timeIntervalSince1970, 1_740_096_000, accuracy: 0.0)
+        // startedAt should be the earliest data point's timestamp
+        XCTAssertEqual(session.startedAt, session.dataPoints.first!.timestamp)
+    }
+
+    func testLoadCurrentWeeklySession_multipleSessions_returnsLatestOnly() {
+        let olderResets = Date(timeIntervalSince1970: 1_740_096_000)  // older
+        let newerResets = Date(timeIntervalSince1970: 1_740_700_800)  // ~7 days later
+        // Older session rows
+        store.save(makeResult(sevenDayPercent: 40.0, sevenDayResetsAt: olderResets))
+        usleep(1_100_000)
+        store.save(makeResult(sevenDayPercent: 50.0, sevenDayResetsAt: olderResets))
+        usleep(1_100_000)
+        // Newer session rows
+        store.save(makeResult(sevenDayPercent: 5.0, sevenDayResetsAt: newerResets))
+        usleep(1_100_000)
+        store.save(makeResult(sevenDayPercent: 10.0, sevenDayResetsAt: newerResets))
+
+        guard let session = store.loadCurrentWeeklySession() else {
+            XCTFail("Expected session")
+            return
+        }
+        // Only the newer session's 2 rows should be returned
+        XCTAssertEqual(session.dataPoints.count, 2)
+        XCTAssertEqual(session.resetsAt.timeIntervalSince1970, 1_740_700_800, accuracy: 0.0)
+        // All returned percents must be from the newer (low %) session
+        for dp in session.dataPoints {
+            XCTAssertNotNil(dp.sevenDayPercent)
+            XCTAssertLessThanOrEqual(dp.sevenDayPercent!, 10.0)
+        }
+    }
+
+    func testLoadCurrentWeeklySession_nullSessionRowsExcluded() {
+        let weeklyResets = Date(timeIntervalSince1970: 1_740_096_000)
+        // Row with a weekly session
+        store.save(makeResult(sevenDayPercent: 20.0, sevenDayResetsAt: weeklyResets))
+        usleep(1_100_000)
+        // Row with weekly_percent but NO resets_at → weekly_session_id will be NULL
+        store.save(makeResult(sevenDayPercent: 25.0, sevenDayResetsAt: nil))
+        usleep(1_100_000)
+        // Another row with session
+        store.save(makeResult(sevenDayPercent: 30.0, sevenDayResetsAt: weeklyResets))
+
+        guard let session = store.loadCurrentWeeklySession() else {
+            XCTFail("Expected session")
+            return
+        }
+        // Only the 2 rows that carry a valid session_id should be returned
+        XCTAssertEqual(session.dataPoints.count, 2)
+    }
+
+    func testLoadCurrentWeeklySession_windowBounds() {
+        // resetsAt must be in the future relative to save() timestamps (which use Date()).
+        let weeklyResets = Date().addingTimeInterval(7 * 24 * 3600)
+        // Round to the hour to match normalizeResetsAt() and ensure stable comparison.
+        let normalizedEpoch = Int64(store.normalizeResetsAt(weeklyResets))
+        let stableResets = Date(timeIntervalSince1970: TimeInterval(normalizedEpoch))
+        for percent in [3.0, 7.0, 11.0] {
+            store.save(makeResult(sevenDayPercent: percent, sevenDayResetsAt: stableResets))
+            usleep(1_100_000)
+        }
+        guard let session = store.loadCurrentWeeklySession() else {
+            XCTFail("Expected session")
+            return
+        }
+        for dp in session.dataPoints {
+            XCTAssertGreaterThanOrEqual(dp.timestamp, session.startedAt)
+            XCTAssertLessThanOrEqual(dp.timestamp, session.resetsAt)
+        }
+    }
+
+    func testLoadCurrentWeeklySession_onlyHourlyData_returnsNil() {
+        // Only 5h data, no 7d data → no weekly session
+        let hourlyResets = Date(timeIntervalSince1970: 1_740_024_000)
+        store.save(makeResult(fiveHourPercent: 30.0, fiveHourResetsAt: hourlyResets))
+        XCTAssertNil(store.loadCurrentWeeklySession())
+    }
 }

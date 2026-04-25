@@ -1,5 +1,5 @@
 ---
-updated: 2026-03-16 06:59
+updated: 2026-04-25 05:00
 checked: -
 Deprecated: -
 Format: spec-v2.1
@@ -28,8 +28,9 @@ Source: code/app/ClaudeUsageTracker/MiniUsageGraph.swift
 struct MiniUsageGraph: View {
     // --- Input properties ---
     let history: [UsageStore.DataPoint]   // Array of usage data points (chronological order)
-    let windowSeconds: TimeInterval       // Time window to display (in seconds)
+    let windowSeconds: TimeInterval       // Time window to display (in seconds; dynamic for 7d)
     let resetsAt: Date?                   // Reset time (if nil, uses history.first.timestamp as reference)
+    let startedAt: Date?                  // Session-scoped window start (7d only; nil for 5h or no session)
     let areaColor: Color                  // Area fill color
     let areaOpacity: Double               // Area fill opacity
     let divisions: Int                    // Number of time division markers
@@ -95,11 +96,14 @@ No state transitions. MiniUsageGraph is a pure rendering view with no internal s
 
 ### 3.3 windowStart Determination Logic
 
-| Case ID | resetsAt | history | Expected windowStart | Notes |
-|---------|----------|---------|----------------------|-------|
-| WS-01 | Date(X) | any | X - windowSeconds | resetsAt takes priority |
-| WS-02 | nil | [dp(T0), ...] | T0 | history.first.timestamp |
-| WS-03 | nil | [] | (early return) | Drawing skipped |
+Priority: 1) `startedAt` (session-scoped), 2) `resetsAt - windowSeconds` (fixed-window fallback), 3) `history.first.timestamp`, 4) early return.
+
+| Case ID | startedAt | resetsAt | history | Expected windowStart | Notes |
+|---------|-----------|----------|---------|----------------------|-------|
+| WS-01 | Date(S)   | any      | any     | S                    | startedAt takes highest priority (session-scoped 7d) |
+| WS-02 | nil       | Date(X)  | any     | X - windowSeconds    | legacy fixed-window (5h, or 7d without session) |
+| WS-03 | nil       | nil      | [dp(T0), ...] | T0             | history.first.timestamp fallback |
+| WS-04 | nil       | nil      | []      | (early return)       | Drawing skipped |
 
 ### 3.4 Background Color Selection
 
