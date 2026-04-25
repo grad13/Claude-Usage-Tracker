@@ -89,6 +89,8 @@ xcodebuild -project code/app/ClaudeUsageTracker.xcodeproj \
 
 ### Unreleased
 - Fix 7d chart cross-session rendering — chart now shows only the current weekly session's data
+- Analysis page now uses actual session start time (not `resetsAt - 7d`) and removes the distracting striped overlay in Weekly view
+- Deploy pipeline gains a 5-gate verification with automatic self-repair for DerivedData widget ghosts and Finder bundle-bit issues
 - Fix menu bar double icon caused by stale DerivedData ghost registrations
 - Widget footer improvements (compact layout, tap-to-refresh, visual feedback)
 

@@ -323,16 +323,25 @@ function buildWeeklySessions(data) {
   const sessions = [];
   let current = [];
   let currentResetsAt = null;
+  const nowMs = Date.now();
 
   function pushSession() {
     if (current.length === 0) return;
     const resetsAtMs = currentResetsAt ? currentResetsAt * 1000 : null;
-    if (resetsAtMs) {
+    // Only extend to (resetsAt, 0) for COMPLETED sessions (resets_at already passed).
+    // For the current in-progress session, resets_at is in the future — extending
+    // would draw a horizontal flat line from "now" to the future reset, which is
+    // visually misleading.
+    if (resetsAtMs && resetsAtMs <= nowMs) {
       current.push({ x: resetsAtMs, y: 0 });
     }
+    // Session start is the FIRST data point's timestamp, not resetsAt - 7 days.
+    // Sessions are not always exactly 7 days long (the API's reset cadence
+    // shifts week-to-week and the current session may be shorter when the
+    // previous one ended early).
     sessions.push({
       data: current,
-      start: resetsAtMs ? resetsAtMs - 7 * 86400000 : current[0].x,
+      start: current[0].x,
       end: resetsAtMs || current[current.length - 1].x,
     });
     current = [];
@@ -359,14 +368,20 @@ function buildHourlySessions(data) {
   const sessions = [];
   let current = [];
   let currentResetsAt = null;
+  const nowMs = Date.now();
 
   function pushSession() {
     if (current.length === 0) return;
     const resetsAtMs = currentResetsAt ? currentResetsAt * 1000 : null;
-    // Add y=0 at resets_at to show usage dropping to 0 at session end
-    if (resetsAtMs) {
+    // Add y=0 at resets_at to show usage dropping to 0 at session end —
+    // only for COMPLETED sessions. Skip for the current in-progress session
+    // (resets_at in the future) to avoid drawing a flat line into the future.
+    if (resetsAtMs && resetsAtMs <= nowMs) {
       current.push({ x: resetsAtMs, y: 0 });
     }
+    // Session start uses the legacy fixed-window calculation so that the
+    // visual bands drawn by hourlyBandsPlugin (which tile the chart) remain
+    // continuous. Weekly uses first-data-x because Weekly bands aren't tiled.
     sessions.push({
       data: current,
       start: resetsAtMs ? resetsAtMs - 5 * 3600000 : current[0].x,
@@ -623,7 +638,12 @@ function renderUsageTab() {
       },
     },
     plugins: [
-      ...(_navMode === 'sessionHourly' ? [futureZonePlugin] : [hourlyBandsPlugin]),
+      // hourlyBandsPlugin disabled in non-Hourly modes: the alternating
+      // stripe/translucent bands made empty regions of the chart appear as
+      // bright white striped blocks, which users repeatedly mistook for a
+      // bug. Keep futureZonePlugin in sessionHourly only — there the future
+      // indicator is meaningful at the granularity of a single 5h window.
+      ...(_navMode === 'sessionHourly' ? [futureZonePlugin] : []),
       weeklyBoundaryPlugin,
       crosshairPlugin,
     ],
@@ -688,7 +708,9 @@ function themeColor(lightVal, darkVal) {
 
 function buildSessionSlots(sessions, intervalSec, labelFn) {
   return (sessions || []).map(s => {
-    const start = s.resets_at - intervalSec;
+    // Use the session's actual start time (MIN(timestamp) from usage_log).
+    // Falls back to `resets_at - intervalSec` for legacy data without started_at.
+    const start = (s.started_at != null) ? s.started_at : (s.resets_at - intervalSec);
     const end = s.resets_at;
     const startDate = new Date(start * 1000);
     const endDate = new Date(end * 1000);

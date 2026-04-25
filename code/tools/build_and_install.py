@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# meta: updated=2026-03-26 checked=-
+# meta: updated=2026-04-25 14:55 checked=-
 """Build, test, and install ClaudeUsageTracker.
 
 Replaces build-and-install.sh with proper error handling:
@@ -11,6 +11,7 @@ Replaces build-and-install.sh with proper error handling:
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import sqlite3
 import sys
@@ -25,9 +26,11 @@ from data_protection import protect_files, shelter_file
 from db_backup import backup_database, check_lost_rows
 from launchservices import (
     LSREGISTER,
+    cleanup_stale_lsregister,
     deregister_stale_apps,
     dump_widget_registration,
     register_app,
+    widget_running_path,
 )
 from runner import run
 from version import get_app_version
@@ -50,6 +53,7 @@ APPGROUP_DB = APPGROUP_DIR / "usage.db"
 APPGROUP_SETTINGS = APPGROUP_DIR / "settings.json"
 COOKIE_FILE = APPGROUP_DIR / "session-cookies.json"
 WIDGET_ID = "grad13.claudeusagetracker.widget"
+WIDGET_EXTENSION_NAME = "ClaudeUsageTrackerWidgetExtension"
 
 
 # ---------------------------------------------------------------------------
@@ -294,44 +298,271 @@ def verify_installed_widget(build_app_path: Path, installed_app: Path) -> None:
     run(["SetFile", "-a", "B", str(installed_app)], label="SetFile bundle bit")
 
 
-def _verify_widget_deployment(app_path: str) -> None:
-    """Deployment verification gate: prove widget registration is correct.
+class GateFailure(RuntimeError):
+    """Raised by individual gate functions on failure. Includes a label for
+    diagnostics. Caught by `_verify_with_self_repair` for retry."""
 
-    Checks ALL known necessary conditions for widget operation after deploy.
-    Raises RuntimeError if any condition fails. No WARNING — all failures stop deploy.
-    """
-    print("==> Running deployment verification gate...")
-    passed = 0
-    total = 3
+    def __init__(self, label: str, detail: str):
+        super().__init__(f"GATE FAIL [{label}]: {detail}")
+        self.label = label
+        self.detail = detail
 
-    # --- Check 1: Widget found in pluginkit manifest ---
+
+def _gate_pluginkit(app_path: str) -> None:
+    """Gate-1: pluginkit registers the widget exactly once, from /Applications."""
     pk = run(["pluginkit", "-m", "-v", "-i", WIDGET_ID],
              on_error="warn", label="pluginkit manifest")
     if WIDGET_ID not in pk.stdout:
-        raise RuntimeError(
-            f"GATE FAIL [1/3]: Widget not found in pluginkit\n"
+        raise GateFailure("1/5 pluginkit",
+                          f"Widget not found\n       {pk.stdout.strip()}")
+    expected_appex = f"{app_path}/Contents/PlugIns/{WIDGET_EXTENSION_NAME}.appex"
+    if expected_appex not in pk.stdout:
+        raise GateFailure(
+            "1/5 pluginkit",
+            f"Widget registered from unexpected path\n"
+            f"       expected: {expected_appex}\n"
+            f"       stdout:   {pk.stdout.strip()}"
+        )
+    if "DerivedData" in pk.stdout or "/build/" in pk.stdout:
+        raise GateFailure(
+            "1/5 pluginkit",
+            f"Widget registered from DerivedData/build ghost\n"
             f"       {pk.stdout.strip()}"
         )
-    passed += 1
 
-    # --- Check 2: No DerivedData ghost in pluginkit ---
-    if "DerivedData" in pk.stdout:
-        raise RuntimeError(
-            f"GATE FAIL [2/3]: Widget registered from DerivedData (ghost)\n"
-            f"       {pk.stdout.strip()}"
+
+def _repair_pluginkit(app_path: str) -> None:
+    """Repair Gate-1: cleanup ghosts then re-add /Applications appex."""
+    cleanup_stale_lsregister(APP_NAME, INSTALL_DIR)
+    expected_appex = f"{app_path}/Contents/PlugIns/{WIDGET_EXTENSION_NAME}.appex"
+    run(["pluginkit", "-a", expected_appex],
+        on_error="warn", label="pluginkit -a")
+    run(["pluginkit", "-e", "use", "-i", WIDGET_ID],
+        on_error="warn", label="pluginkit enable")
+
+
+def _gate_lsregister(app_path: str) -> None:
+    """Gate-2: lsregister has the main `.app` only at /Applications.
+
+    Scope is intentionally narrow:
+      - Only `/ClaudeUsageTracker.app` paths are checked. Multiple .app
+        registrations confuse Finder (folder-display bug, ambiguous launch).
+      - `.appex` widget paths are NOT checked here — chronod resolves widgets
+        through pluginkit (Gate-1) and the runtime path (Gate-5), and
+        `lsregister -u` cannot reliably remove a freshly-built DerivedData
+        appex (returns rc=1 with spotlight scan errors).
+
+    A ghost path that no longer exists on disk is treated as harmless
+    (LaunchServices will GC it; nothing on disk for Finder to launch).
+    """
+    result = run([LSREGISTER, "-dump"], on_error="warn", label="lsregister -dump")
+    live_ghosts: list[str] = []
+    dead_ghosts: list[str] = []
+    for line in result.stdout.splitlines():
+        m = re.match(r"^path:\s+(.+?)(?:\s+\(0x[0-9a-fA-F]+\))?\s*$", line)
+        if not m:
+            continue
+        path = m.group(1)
+        # Only the main .app — skip plugin extensions
+        if not path.endswith(f"/{APP_NAME}.app"):
+            continue
+        if path == app_path:
+            continue
+        if Path(path).exists():
+            live_ghosts.append(path)
+        else:
+            dead_ghosts.append(path)
+    if dead_ghosts:
+        print(f"==> Gate 2/5: ignoring {len(dead_ghosts)} dead ghost(s) "
+              f"(LS still references deleted path)")
+    if live_ghosts:
+        raise GateFailure(
+            "2/5 lsregister",
+            "Live ghost main-app registrations remain:\n       "
+            + "\n       ".join(live_ghosts)
         )
-    passed += 1
 
-    # --- Check 3: No ghost LS registration ---
-    reg = dump_widget_registration(WIDGET_ID)
-    if reg and "DerivedData" in reg:
-        raise RuntimeError(
-            f"GATE FAIL [3/3]: Ghost LS registration from DerivedData\n"
-            f"       {reg}"
+
+def _repair_lsregister(app_path: str) -> None:
+    """Repair Gate-2: same as Gate-1 cleanup."""
+    cleanup_stale_lsregister(APP_NAME, INSTALL_DIR)
+
+
+_FINDERINFO_BUNDLE_BIT_BYTE = 8
+_FINDERINFO_BUNDLE_BIT_MASK = 0x20  # bit 13 of the big-endian flags field
+
+
+def _gate_finderinfo(app_path: str) -> None:
+    """Gate-3: com.apple.FinderInfo has the bundle bit set so Finder treats
+    the .app as a bundle (not a folder)."""
+    result = run(["xattr", "-px", "com.apple.FinderInfo", app_path],
+                 on_error="warn", label="xattr FinderInfo")
+    if result.returncode != 0:
+        # Missing xattr is OK — Finder will use the .app extension. But on
+        # some systems with corrupted FinderInfo this is the symptom.
+        return
+    # Output is hex bytes, e.g. "00 00 00 00 00 00 00 00 20 00 ..."
+    tokens = result.stdout.split()
+    if len(tokens) <= _FINDERINFO_BUNDLE_BIT_BYTE:
+        raise GateFailure(
+            "3/5 finderinfo",
+            f"FinderInfo too short ({len(tokens)} bytes)\n"
+            f"       output: {result.stdout!r}"
         )
-    passed += 1
+    try:
+        flags_byte = int(tokens[_FINDERINFO_BUNDLE_BIT_BYTE], 16)
+    except ValueError:
+        raise GateFailure(
+            "3/5 finderinfo",
+            f"FinderInfo unparseable\n       output: {result.stdout!r}"
+        )
+    if not (flags_byte & _FINDERINFO_BUNDLE_BIT_MASK):
+        raise GateFailure(
+            "3/5 finderinfo",
+            f"Bundle bit (0x{_FINDERINFO_BUNDLE_BIT_MASK:02x}) not set in flags "
+            f"byte 0x{flags_byte:02x}\n       output: {result.stdout!r}"
+        )
 
-    print(f"==> Deployment verification gate: {passed}/{total} checks passed")
+
+def _repair_finderinfo(app_path: str) -> None:
+    """Repair Gate-3: delete FinderInfo so Finder rebuilds it on next access."""
+    run(["xattr", "-d", "com.apple.FinderInfo", app_path],
+        on_error="warn", label="xattr -d FinderInfo")
+    # Re-set bundle bit explicitly to short-circuit Finder rebuild
+    run(["SetFile", "-a", "B", app_path], on_error="warn", label="SetFile B")
+
+
+def _gate_smoke_launch(app_path: str) -> None:
+    """Gate-4: `open` launches the app and a process from the install path
+    appears within 3 seconds."""
+    expected_bin = f"{app_path}/Contents/MacOS/{APP_NAME}"
+    # Make sure no prior instance is masking the test.
+    run(["killall", APP_NAME], on_error="warn", label="killall pre-smoke")
+    time.sleep(0.5)
+    open_result = run(["open", app_path], on_error="warn", label="open smoke")
+    if open_result.returncode != 0:
+        raise GateFailure(
+            "4/5 smoke",
+            f"`open` returned {open_result.returncode}\n"
+            f"       stderr: {open_result.stderr.strip()}"
+        )
+    # Wait for the process to appear
+    deadline = time.monotonic() + 3.0
+    seen_path: str | None = None
+    while time.monotonic() < deadline:
+        time.sleep(0.3)
+        ps = run(["pgrep", "-fl", expected_bin],
+                 on_error="warn", label="pgrep smoke")
+        if ps.stdout.strip():
+            # First token is PID, rest is the command path
+            parts = ps.stdout.split(None, 1)
+            seen_path = parts[1].strip() if len(parts) == 2 else ""
+            break
+    # Cleanup the smoke-test process regardless
+    run(["killall", APP_NAME], on_error="warn", label="killall post-smoke")
+    if seen_path is None:
+        raise GateFailure(
+            "4/5 smoke",
+            f"App did not start within 3s after `open`\n"
+            f"       expected binary: {expected_bin}"
+        )
+    if not seen_path.startswith(expected_bin):
+        raise GateFailure(
+            "4/5 smoke",
+            f"App started from wrong path\n"
+            f"       expected: {expected_bin}\n"
+            f"       actual:   {seen_path}"
+        )
+
+
+def _repair_smoke_launch(app_path: str) -> None:
+    """Repair Gate-4: aggressive cleanup of all caches that affect Finder/LS.
+    No silver bullet, but the symptoms we've seen cluster around stale
+    registrations and Finder cache."""
+    cleanup_stale_lsregister(APP_NAME, INSTALL_DIR)
+    register_app(app_path)
+    run(["killall", "Finder"], on_error="warn", label="killall Finder")
+    run(["killall", "Dock"], on_error="warn", label="killall Dock")
+    time.sleep(2)
+
+
+def _gate_widget_runtime_path(app_path: str) -> None:
+    """Gate-5 (best effort): if the widget extension is currently running,
+    it must be launched from /Applications (not DerivedData/build)."""
+    actual = widget_running_path(WIDGET_EXTENSION_NAME)
+    if actual is None:
+        # No running process — chronod will resolve from pluginkit when next
+        # render is triggered. Gates 1+2 already verified that resolution.
+        print("==> Gate-5 widget-runtime: no running widget process (skip)")
+        return
+    expected_prefix = f"{app_path}/Contents/PlugIns/{WIDGET_EXTENSION_NAME}.appex"
+    if not actual.startswith(expected_prefix):
+        raise GateFailure(
+            "5/5 widget-runtime",
+            f"Widget extension running from wrong path\n"
+            f"       expected prefix: {expected_prefix}\n"
+            f"       actual:          {actual}"
+        )
+
+
+def _repair_widget_runtime_path(app_path: str) -> None:
+    """Repair Gate-5: clean ghosts + kill widget chain so chronod re-resolves
+    against pluginkit (which Gate-1 already verified is /Applications)."""
+    cleanup_stale_lsregister(APP_NAME, INSTALL_DIR)
+    for proc in [WIDGET_EXTENSION_NAME, "chronod", "NotificationCenter"]:
+        run(["killall", proc], on_error="warn", label=f"killall {proc}")
+    time.sleep(5)
+
+
+def _verify_with_self_repair(
+    label: str,
+    gate: callable,
+    repair: callable,
+    app_path: str,
+) -> None:
+    """Run a gate. On failure, attempt one round of self-repair and re-run.
+    If the second attempt fails, raise the original GateFailure to abort deploy.
+    """
+    try:
+        gate(app_path)
+        print(f"==> Gate {label}: PASS")
+        return
+    except GateFailure as e:
+        print(f"==> Gate {label}: FAIL — attempting self-repair")
+        print(f"    detail: {e.detail}")
+        try:
+            repair(app_path)
+        except Exception as repair_err:
+            print(f"    repair raised: {repair_err}")
+        try:
+            gate(app_path)
+            print(f"==> Gate {label}: PASS after repair")
+            return
+        except GateFailure as e2:
+            raise RuntimeError(
+                f"GATE FAIL after self-repair [{label}]: {e2.detail}"
+            ) from e2
+
+
+def _verify_widget_deployment(app_path: str) -> None:
+    """Run all 5 deployment verification gates with self-repair.
+
+    Each gate represents a known failure mode previously fixed by hand
+    (DerivedData widget ghost, Finder folder display, lsregister bloat).
+    A single retry per gate is allowed after automatic repair; persistent
+    failure aborts the deploy.
+    """
+    print("==> Running deployment verification gates...")
+    gates: list[tuple[str, callable, callable]] = [
+        ("1/5 pluginkit",       _gate_pluginkit,            _repair_pluginkit),
+        ("2/5 lsregister",      _gate_lsregister,           _repair_lsregister),
+        ("3/5 finderinfo",      _gate_finderinfo,           _repair_finderinfo),
+        ("4/5 smoke",           _gate_smoke_launch,         _repair_smoke_launch),
+        ("5/5 widget-runtime",  _gate_widget_runtime_path,  _repair_widget_runtime_path),
+    ]
+    for label, gate, repair in gates:
+        _verify_with_self_repair(label, gate, repair, app_path)
+    print("==> Deployment verification gates: 5/5 passed")
 
 
 
@@ -355,9 +586,14 @@ def verify_bundle_bits(app_path: str) -> None:
 def register_and_clean(app_path: str) -> None:
     """Deregister stale copies, verify entitlements, register app, restart widget processes."""
     # Deregister DerivedData from LS after install so /Applications is the
-    # sole registered source (prevents widget loading from wrong location)
+    # sole registered source (prevents widget loading from wrong location).
+    # cleanup_stale_lsregister catches DerivedData, build/, xcarchive/, export/
+    # paths in one pass — broader than the legacy deregister_stale_apps glob.
     print("==> Cleaning stale LaunchServices registrations...")
-    deregister_stale_apps(APP_NAME, str(DERIVED_DATA))
+    n_removed = cleanup_stale_lsregister(APP_NAME, INSTALL_DIR)
+    if n_removed:
+        print(f"    removed {n_removed} ghost registration(s)")
+    deregister_stale_apps(APP_NAME, str(DERIVED_DATA))  # belt-and-suspenders
 
     # Verify entitlements before registration
     print("==> Verifying entitlements...")

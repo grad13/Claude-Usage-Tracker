@@ -124,16 +124,30 @@ final class AnalysisSchemeHandler: NSObject, WKURLSchemeHandler {
                 result["oldestTimestamp"] = SQLiteHelper.columnInt(stmt, 2) ?? NSNull()
             }
 
-            // Session lists for session-based navigation
-            for (key, table) in [("weeklySessions", "weekly_sessions"), ("hourlySessions", "hourly_sessions")] {
-                SQLiteHelper.withStatement(db: db, sql:
-                    "SELECT id, resets_at FROM \(table) ORDER BY resets_at ASC"
-                ) { stmt in
+            // Session lists for session-based navigation. `started_at` is the
+            // earliest usage_log timestamp tied to the session — the actual
+            // session start, not `resets_at - 7d`. Sessions are not always
+            // exactly 7 days, so the JS side uses started_at to draw the
+            // navigation slot range correctly.
+            let sessionQueries: [(String, String, String)] = [
+                ("weeklySessions", "weekly_sessions", "weekly_session_id"),
+                ("hourlySessions", "hourly_sessions", "hourly_session_id"),
+            ]
+            for (key, table, fkColumn) in sessionQueries {
+                let sql = """
+                    SELECT s.id, s.resets_at, MIN(u.timestamp) AS started_at
+                    FROM \(table) s
+                    LEFT JOIN usage_log u ON u.\(fkColumn) = s.id
+                    GROUP BY s.id, s.resets_at
+                    ORDER BY s.resets_at ASC
+                    """
+                SQLiteHelper.withStatement(db: db, sql: sql) { stmt in
                     var sessions: [[String: Any]] = []
                     while sqlite3_step(stmt) == SQLITE_ROW {
                         var session: [String: Any] = [:]
                         if let id = SQLiteHelper.columnInt(stmt, 0) { session["id"] = id }
                         if let ra = SQLiteHelper.columnInt(stmt, 1) { session["resets_at"] = ra }
+                        if let sa = SQLiteHelper.columnInt(stmt, 2) { session["started_at"] = sa }
                         sessions.append(session)
                     }
                     if hasUsageData || !sessions.isEmpty {

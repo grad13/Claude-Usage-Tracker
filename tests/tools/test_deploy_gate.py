@@ -1,12 +1,11 @@
-# meta: updated=2026-03-15 08:26 checked=-
-"""Tests for deployment verification gate and stale xctest removal.
+# meta: updated=2026-04-25 14:55 checked=-
+"""Tests for stale xctest removal in build_app().
 
 Covers:
-  Test 1-3: Stale xctest removal in build_app()
-  Test 4:   Verification gate — all pass
-  Test 5:   Verification gate — widget not in pluginkit
-  Test 6:   Verification gate — DerivedData ghost in pluginkit
-  Test 7:   Verification gate — ghost LS registration
+  Test 1-3: Stale xctest removal
+
+Note: the old 3-gate verification tests were superseded by the 5-gate
+pipeline tested in test_deploy_verify.py.
 
 Spec: docs/spec/tools/build-and-install.md (Deployment Verification Gate)
 """
@@ -83,78 +82,6 @@ class TestStaleXctestRemoval:
                 assert "DerivedData" in str(e)
 
 
-# ---------------------------------------------------------------------------
-# Test 4-7: Deployment Verification Gate
-# ---------------------------------------------------------------------------
-
-
-class TestVerificationGate:
-    """_verify_widget_deployment() checks 3 conditions per spec."""
-
-    def _make_pluginkit_stdout(self, *, found=True, ghost=False):
-        """Build pluginkit -m output."""
-        if not found:
-            return ""
-        path = "/Users/x/Library/Developer/Xcode/DerivedData/..." if ghost else "/Applications/ClaudeUsageTracker.app/..."
-        return f"    {WIDGET_ID}({path})"
-
-    def test_gate_all_pass(self, make_run_result):
-        """Test 4: All 3 conditions pass -> no exception, prints 3/3."""
-        import build_and_install as bi
-
-        pk_stdout = self._make_pluginkit_stdout(found=True, ghost=False)
-
-        def mock_run(cmd, **kwargs):
-            if "pluginkit" in cmd:
-                return make_run_result(stdout=pk_stdout)
-            return make_run_result()
-
-        with patch.object(bi, "run", side_effect=mock_run), \
-             patch.object(bi, "dump_widget_registration", return_value="/Applications/ClaudeUsageTracker.app"):
-            bi._verify_widget_deployment("/Applications/ClaudeUsageTracker.app")
-
-    def test_gate_pluginkit_not_found(self, make_run_result):
-        """Test 5: Widget not in pluginkit -> GATE FAIL [1/3]."""
-        import build_and_install as bi
-
-        def mock_run(cmd, **kwargs):
-            if "pluginkit" in cmd:
-                return make_run_result(stdout="")
-            return make_run_result()
-
-        with patch.object(bi, "run", side_effect=mock_run), \
-             patch.object(bi, "dump_widget_registration", return_value=None):
-            with pytest.raises(RuntimeError, match=r"GATE FAIL \[1/3\]"):
-                bi._verify_widget_deployment("/Applications/ClaudeUsageTracker.app")
-
-    def test_gate_ghost_pluginkit(self, make_run_result):
-        """Test 6: DerivedData ghost in pluginkit -> GATE FAIL [2/3]."""
-        import build_and_install as bi
-
-        pk_stdout = self._make_pluginkit_stdout(found=True, ghost=True)
-
-        def mock_run(cmd, **kwargs):
-            if "pluginkit" in cmd:
-                return make_run_result(stdout=pk_stdout)
-            return make_run_result()
-
-        with patch.object(bi, "run", side_effect=mock_run), \
-             patch.object(bi, "dump_widget_registration", return_value=None):
-            with pytest.raises(RuntimeError, match=r"GATE FAIL \[2/3\]"):
-                bi._verify_widget_deployment("/Applications/ClaudeUsageTracker.app")
-
-    def test_gate_ghost_ls_registration(self, make_run_result):
-        """Test 7: Ghost LS registration -> GATE FAIL [3/3]."""
-        import build_and_install as bi
-
-        pk_stdout = self._make_pluginkit_stdout(found=True, ghost=False)
-
-        def mock_run(cmd, **kwargs):
-            if "pluginkit" in cmd:
-                return make_run_result(stdout=pk_stdout)
-            return make_run_result()
-
-        with patch.object(bi, "run", side_effect=mock_run), \
-             patch.object(bi, "dump_widget_registration", return_value="/Users/x/DerivedData/ghost"):
-            with pytest.raises(RuntimeError, match=r"GATE FAIL \[3/3\]"):
-                bi._verify_widget_deployment("/Applications/ClaudeUsageTracker.app")
+# Old TestVerificationGate (3-gate) removed; superseded by test_deploy_verify.py
+# with the new 5-gate pipeline including FinderInfo bundle bit, smoke launch,
+# and widget runtime path verification.
