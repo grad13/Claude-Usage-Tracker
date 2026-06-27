@@ -72,10 +72,19 @@ Uses a WKWebView to maintain a browser session with claude.ai, then calls the in
 Requires Xcode 16+.
 
 ```bash
+# Build
 xcodebuild -project code/app/ClaudeUsageTracker.xcodeproj \
   -scheme ClaudeUsageTracker \
   -destination 'platform=macOS' build
+
+# Run tests
+xcodebuild test -project code/app/ClaudeUsageTracker.xcodeproj \
+  -scheme ClaudeUsageTracker \
+  -destination 'platform=macOS'
 ```
+
+The app targets (`ClaudeUsageTracker`, `ClaudeUsageTrackerShared`,
+`ClaudeUsageTrackerWidget`) live under `code/app/`, with tests under `tests/`.
 
 ## Related Projects
 
@@ -87,7 +96,8 @@ xcodebuild -project code/app/ClaudeUsageTracker.xcodeproj \
 
 ## Recent Changes
 
-### Unreleased
+### 1.0.4
+- **Fix widget not being addable on other Macs** — the bundled framework/widget had a deployment target above the advertised macOS 14.0, so `dyld` refused to load them on older systems and the widget never appeared. All targets are now unified to macOS 14.0, with a deploy gate that guards against future regressions
 - Fix 7d chart cross-session rendering — chart now shows only the current weekly session's data
 - Analysis page now uses actual session start time (not `resetsAt - 7d`) and removes the distracting striped overlay in Weekly view
 - Deploy pipeline gains a 5-gate verification with automatic self-repair for DerivedData widget ghosts and Finder bundle-bit issues

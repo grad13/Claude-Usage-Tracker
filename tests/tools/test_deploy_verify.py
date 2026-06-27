@@ -277,6 +277,103 @@ class TestGateWidgetRuntime:
 
 
 # ---------------------------------------------------------------------------
+# Min-OS gate (deployment-target invariant)
+# ---------------------------------------------------------------------------
+
+class TestVerifyMinOs:
+    """verify_min_os() fails the deploy if any bundled Mach-O binary's minos
+    exceeds the advertised macOS floor (14.0). Regression guard for the
+    framework-at-26.2 / widget-at-14.6 SDK auto-bump that broke the widget on
+    end-user Macs."""
+
+    MACHO = b"\xcf\xfa\xed\xfe" + b"\x00" * 16  # MH_MAGIC_64 + padding
+
+    def _make_app(self, tmp_path):
+        app = tmp_path / "ClaudeUsageTracker.app"
+        (app / "Contents/MacOS").mkdir(parents=True)
+        (app / "Contents/MacOS/ClaudeUsageTracker").write_bytes(self.MACHO)
+        fw = app / "Contents/Frameworks/ClaudeUsageTrackerShared.framework/Versions/A"
+        fw.mkdir(parents=True)
+        (fw / "ClaudeUsageTrackerShared").write_bytes(self.MACHO)
+        appex = (app / "Contents/PlugIns/ClaudeUsageTrackerWidgetExtension.appex"
+                 / "Contents/MacOS")
+        appex.mkdir(parents=True)
+        (appex / "ClaudeUsageTrackerWidgetExtension").write_bytes(self.MACHO)
+        # a non-binary resource that must be skipped without invoking vtool
+        (app / "Contents/Info.plist").write_bytes(b"<?xml version='1.0'?>")
+        return app
+
+    def test_all_at_floor_passes(self, tmp_path, capsys):
+        import build_and_install as bi
+        app = self._make_app(tmp_path)
+        with patch.object(bi, "_macho_minos", return_value=(14, 0)):
+            bi.verify_min_os(str(app))  # should not raise
+        assert "Min-OS gate verified" in capsys.readouterr().out
+
+    def test_framework_above_floor_fails(self, tmp_path):
+        import build_and_install as bi
+        app = self._make_app(tmp_path)
+
+        def fake(p):
+            return (26, 2) if p.endswith("ClaudeUsageTrackerShared") else (14, 0)
+
+        with patch.object(bi, "_macho_minos", side_effect=fake):
+            with pytest.raises(RuntimeError) as exc:
+                bi.verify_min_os(str(app))
+        msg = str(exc.value)
+        assert "26.2" in msg
+        assert "ClaudeUsageTrackerShared" in msg
+
+    def test_widget_above_floor_fails(self, tmp_path):
+        import build_and_install as bi
+        app = self._make_app(tmp_path)
+
+        def fake(p):
+            return (14, 6) if p.endswith("ClaudeUsageTrackerWidgetExtension") else (14, 0)
+
+        with patch.object(bi, "_macho_minos", side_effect=fake):
+            with pytest.raises(RuntimeError) as exc:
+                bi.verify_min_os(str(app))
+        assert "14.6" in str(exc.value)
+
+    def test_non_macho_files_skipped_without_vtool(self, tmp_path):
+        """Resources (plist etc.) are skipped via magic-byte check, so vtool
+        (here _macho_minos) is never invoked on them."""
+        import build_and_install as bi
+        app = tmp_path / "ClaudeUsageTracker.app"
+        (app / "Contents").mkdir(parents=True)
+        (app / "Contents/Info.plist").write_bytes(b"<?xml version='1.0'?>")
+        (app / "Contents/Assets.car").write_bytes(b"\x00\x01\x02\x03not-macho")
+        with patch.object(bi, "_macho_minos", side_effect=AssertionError(
+                "vtool should not run on non-Mach-O files")):
+            bi.verify_min_os(str(app))  # should not raise
+
+    def test_is_macho_detects_magic(self, tmp_path):
+        import build_and_install as bi
+        macho = tmp_path / "bin"
+        macho.write_bytes(b"\xcf\xfa\xed\xfe\x00\x00")
+        text = tmp_path / "plist"
+        text.write_bytes(b"<?xml version='1.0'?>")
+        assert bi._is_macho(str(macho)) is True
+        assert bi._is_macho(str(text)) is False
+        assert bi._is_macho(str(tmp_path / "missing")) is False
+
+    def test_macho_minos_parses_vtool_output(self, make_run_result):
+        import build_and_install as bi
+        out = " platform MACOS\n    minos 14.0\n      sdk 26.5\n"
+        with patch.object(bi, "run", return_value=make_run_result(stdout=out)):
+            assert bi._macho_minos("/x/bin") == (14, 0)
+
+    def test_macho_minos_none_for_non_macho(self, make_run_result):
+        import build_and_install as bi
+        with patch.object(
+            bi, "run",
+            return_value=make_run_result(returncode=1, stderr="not a Mach-O file"),
+        ):
+            assert bi._macho_minos("/x/Info.plist") is None
+
+
+# ---------------------------------------------------------------------------
 # Self-repair wrapper
 # ---------------------------------------------------------------------------
 

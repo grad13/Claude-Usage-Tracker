@@ -1,12 +1,15 @@
 ---
-updated: 2026-04-25
+updated: 2026-06-27
 checked: -
 ---
 # Changelog
 
 ## [Unreleased]
 
+## [1.0.4] - 2026-06-27
+
 ### Fixed
+- **Widget not installable on other users' Macs (deployment target)**: The shared `ClaudeUsageTrackerShared.framework` shipped at `minos 26.2` and the widget at `14.6` (accidental Xcode SDK auto-bumps), while the app advertises macOS 14.0+. On any Mac older than the framework's `minos`, `dyld` refused to load the embedded framework, so the widget extension never launched and could not be added from the gallery — it only worked on the developer's newer Mac. Unified all targets (app, widget, framework) to `MACOSX_DEPLOYMENT_TARGET = 14.0`, bumped all three to a common `MARKETING_VERSION = 1.0.4`, and added a `verify_min_os()` deploy gate that fails the build if any bundled binary's `minos` exceeds 14.0
 - **7d chart cross-session rendering**: Menu bar and widget 7d charts mixed previous-session data (e.g., a 73% peak from the prior week) with the current session, drawing them as a single continuous line. Root cause: `loadHistory(windowSeconds: 7*24*3600)` returned rows across session boundaries because the chart had no session awareness. Added `UsageStore.loadCurrentWeeklySession()` and switched the 7d chart to render only the current session's data, with bounds anchored to `[startedAt, resetsAt]`. Widget receives a new `sevenDayStartedAt: Date?` field via `UsageSnapshot` (Codable backward-compatible)
 - **Analysis page session-aware rendering**: Weekly session navigation showed `resetsAt - 7d` as the slot start even when the actual session was shorter. The current weekly session line also extended a flat horizontal segment from "now" to the future reset time, creating a misleading constant-percentage line. Fixed by deriving `started_at` per session (`MIN(timestamp)` of `usage_log` rows) and using it for both navigation slots and chart line endpoints. Removed the `hourlyBandsPlugin` overlay in non-Hourly modes — its alternating stripe/translucent bands appeared as bright white striped blocks in empty chart regions, which users repeatedly mistook for a bug
 - **Deploy verification gates**: Replaced the 3-check verification with a 5-gate pipeline that catches the recurring "Widget runs from DerivedData ghost" and "Finder shows .app as folder" failure modes. Gates: pluginkit registration, lsregister cleanliness for the main `.app`, FinderInfo bundle bit, `open` smoke launch from `/Applications`, and widget runtime path verification. Each gate has an automatic single-retry repair before failing the deploy. Comprehensive `cleanup_stale_lsregister()` removes ghosts from DerivedData, `build/`, `xcarchive/`, and `export/` paths in one pass

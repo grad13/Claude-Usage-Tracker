@@ -1,5 +1,5 @@
 ---
-updated: 2026-03-26
+updated: 2026-06-27
 checked: -
 Deprecated: -
 Format: spec-v2.1
@@ -164,8 +164,22 @@ def register_and_clean(app_path: str) -> None:
     """
     ...
 
+def verify_min_os(app_path: str) -> None:
+    """Min-OS gate: every bundled Mach-O binary's LC_BUILD_VERSION minos must
+    be <= the advertised macOS floor (ADVERTISED_MIN_OS = 14.0).
+
+    Walks app_path recursively; _is_macho() magic-byte check skips non-binary
+    resources so vtool only runs on real binaries. Raises RuntimeError listing
+    any offenders (e.g. a framework that drifted to minos 26.2 via an Xcode SDK
+    auto-bump — dyld would refuse it on older Macs, so the widget never loads).
+
+    Build-config invariant, not self-repairable, so it sits outside the
+    self-repair gate loop.
+    """
+    ...
+
 def verify_deployment(app_path: str) -> None:
-    """Wrapper: calls _verify_widget_deployment(app_path)."""
+    """Wrapper: _verify_widget_deployment(app_path) then verify_min_os(app_path)."""
     ...
 
 def check_data_integrity(backup_file: Path | None) -> None:
@@ -413,7 +427,7 @@ Phase 3: Deploy
   10. verify_installed_widget() — size + mtime + bundle bit
   11. verify_bundle_bits() — GetFileInfo
   12. register_and_clean() — entitlements + LS register + process kill
-  13. verify_deployment() — 3-condition gate
+  13. verify_deployment() — widget self-repair gates + verify_min_os() (minos <= 14.0)
   14. check_data_integrity() — row loss detection
   15. refresh_and_launch() — Dock refresh + open
 ```

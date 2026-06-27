@@ -1,5 +1,5 @@
 ---
-updated: 2026-04-13 03:50
+updated: 2026-06-27 22:30
 checked: -
 Deprecated: -
 Format: spec-v2.1
@@ -263,6 +263,29 @@ Verification priority: OAuth → Redirect → Org ID → API → Cookie (failure
 ```bash
 xcodebuild -scheme ClaudeUsageTracker -destination 'platform=macOS' build
 ```
+
+## Deployment Target
+
+All bundled targets — app, widget extension, and the shared
+`ClaudeUsageTrackerShared.framework` — must keep `MACOSX_DEPLOYMENT_TARGET` at
+the advertised minimum **macOS 14.0**. This is a distribution invariant, not a
+preference:
+
+- The app and widget both embed/link the shared framework. A framework whose
+  Mach-O `minos` is higher than the OS it lands on makes `dyld` refuse to load
+  it, which kills the **widget extension process before it can register** — so
+  the widget never appears in the gallery on an end-user's Mac.
+- The symptom is invisible to the developer if their own Mac happens to satisfy
+  the higher `minos` (the framework once drifted to `minos 26.2` via an
+  accidental Xcode SDK auto-bump; the widget worked locally but not for anyone
+  on an older OS).
+- Guard: `verify_min_os()` in `build_and_install.py` fails the deploy if any
+  bundled binary's `minos` exceeds 14.0. See
+  [build-and-install.md](../tools/build-and-install.md).
+
+No code is gated above 14.0 (`@available`/`#available` appear nowhere in the
+app, widget, or shared sources), so the floor can stay at 14.0 until a feature
+genuinely requires a newer API — at which point the README minimum must move too.
 
 ## Related Specifications
 

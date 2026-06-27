@@ -54,6 +54,11 @@ APPGROUP_SETTINGS = APPGROUP_DIR / "settings.json"
 COOKIE_FILE = APPGROUP_DIR / "session-cookies.json"
 WIDGET_ID = "grad13.claudeusagetracker.widget"
 WIDGET_EXTENSION_NAME = "ClaudeUsageTrackerWidgetExtension"
+# README advertises macOS 14.0+. Every bundled Mach-O binary's LC_BUILD_VERSION
+# minos must stay <= this, or dyld refuses to load it on older Macs (the shared
+# framework once shipped at minos 26.2, which kept the widget from launching on
+# end-user machines).
+ADVERTISED_MIN_OS = (14, 0)
 
 
 # ---------------------------------------------------------------------------
@@ -628,9 +633,79 @@ def register_and_clean(app_path: str) -> None:
     time.sleep(3)
 
 
+# Mach-O magic numbers (thin 32/64-bit, both byte orders, and fat/universal).
+_MACHO_MAGICS = {
+    b"\xfe\xed\xfa\xce", b"\xce\xfa\xed\xfe",  # 32-bit
+    b"\xfe\xed\xfa\xcf", b"\xcf\xfa\xed\xfe",  # 64-bit
+    b"\xca\xfe\xba\xbe", b"\xbe\xba\xfe\xca",  # fat / universal
+}
+
+
+def _is_macho(path: str) -> bool:
+    """True if the file starts with a Mach-O magic number. Used to skip the
+    many non-binary bundle resources (plists, .car, signatures) so vtool is
+    only invoked on actual binaries (no spurious 'not a Mach-O' warnings)."""
+    try:
+        with open(path, "rb") as fh:
+            return fh.read(4) in _MACHO_MAGICS
+    except OSError:
+        return False
+
+
+def _macho_minos(path: str) -> tuple[int, int] | None:
+    """Return (major, minor) of a Mach-O binary's LC_BUILD_VERSION minos.
+
+    Returns None for anything that isn't a Mach-O binary (vtool exits non-zero)
+    or whose build version can't be parsed. Uses `vtool -show-build`, which
+    reports the load command directly without a full otool dump.
+    """
+    res = run(["vtool", "-show-build", path], on_error="warn", label="vtool minos")
+    if res.returncode != 0:
+        return None
+    for line in res.stdout.splitlines():
+        parts = line.split()
+        if len(parts) >= 2 and parts[0] == "minos":
+            try:
+                nums = [int(x) for x in parts[1].split(".")]
+            except ValueError:
+                return None
+            return (nums[0], nums[1] if len(nums) > 1 else 0)
+    return None
+
+
+def verify_min_os(app_path: str) -> None:
+    """Fail the deploy if any bundled Mach-O binary's minos exceeds the
+    advertised macOS minimum (14.0).
+
+    Catches accidental Xcode SDK auto-bumps (e.g. the shared framework drifting
+    to minos 26.2) before they ship — such a binary loads on the developer's
+    newer Mac but dyld refuses it on older end-user Macs, so the widget never
+    appears. This is a build-config invariant, not a self-repairable runtime
+    state, so it lives outside the 5-gate self-repair pipeline.
+    """
+    app = Path(app_path)
+    adv = f"{ADVERTISED_MIN_OS[0]}.{ADVERTISED_MIN_OS[1]}"
+    offenders: list[str] = []
+    for f in sorted(app.rglob("*")):
+        if f.is_dir() or f.is_symlink() or not _is_macho(str(f)):
+            continue
+        minos = _macho_minos(str(f))
+        if minos is not None and minos > ADVERTISED_MIN_OS:
+            offenders.append(f"{f.relative_to(app)} (minos {minos[0]}.{minos[1]})")
+    if offenders:
+        raise RuntimeError(
+            f"Min-OS gate FAIL: {len(offenders)} bundled binary(ies) exceed "
+            f"advertised macOS {adv}:\n       " + "\n       ".join(offenders)
+            + "\n       dyld will refuse to load these on Macs older than that "
+            "version (widget will not launch). Lower MACOSX_DEPLOYMENT_TARGET."
+        )
+    print(f"==> Min-OS gate verified: all bundled binaries minos <= {adv}")
+
+
 def verify_deployment(app_path: str) -> None:
     """Deployment verification gate (all conditions must pass)."""
     _verify_widget_deployment(app_path)
+    verify_min_os(app_path)
 
 
 def check_data_integrity(backup_file: Path | None) -> None:
