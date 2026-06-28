@@ -1,0 +1,17 @@
+[
+  {"date": 1782569072, "text": "Fixed the widget not being addable on other people's Macs (the framework/widget minimum macOS had crept above the advertised 14.0; all targets are now unified to 14.0)"},
+  {"date": 1782569012, "text": "Fixed login sometimes not restoring right after a reboot, which left usage data missing"},
+  {"date": 1777101080, "text": "Analysis page now uses the actual session start time (fixes the wrong range display and the flat line stretching into the future). Also removed the distracting striped background"},
+  {"date": 1777095490, "text": "Fixed the 7-day chart mixing data across sessions (the previous week's data no longer bleeds in — only the current session is drawn)"},
+  {"date": 1773540667, "text": "Widget footer improvements (more compact, tap-to-refresh feedback, more visible refresh button)"},
+  {"date": 1773455597, "text": "Switched widget data sharing to file I/O (fixes a sandbox mismatch) and prevented tests from destroying the session"},
+  {"date": 1773447305, "text": "Switched widget data sharing from SQLite to UserDefaults, fixing stale data display"},
+  {"date": 1773332917, "text": "v1.0.0 official release (Developer ID signed + Apple notarized)"},
+  {"date": 1772825132, "text": "Color theme setting (System/Light/Dark), also applied to the widget and analysis page"},
+  {"date": 1772750337, "text": "Session navigation on the analysis page (Weekly/Hourly × Session/Calendar, 4 modes)"},
+  {"date": 1772533511, "text": "Renamed to ClaudeUsageTracker with a new icon"},
+  {"date": 1772206786, "text": "Alert notifications (weekly/hourly/daily usage thresholds)"},
+  {"date": 1772077483, "text": "Added the analysis page (usage charts, date-range selection, session visualization)"},
+  {"date": 1771825301, "text": "macOS widget support (Small/Medium/Large)"},
+  {"date": 1771632000, "text": "Initial release — a menu bar usage monitor"}
+]
