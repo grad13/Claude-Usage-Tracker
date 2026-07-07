@@ -24,8 +24,8 @@ Source: Multiple files (architecture overview)
 ## Data Retrieval Approach
 
 Approach C (WebView + claude.ai internal API) is adopted.
-See `decisions/usage-data-approaches.md` for the decision rationale and comparison with other approaches.
-See `reference/api-response.md` for API response field names.
+See `decisions/2026-03-15_usage-data-approaches.md` for the decision rationale and comparison with other approaches.
+See `reference/2026-03-15_api-response.md` for API response field names.
 
 ## Data Flow
 
@@ -130,7 +130,7 @@ Results are returned to Swift via `JSON.stringify()`.
 
 In v0.1.0, the `/api/organizations` API was called directly but returned 403 errors, prompting a switch to the cookie/JS-based approach.
 Previously, there were three separate stages in Swift: cookie → JS fallback → separate API call.
-Based on insights from agentlimits-approach-extract.md, these were consolidated into a 4-stage fallback within a single JS script.
+Based on insights from 2026-03-15_agentlimits-approach-extract.md, these were consolidated into a 4-stage fallback within a single JS script.
 
 ### API Response Parsing (Format A/B Dual Support)
 
@@ -148,7 +148,7 @@ The `/usage` API response exists in two formats, and the parser supports both.
 - Usage: calculated as `(limit - remaining) / limit * 100` (no `utilization` field)
 - Reset time: `resets_at` (Unix seconds, converted via `Date(timeIntervalSince1970:)`)
 
-Initially only Format A was supported, but Format B support was added based on the HTML/JS investigation results in `reference/api-response.md`. See `data/usage-fetcher.md` for detailed parsing logic.
+Initially only Format A was supported, but Format B support was added based on the HTML/JS investigation results in `reference/2026-03-15_api-response.md`. See `data/usage-fetcher.md` for detailed parsing logic.
 
 ### Menu Bar Graph Rendering
 
@@ -186,7 +186,7 @@ The `pendingFetch` flag (single-use) was replaced with the `isAutoRefreshEnabled
 
 Manual Refresh is always available regardless of the isAutoRefreshEnabled value.
 
-Changed based on insights from agentlimits-approach-extract.md. The previous `pendingFetch` would ignore events once set to false, with no retry mechanism.
+Changed based on insights from 2026-03-15_agentlimits-approach-extract.md. The previous `pendingFetch` would ignore events once set to false, with no retry mechanism.
 
 ### Redirect Control
 
@@ -203,7 +203,7 @@ When an OAuth provider (e.g., Google) requests a popup, it is displayed as a mod
 - If logged in, the popup auto-closes after 0.5 seconds
 
 Previously, `webView.addSubview()` was used to overlay on the main WebView.
-Changed to sheet modal based on insights from agentlimits-approach-extract.md.
+Changed to sheet modal based on insights from 2026-03-15_agentlimits-approach-extract.md.
 
 ### Sign Out (Dual Deletion Approach)
 
@@ -212,7 +212,7 @@ Changed to sheet modal based on insights from agentlimits-approach-extract.md.
 3. Reload the usage page
 
 Previously, only records containing `"claude"` were deleted, but this risked missed deletions.
-Changed to full deletion + individual deletion based on insights from agentlimits-approach-extract.md.
+Changed to full deletion + individual deletion based on insights from 2026-03-15_agentlimits-approach-extract.md.
 
 ### Launch at Login
 
@@ -239,15 +239,15 @@ App Sandbox is **disabled**. App Group is used for widget data sharing.
 4. **Same configuration as AgentLimits**: The reference project also has Sandbox OFF for the main app.
 
 The widget extension (`ClaudeUsageTrackerWidget`) remains Sandbox ON. WidgetKit effectively requires Sandbox.
-Detailed investigation: `reports/sandbox-data-sharing.md`
+Detailed investigation: `reference/2026-03-15_sandbox-data-sharing.md`
 
 ## Unverified Items (as of 2026-02-21)
 
 The following require real-device testing. **All are unverified.**
-See `archive/phase1-verification-plan.md` for detailed analysis.
+See `archive/2026-02/21_phase1-verification-plan.md` for detailed analysis.
 
-- [ ] Login persistence after reboot (cookie persistence + post-reboot data fetch) — `.default()` DataStore preserves cookies across reboot (2026-04-09), but 2026-04-17 clean reboot revealed a separate bug: `loginPollTimer` was stopped on cookie detection while `loadUsagePage` failed with -1009. Fix in progress — see `plan/2026-04-19-reboot-network-failure-recovery.md`
-- [ ] Data retrieval from the usage API (field name verification → `reference/api-response.md`)
+- [ ] Login persistence after reboot (cookie persistence + post-reboot data fetch) — `.default()` DataStore preserves cookies across reboot (2026-04-09), but 2026-04-17 clean reboot revealed a separate bug: `loginPollTimer` was stopped on cookie detection while `loadUsagePage` failed with -1009. Fix in progress — see `plan/2026-04-19_reboot-network-failure-recovery.md`
+- [ ] Data retrieval from the usage API (field name verification → `reference/2026-03-15_api-response.md`)
 - [ ] OAuth popup behavior (Google OAuth WKWebView blocking issue)
 - [ ] Redirect control after login
 - [ ] Org ID retrieval (cookie + JS fallback)
