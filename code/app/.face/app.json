@@ -1,6 +1,9 @@
 {
   "name": "Claude Usage Tracker",
-  "description": "Claude Code 使用量モニター",
+  "description": {
+    "ja": "Claude Code 使用量モニター",
+    "en": "Claude Code usage monitor"
+  },
   "category": "productivity",
   "url": "https://github.com/grad13/Claude-Usage-Tracker",
   "thumbnail": "thumbnail.png"
