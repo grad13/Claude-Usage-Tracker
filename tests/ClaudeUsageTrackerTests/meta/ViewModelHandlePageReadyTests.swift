@@ -8,6 +8,23 @@ import WebKit
 import ClaudeUsageTrackerShared
 @testable import ClaudeUsageTracker
 
+private final class FinishedURLWebView: WKWebView {
+    private let testURL: URL
+
+    override var url: URL? { testURL }
+
+    init(url: URL) {
+        self.testURL = url
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .nonPersistent()
+        super.init(frame: .zero, configuration: configuration)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+}
+
 // MARK: - handlePageReady Decision Table Tests
 
 @MainActor
@@ -30,18 +47,36 @@ final class ViewModelHandlePageReadyTests: XCTestCase {
         alertChecker = MockAlertChecker()
     }
 
-    func makeVM() -> UsageViewModel {
+    func makeVM(
+        timerScheduler: any ViewModelTimerScheduling = ManualViewModelTimerScheduler(),
+        now: @escaping () -> Date = Date.init
+    ) -> UsageViewModel {
         ViewModelTestFactory.makeVM(
             fetcher: stubFetcher,
             settingsStore: settingsStore,
             usageStore: usageStore,
             widgetReloader: widgetReloader,
             loginItemManager: loginItemManager,
-            alertChecker: alertChecker
+            alertChecker: alertChecker,
+            startLifecycle: false,
+            sleeper: { _ in },
+            timerScheduler: timerScheduler,
+            now: now
         )
     }
 
     // MARK: - PR-01: hasValidSession=false -> no-op
+
+    func testCoordinatorDidFinish_routesFinishedURLToHandler() {
+        let vm = makeVM()
+        let finishedURL = URL(string: "https://claude.ai/usage")!
+        var routedURLs: [URL] = []
+        let coordinator = WebViewCoordinator(viewModel: vm) { routedURLs.append($0) }
+
+        coordinator.webView(FinishedURLWebView(url: finishedURL), didFinish: nil)
+
+        XCTAssertEqual(routedURLs, [finishedURL])
+    }
 
     /// Spec PR-01: When hasValidSession returns false, handlePageReady must
     /// skip all subsequent steps. isLoggedIn remains false, no fetch occurs.
@@ -51,20 +86,12 @@ final class ViewModelHandlePageReadyTests: XCTestCase {
         let vm = makeVM()
         XCTAssertFalse(vm.isLoggedIn)
 
-        // Isolate the explicit call from init-owned navigation and login polling.
-        vm.loginPollTimer?.invalidate()
-        vm.loginPollTimer = nil
-        vm.webView.navigationDelegate = nil
-        vm.webView.stopLoading()
-
-        // Establish the baseline only after init-owned work is disabled.
-        stubFetcher.hasValidSessionCallCount = 0
-        stubFetcher.fetchCallCount = 0
-
-        let sessionChecked = expectation(description: "handlePageReady checks the session")
-        stubFetcher.onHasValidSession = { sessionChecked.fulfill() }
-        vm.handlePageReady()
-        wait(for: [sessionChecked], timeout: 2.0)
+        let completed = expectation(description: "handlePageReady completes")
+        vm.handlePageReady(finishedURL: URL(string: "https://claude.ai")!) { outcome in
+            XCTAssertEqual(outcome, .noSession)
+            completed.fulfill()
+        }
+        wait(for: [completed], timeout: 2.0)
 
         XCTAssertEqual(stubFetcher.hasValidSessionCallCount, 1,
                        "handlePageReady must call hasValidSession")
@@ -81,32 +108,37 @@ final class ViewModelHandlePageReadyTests: XCTestCase {
     /// handlePageReady must call fetchSilently (which calls fetcher.fetch).
     func testHandlePageReady_PR02_onUsagePage_callsFetchSilently() {
         stubFetcher.hasValidSessionResult = true
-        stubFetcher.fetchResult = .success(UsageResultFactory.make(
+        stubFetcher.shouldSuspendFetch = true
+        let result = UsageResultFactory.make(
             fiveHourPercent: 40.0, sevenDayPercent: 20.0
-        ))
+        )
 
         let vm = makeVM()
 
-        // Load claude.ai URL into WebView so isOnUsagePage returns true.
-        let request = URLRequest(url: URL(string: "https://claude.ai/usage")!)
-        vm.webView.load(request)
-
-        // Wait for WebView to commit the URL.
-        let urlReady = expectation(description: "webView URL set")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { urlReady.fulfill() }
-        wait(for: [urlReady], timeout: 3.0)
-
-        vm.handlePageReady()
-
+        let fetchStarted = expectation(description: "page-ready silent fetch starts")
+        stubFetcher.onFetch = { _ in fetchStarted.fulfill() }
+        var didComplete = false
         let done = expectation(description: "handlePageReady completes")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { done.fulfill() }
+        vm.handlePageReady(finishedURL: URL(string: "https://claude.ai/usage")!) { outcome in
+            XCTAssertEqual(outcome, .fetch(.success))
+            didComplete = true
+            done.fulfill()
+        }
+
+        wait(for: [fetchStarted], timeout: 2.0)
+        XCTAssertFalse(didComplete,
+                       "page-ready completion must remain chained to the silent-fetch terminal outcome")
+        XCTAssertEqual(stubFetcher.pendingFetchCount, 1)
+
+        stubFetcher.resumeNextFetch(with: .success(result))
         wait(for: [done], timeout: 3.0)
 
         XCTAssertTrue(vm.isLoggedIn,
                       "PR-02: isLoggedIn must be set to true")
-        // fetchSilently should have triggered fetcher.fetch
-        XCTAssertGreaterThanOrEqual(stubFetcher.fetchCallCount, 1,
-                                    "PR-02: fetchSilently must call fetcher.fetch")
+        XCTAssertEqual(stubFetcher.fetchCallCount, 1,
+                       "PR-02: fetchSilently must call fetcher.fetch exactly once on success")
+        XCTAssertEqual(vm.fiveHourPercent, 40)
+        XCTAssertEqual(vm.sevenDayPercent, 20)
         _ = vm
     }
 
@@ -117,16 +149,16 @@ final class ViewModelHandlePageReadyTests: XCTestCase {
     func testHandlePageReady_PR04_cooldownActive_doesNotRedirect() {
         stubFetcher.hasValidSessionResult = true
 
-        let vm = makeVM()
-
-        let cooldownTime = Date()
+        let currentTime = Date(timeIntervalSince1970: 1_000)
+        let vm = makeVM(now: { currentTime })
+        let cooldownTime = currentTime.addingTimeInterval(-2)
         vm.lastRedirectAt = cooldownTime
 
-        // WebView URL is nil (not on usage page) by default after init.
-        vm.handlePageReady()
-
         let done = expectation(description: "handlePageReady completes")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { done.fulfill() }
+        vm.handlePageReady(finishedURL: URL(string: "https://example.com")!) { outcome in
+            XCTAssertEqual(outcome, .cooldownSuppressed)
+            done.fulfill()
+        }
         wait(for: [done], timeout: 2.0)
 
         XCTAssertTrue(vm.isLoggedIn,
@@ -149,18 +181,17 @@ final class ViewModelHandlePageReadyTests: XCTestCase {
         settings.refreshIntervalMinutes = 5
         settingsStore.save(settings)
 
-        let vm = makeVM()
-
-        // Simulate a running loginPollTimer.
-        vm.loginPollTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { _ in }
+        let scheduler = ManualViewModelTimerScheduler()
+        let vm = makeVM(timerScheduler: scheduler)
+        vm.startLoginPolling()
         XCTAssertNotNil(vm.loginPollTimer, "Precondition: loginPollTimer is running")
 
-        vm.handlePageReady()
-
-        let timeout = Date(timeIntervalSinceNow: 3.0)
-        while !vm.isLoggedIn && Date() < timeout {
-            RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.05))
+        let completed = expectation(description: "handlePageReady completes")
+        vm.handlePageReady(finishedURL: URL(string: "https://example.com")!) { outcome in
+            XCTAssertEqual(outcome, .redirected)
+            completed.fulfill()
         }
+        wait(for: [completed], timeout: 2.0)
 
         XCTAssertTrue(vm.isLoggedIn,
                       "Common side effect 1: isLoggedIn must be true")
@@ -177,8 +208,10 @@ final class ViewModelHandlePageReadyTests: XCTestCase {
 @MainActor
 final class ViewModelCanRedirectTests: XCTestCase {
 
+    let currentTime = Date(timeIntervalSince1970: 1_000)
+
     func makeVM() -> UsageViewModel {
-        ViewModelTestFactory.makeVM()
+        ViewModelTestFactory.makeVM(startLifecycle: false, now: { self.currentTime })
     }
 
     /// Spec: First call always returns true (lastRedirectAt is nil at launch).
@@ -193,7 +226,7 @@ final class ViewModelCanRedirectTests: XCTestCase {
     /// Spec: Returns false when less than 5 seconds have elapsed since last redirect.
     func testCanRedirect_withinCooldown_returnsFalse() {
         let vm = makeVM()
-        vm.lastRedirectAt = Date()
+        vm.lastRedirectAt = currentTime
         XCTAssertFalse(vm.canRedirect(),
                        "canRedirect must return false within 5-second cooldown")
         _ = vm
@@ -202,7 +235,7 @@ final class ViewModelCanRedirectTests: XCTestCase {
     /// Spec: Returns true when more than 5 seconds have elapsed.
     func testCanRedirect_afterCooldown_returnsTrue() {
         let vm = makeVM()
-        vm.lastRedirectAt = Date().addingTimeInterval(-6)
+        vm.lastRedirectAt = currentTime.addingTimeInterval(-6)
         XCTAssertTrue(vm.canRedirect(),
                       "canRedirect must return true after 5-second cooldown expires")
         _ = vm
@@ -211,10 +244,9 @@ final class ViewModelCanRedirectTests: XCTestCase {
     /// Spec: Cooldown is exactly 5 seconds. At 5.0s boundary, should still be within cooldown.
     func testCanRedirect_atExactBoundary_returnsFalse() {
         let vm = makeVM()
-        // Set lastRedirectAt to exactly 5 seconds ago. The check is > 5, not >= 5.
-        vm.lastRedirectAt = Date().addingTimeInterval(-4.99)
+        vm.lastRedirectAt = currentTime.addingTimeInterval(-5)
         XCTAssertFalse(vm.canRedirect(),
-                       "canRedirect uses > 5 (strict), so 4.99s should return false")
+                       "canRedirect uses > 5, so exactly 5 seconds remains suppressed")
         _ = vm
     }
 }
@@ -225,7 +257,7 @@ final class ViewModelCanRedirectTests: XCTestCase {
 final class ViewModelIsOnUsagePageTests: XCTestCase {
 
     func makeVM() -> UsageViewModel {
-        ViewModelTestFactory.makeVM()
+        ViewModelTestFactory.makeVM(startLifecycle: false)
     }
 
     /// Spec: Returns false when webView.url is nil.
@@ -233,8 +265,7 @@ final class ViewModelIsOnUsagePageTests: XCTestCase {
     /// We load about:blank to simulate a state where host != claude.ai.
     func testIsOnUsagePage_nonClaudeURL_returnsFalse() {
         let vm = makeVM()
-        vm.webView.load(URLRequest(url: URL(string: "about:blank")!))
-        XCTAssertFalse(vm.isOnUsagePage(),
+        XCTAssertFalse(vm.isOnUsagePage(URL(string: "about:blank")!),
                        "isOnUsagePage must return false when webView.url is not claude.ai")
         _ = vm
     }

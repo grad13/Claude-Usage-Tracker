@@ -48,13 +48,6 @@ final class AlertCheckerSupplementTests: XCTestCase {
         return s
     }
 
-    /// Wait briefly for Task {} fire-and-forget to complete.
-    private func waitForNotifications() {
-        let exp = expectation(description: "notifications")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { exp.fulfill() }
-        wait(for: [exp], timeout: 2.0)
-    }
-
     // MARK: - DA-07: calendar — new date triggers re-notify
 
     /// DA-07: lastDailyNotifiedKey is a *previous* calendar date ("2026-02-26").
@@ -62,7 +55,7 @@ final class AlertCheckerSupplementTests: XCTestCase {
     ///
     /// Guarantees: calendar-based duplicate prevention uses the calendar date as key.
     /// A new calendar day always resets the suppression regardless of session continuity.
-    func testDA07_dailyCalendar_newDate_notifies() {
+    func testDA07_dailyCalendar_newDate_notifies() async {
         mockStore.dailyUsageToReturn = 18.0
 
         let result = makeResult(sevenDayPercent: 50, sevenDayResetsAt: epochA)
@@ -92,8 +85,7 @@ final class AlertCheckerSupplementTests: XCTestCase {
         // The key assertion is: when lastDailyNotifiedKey is absent (nil) or
         // holds a different calendar date, the alert fires.
         let checker2 = AlertChecker(notificationSender: mockSender, usageStore: mockStore)
-        checker2.checkAlerts(result: result, settings: settings)
-        waitForNotifications()
+        await checker2.checkAlertsAndWait(result: result, settings: settings)
 
         // checker2 had no prior notification key → must notify
         XCTAssertEqual(
@@ -104,8 +96,7 @@ final class AlertCheckerSupplementTests: XCTestCase {
 
         // Now call again on the same checker2 instance (same date key is now stored)
         mockStore.dailyUsageToReturn = 20.0
-        checker2.checkAlerts(result: result, settings: settings)
-        waitForNotifications()
+        await checker2.checkAlertsAndWait(result: result, settings: settings)
 
         // Same date → suppressed (DA-06 cross-check)
         XCTAssertEqual(
@@ -122,14 +113,13 @@ final class AlertCheckerSupplementTests: XCTestCase {
     ///
     /// Guarantees: AlertChecker uses the returned value to compare against
     /// threshold. A non-nil return from UsageStore drives the notify path.
-    func testDU01_dailyUsage_recordsExistNoBoundary_returnsValue() {
+    func testDU01_dailyUsage_recordsExistNoBoundary_returnsValue() async {
         // InMemoryUsageStore.dailyUsageToReturn simulates a successful calculation
         mockStore.dailyUsageToReturn = 25.0
 
         let result = makeResult(sevenDayPercent: 50, sevenDayResetsAt: epochA)
         let settings = makeDailySettings(threshold: 15, definition: .calendar)
-        checker.checkAlerts(result: result, settings: settings)
-        waitForNotifications()
+        await checker.checkAlertsAndWait(result: result, settings: settings)
 
         // Non-nil value above threshold → notification sent
         XCTAssertEqual(
@@ -145,13 +135,12 @@ final class AlertCheckerSupplementTests: XCTestCase {
     ///
     /// Guarantees: AlertChecker treats nil usage as "insufficient data" and
     /// never sends a notification.
-    func testDU02_dailyUsage_noRecords_returnsNil_skips() {
+    func testDU02_dailyUsage_noRecords_returnsNil_skips() async {
         mockStore.dailyUsageToReturn = nil
 
         let result = makeResult(sevenDayPercent: 50, sevenDayResetsAt: epochA)
         let settings = makeDailySettings(threshold: 15, definition: .calendar)
-        checker.checkAlerts(result: result, settings: settings)
-        waitForNotifications()
+        await checker.checkAlertsAndWait(result: result, settings: settings)
 
         XCTAssertEqual(
             mockSender.sendRecords.count, 0,
@@ -167,15 +156,14 @@ final class AlertCheckerSupplementTests: XCTestCase {
     ///
     /// Guarantees: AlertChecker does not fabricate a baseline; missing
     /// start-of-period data always results in skip.
-    func testDU03_dailyUsage_noStartRecord_returnsNil_skips() {
+    func testDU03_dailyUsage_noStartRecord_returnsNil_skips() async {
         // Same observable outcome as DU-02 from AlertChecker's perspective:
         // UsageStore returns nil because it cannot determine the delta.
         mockStore.dailyUsageToReturn = nil
 
         let result = makeResult(sevenDayPercent: 50, sevenDayResetsAt: epochA)
         let settings = makeDailySettings(threshold: 15, definition: .calendar)
-        checker.checkAlerts(result: result, settings: settings)
-        waitForNotifications()
+        await checker.checkAlertsAndWait(result: result, settings: settings)
 
         XCTAssertEqual(
             mockSender.sendRecords.count, 0,
@@ -192,14 +180,13 @@ final class AlertCheckerSupplementTests: XCTestCase {
     ///
     /// Guarantees: session-boundary spanning does not produce nil or an
     /// incorrect single-segment value; both segments are summed.
-    func testDU04_dailyUsage_sessionBoundary_returnsSum_notifies() {
+    func testDU04_dailyUsage_sessionBoundary_returnsSum_notifies() async {
         // Simulated sum: prev-session tail + new-session head = 20.0
         mockStore.dailyUsageToReturn = 20.0
 
         let result = makeResult(sevenDayPercent: 50, sevenDayResetsAt: epochA)
         let settings = makeDailySettings(threshold: 15, definition: .session)
-        checker.checkAlerts(result: result, settings: settings)
-        waitForNotifications()
+        await checker.checkAlertsAndWait(result: result, settings: settings)
 
         XCTAssertEqual(
             mockSender.sendRecords.count, 1,
@@ -220,14 +207,13 @@ final class AlertCheckerSupplementTests: XCTestCase {
     ///
     /// Guarantees: calendar-based "since midnight" windows also correctly
     /// account for intra-day session boundaries.
-    func testDU05_dailyUsage_calendarWithSessionBoundary_returnsSum_notifies() {
+    func testDU05_dailyUsage_calendarWithSessionBoundary_returnsSum_notifies() async {
         // Simulated sum across the boundary = 22.0
         mockStore.dailyUsageToReturn = 22.0
 
         let result = makeResult(sevenDayPercent: 50, sevenDayResetsAt: epochA)
         let settings = makeDailySettings(threshold: 15, definition: .calendar)
-        checker.checkAlerts(result: result, settings: settings)
-        waitForNotifications()
+        await checker.checkAlertsAndWait(result: result, settings: settings)
 
         XCTAssertEqual(
             mockSender.sendRecords.count, 1,
@@ -249,7 +235,7 @@ final class AlertCheckerSupplementTests: XCTestCase {
     /// Guarantees: the NotificationSending mock receives two send() calls with
     /// the same identifier, confirming the overwrite contract is honoured at
     /// the AlertChecker level. OS-level deduplication is not tested here.
-    func testNI02_weeklyIdentifier_secondCallOverwritesFirst() {
+    func testNI02_weeklyIdentifier_secondCallOverwritesFirst() async {
         let settings: AppSettings = {
             var s = AppSettings()
             s.weeklyAlertEnabled = true
@@ -261,16 +247,14 @@ final class AlertCheckerSupplementTests: XCTestCase {
         var result1 = UsageResult()
         result1.sevenDayPercent = 85
         result1.sevenDayResetsAt = epochA
-        checker.checkAlerts(result: result1, settings: settings)
-        waitForNotifications()
+        await checker.checkAlertsAndWait(result: result1, settings: settings)
         XCTAssertEqual(mockSender.sendRecords.count, 1)
 
         // Second session — different resets_at → checker re-fires
         var result2 = UsageResult()
         result2.sevenDayPercent = 90
         result2.sevenDayResetsAt = epochB
-        checker.checkAlerts(result: result2, settings: settings)
-        waitForNotifications()
+        await checker.checkAlertsAndWait(result: result2, settings: settings)
 
         // Both sends carry the same identifier
         XCTAssertEqual(
@@ -296,7 +280,7 @@ final class AlertCheckerSupplementTests: XCTestCase {
     ///
     /// Guarantees: distinct alert kinds never share an identifier; the OS
     /// notification centre will show two independent notifications.
-    func testNI03_weeklyAndHourly_differentIdentifiers_coexist() {
+    func testNI03_weeklyAndHourly_differentIdentifiers_coexist() async {
         var s = AppSettings()
         s.weeklyAlertEnabled = true
         s.weeklyAlertThreshold = 20
@@ -309,8 +293,7 @@ final class AlertCheckerSupplementTests: XCTestCase {
         result.fiveHourPercent = 90   // remaining 10% <= threshold 20%
         result.fiveHourResetsAt = epochA
 
-        checker.checkAlerts(result: result, settings: s)
-        waitForNotifications()
+        await checker.checkAlertsAndWait(result: result, settings: s)
 
         XCTAssertEqual(
             mockSender.sendRecords.count, 2,

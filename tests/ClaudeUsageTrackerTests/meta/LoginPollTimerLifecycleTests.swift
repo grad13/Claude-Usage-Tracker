@@ -31,28 +31,38 @@ final class LoginPollTimerLifecycleTests: XCTestCase {
         alertChecker = MockAlertChecker()
     }
 
-    func makeVM() -> UsageViewModel {
+    func makeVM(
+        timerScheduler: any ViewModelTimerScheduling = ManualViewModelTimerScheduler()
+    ) -> UsageViewModel {
         ViewModelTestFactory.makeVM(
             fetcher: stubFetcher,
             settingsStore: settingsStore,
             usageStore: usageStore,
             widgetReloader: widgetReloader,
             loginItemManager: loginItemManager,
-            alertChecker: alertChecker
+            alertChecker: alertChecker,
+            startLifecycle: false,
+            sleeper: { _ in },
+            timerScheduler: timerScheduler
         )
     }
 
     // MARK: - Timer alive after intermediate steps
 
-    /// init() calls startLoginPolling() so timer is set immediately.
-    func testTimerAlive_afterInit() {
+    /// Login polling is started explicitly so initialization-owned WebKit work is isolated.
+    func testTimerAlive_afterExplicitStart() {
         let vm = makeVM()
-        XCTAssertNotNil(vm.loginPollTimer, "init() must start login polling")
+        XCTAssertNil(vm.loginPollTimer)
+
+        vm.startLoginPolling()
+
+        XCTAssertNotNil(vm.loginPollTimer, "startLoginPolling() must create the timer")
     }
 
     /// handleSessionDetected() must NOT stop the timer (only applyResult does).
     func testTimerAlive_afterHandleSessionDetected() {
         let vm = makeVM()
+        vm.startLoginPolling()
         XCTAssertNotNil(vm.loginPollTimer)
 
         vm.handleSessionDetected()
@@ -62,20 +72,19 @@ final class LoginPollTimerLifecycleTests: XCTestCase {
     }
 
     /// handlePageReady() must NOT stop the timer (only applyResult does).
-    /// Wait only until isLoggedIn becomes true — checking right then captures
-    /// handlePageReady's own side effects before the subsequent loadUsagePage
-    /// network round-trip can complete and trigger applyResult.
     func testTimerAlive_afterHandlePageReady_validSession() {
         stubFetcher.hasValidSessionResult = true
         let vm = makeVM()
+        vm.startLoginPolling()
         XCTAssertNotNil(vm.loginPollTimer)
 
-        vm.handlePageReady()
-
-        let deadline = Date(timeIntervalSinceNow: 3.0)
-        while !vm.isLoggedIn && Date() < deadline {
-            RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.05))
+        let completed = expectation(description: "page-ready redirect decision completes")
+        vm.handlePageReady(finishedURL: URL(string: "https://example.com")!) { outcome in
+            XCTAssertEqual(outcome, .redirected)
+            completed.fulfill()
         }
+        wait(for: [completed], timeout: 2.0)
+
         XCTAssertTrue(vm.isLoggedIn, "Precondition: handlePageReady must transition to logged-in")
         XCTAssertNotNil(vm.loginPollTimer,
             "handlePageReady must keep the timer alive — only applyResult stops it")
@@ -86,6 +95,7 @@ final class LoginPollTimerLifecycleTests: XCTestCase {
     /// applyResult() is the SOLE place the timer is invalidated.
     func testTimerStops_afterApplyResult() {
         let vm = makeVM()
+        vm.startLoginPolling()
         XCTAssertNotNil(vm.loginPollTimer, "Precondition: timer is running")
 
         let result = UsageResultFactory.make(fiveHourPercent: 25.0, sevenDayPercent: 50.0)
@@ -98,31 +108,30 @@ final class LoginPollTimerLifecycleTests: XCTestCase {
     // MARK: - Tick logic 3-way branch
 
     /// When data already fetched, the tick should early-return (no hasValidSession call).
-    /// We verify this by setting fiveHourPercent / sevenDayPercent and confirming
-    /// that hasValidSession is NOT called when we manually trigger the tick logic.
-    /// Direct timer-tick observation is not portable across CI; instead we exercise
-    /// the early-return guard by checking the explicit invariant.
-    func testTick_dataAlreadyFetched_isInvariantSatisfied() {
-        let vm = makeVM()
+    /// We verify this by manually firing the injected timer.
+    func testTick_dataAlreadyFetched_skipsSessionCheck() {
+        let scheduler = ManualViewModelTimerScheduler()
+        let vm = makeVM(timerScheduler: scheduler)
         vm.fiveHourPercent = 25.0
         vm.sevenDayPercent = 50.0
+        vm.startLoginPolling()
 
-        // The tick guard `if fiveHourPercent != nil && sevenDayPercent != nil { return }`
-        // is documented; we assert the underlying state matches the guard precondition.
-        XCTAssertNotNil(vm.fiveHourPercent)
-        XCTAssertNotNil(vm.sevenDayPercent)
+        scheduler.validTimers[0].fire()
+
+        XCTAssertEqual(stubFetcher.hasValidSessionCallCount, 0)
     }
 
-    /// Logged-in but no data → tick should reissue loadUsagePage.
-    /// Direct timer-tick observation is not reliable in unit tests, so we verify
-    /// the relevant state setup is consistent with the new branch.
-    func testTick_loggedInButNoData_invariantHolds() {
-        let vm = makeVM()
-        vm.handleSessionDetected()  // sets isLoggedIn = true
-        XCTAssertTrue(vm.isLoggedIn)
-        XCTAssertNil(vm.fiveHourPercent, "data not yet fetched")
-        XCTAssertNil(vm.sevenDayPercent, "data not yet fetched")
-        // Timer must still be alive so the tick has a chance to retry.
-        XCTAssertNotNil(vm.loginPollTimer)
+    /// A timer retained across lifecycle invalidation must not start a stale poll check.
+    func testTick_staleLifecycleGeneration_isIgnored() {
+        let scheduler = ManualViewModelTimerScheduler()
+        let vm = makeVM(timerScheduler: scheduler)
+        vm.startLoginPolling()
+        let staleTimer = scheduler.validTimers[0]
+
+        vm.invalidateAsyncOperations()
+        staleTimer.fire()
+
+        XCTAssertTrue(staleTimer.isValid, "generation guard, not invalidation, must suppress this tick")
+        XCTAssertEqual(stubFetcher.hasValidSessionCallCount, 0)
     }
 }

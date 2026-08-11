@@ -7,6 +7,18 @@ import ClaudeUsageTrackerShared
 
 extension ViewModelTests {
 
+    private func makeIsolatedVM() -> UsageViewModel {
+        ViewModelTestFactory.makeVM(
+            fetcher: stubFetcher,
+            settingsStore: settingsStore,
+            usageStore: usageStore,
+            widgetReloader: widgetReloader,
+            loginItemManager: loginItemManager,
+            alertChecker: alertChecker,
+            startLifecycle: false
+        )
+    }
+
     // MARK: - signOut
 
     func testSignOut_clearsState() {
@@ -205,14 +217,15 @@ extension ViewModelTests {
             sevenDayResetsAt: now.addingTimeInterval(3 * 24 * 3600)
         ))
 
-        let vm = makeVM()
-        vm.fetch()
-
         let done = expectation(description: "fetch completes")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { done.fulfill() }
+        let vm = makeIsolatedVM()
+        vm.fetch { outcome in
+            XCTAssertEqual(outcome, .success)
+            done.fulfill()
+        }
         wait(for: [done], timeout: 2.0)
 
-        XCTAssertGreaterThanOrEqual(stubFetcher.fetchCallCount, 1,
+        XCTAssertEqual(stubFetcher.fetchCallCount, 1,
             "fetch() must use the injected fetcher, not UsageFetcher directly")
         XCTAssertEqual(vm.fiveHourPercent, 30.0)
         XCTAssertEqual(vm.sevenDayPercent, 15.0)
@@ -222,11 +235,12 @@ extension ViewModelTests {
     func testFetch_failure_setsError() {
         stubFetcher.fetchResult = .failure(UsageFetchError.scriptFailed("HTTP 500"))
 
-        let vm = makeVM()
-        vm.fetch()
-
         let done = expectation(description: "fetch completes")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { done.fulfill() }
+        let vm = makeIsolatedVM()
+        vm.fetch { outcome in
+            XCTAssertEqual(outcome, .failure)
+            done.fulfill()
+        }
         wait(for: [done], timeout: 2.0)
 
         XCTAssertNotNil(vm.error, "Failed fetch should set error message")
@@ -239,12 +253,13 @@ extension ViewModelTests {
     func testFetch_authError_setsErrorAndDoesNotUpdateState() {
         stubFetcher.fetchResult = .failure(UsageFetchError.scriptFailed("HTTP 401"))
 
-        let vm = makeVM()
+        let vm = makeIsolatedVM()
         vm.fiveHourPercent = 99.0 // set existing value
-        vm.fetch()
-
         let done = expectation(description: "fetch completes")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { done.fulfill() }
+        vm.fetch { outcome in
+            XCTAssertEqual(outcome, .authenticationRequired)
+            done.fulfill()
+        }
         wait(for: [done], timeout: 2.0)
 
         XCTAssertNil(vm.error, "Auth error must not show error text (shows Sign In instead)")
@@ -260,11 +275,12 @@ extension ViewModelTests {
         let now = Date()
         stubFetcher.fetchResult = .failure(UsageFetchError.scriptFailed("HTTP 401"))
 
-        let vm = makeVM()
-        vm.fetch()
-
+        let vm = makeIsolatedVM()
         let authDone = expectation(description: "auth error fetch")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { authDone.fulfill() }
+        vm.fetch { outcome in
+            XCTAssertEqual(outcome, .authenticationRequired)
+            authDone.fulfill()
+        }
         wait(for: [authDone], timeout: 2.0)
 
         XCTAssertNil(vm.error, "Auth error clears error (Sign In shown instead)")
@@ -277,10 +293,11 @@ extension ViewModelTests {
             fiveHourResetsAt: now.addingTimeInterval(3600),
             sevenDayResetsAt: now.addingTimeInterval(3 * 24 * 3600)
         ))
-        vm.fetch()
-
         let successDone = expectation(description: "success fetch")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { successDone.fulfill() }
+        vm.fetch { outcome in
+            XCTAssertEqual(outcome, .success)
+            successDone.fulfill()
+        }
         wait(for: [successDone], timeout: 2.0)
 
         XCTAssertNil(vm.error, "Successful fetch after auth error must clear error")
@@ -298,11 +315,12 @@ extension ViewModelTests {
             sevenDayResetsAt: now.addingTimeInterval(5 * 24 * 3600)
         ))
 
-        let vm = makeVM()
-        vm.fetch()
-
         let done = expectation(description: "fetch completes")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { done.fulfill() }
+        let vm = makeIsolatedVM()
+        vm.fetch { outcome in
+            XCTAssertEqual(outcome, .success)
+            done.fulfill()
+        }
         wait(for: [done], timeout: 2.0)
 
         XCTAssertFalse(usageStore.savedResults.isEmpty,

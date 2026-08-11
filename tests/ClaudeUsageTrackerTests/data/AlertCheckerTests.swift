@@ -48,170 +48,152 @@ final class AlertCheckerTests: XCTestCase {
 
     // MARK: - Weekly Alert (WA-01 to WA-07)
 
-    func testWA01_weeklyDisabled_skips() {
+    func testWA01_weeklyDisabled_skips() async {
         let result = makeResult(sevenDayPercent: 85, sevenDayResetsAt: epochA)
         let settings = makeSettings(weeklyEnabled: false, weeklyThreshold: 20)
-        checker.checkAlerts(result: result, settings: settings)
-        waitForNotifications()
+        let completedSendCount = await checker.checkAlertsAndWait(result: result, settings: settings)
+        XCTAssertEqual(completedSendCount, 0)
         XCTAssertEqual(mockSender.sendRecords.count, 0, "WA-01: disabled → skip")
     }
 
-    func testWA02_weeklyPercentNil_skips() {
+    func testWA02_weeklyPercentNil_skips() async {
         let result = makeResult(sevenDayPercent: nil, sevenDayResetsAt: epochA)
         let settings = makeSettings(weeklyEnabled: true, weeklyThreshold: 20)
-        checker.checkAlerts(result: result, settings: settings)
-        waitForNotifications()
+        await checker.checkAlertsAndWait(result: result, settings: settings)
         XCTAssertEqual(mockSender.sendRecords.count, 0, "WA-02: percent nil → skip")
     }
 
-    func testWA03_weeklyResetsAtNil_skips() {
+    func testWA03_weeklyResetsAtNil_skips() async {
         let result = makeResult(sevenDayPercent: 85, sevenDayResetsAt: nil)
         let settings = makeSettings(weeklyEnabled: true, weeklyThreshold: 20)
-        checker.checkAlerts(result: result, settings: settings)
-        waitForNotifications()
+        await checker.checkAlertsAndWait(result: result, settings: settings)
         XCTAssertEqual(mockSender.sendRecords.count, 0, "WA-03: resets_at nil → skip")
     }
 
-    func testWA04_weeklyAboveThreshold_skips() {
+    func testWA04_weeklyAboveThreshold_skips() async {
         let result = makeResult(sevenDayPercent: 75, sevenDayResetsAt: epochA)
         let settings = makeSettings(weeklyEnabled: true, weeklyThreshold: 20)
-        checker.checkAlerts(result: result, settings: settings)
-        waitForNotifications()
+        await checker.checkAlertsAndWait(result: result, settings: settings)
         XCTAssertEqual(mockSender.sendRecords.count, 0, "WA-04: remaining 25% > threshold 20% → skip")
     }
 
-    func testWA05_weeklyBelowThreshold_notifies() {
+    func testWA05_weeklyBelowThreshold_notifies() async {
         let result = makeResult(sevenDayPercent: 85, sevenDayResetsAt: epochA)
         let settings = makeSettings(weeklyEnabled: true, weeklyThreshold: 20)
-        checker.checkAlerts(result: result, settings: settings)
-        waitForNotifications()
+        let completedSendCount = await checker.checkAlertsAndWait(result: result, settings: settings)
+        XCTAssertEqual(completedSendCount, 1)
         XCTAssertEqual(mockSender.sendRecords.count, 1, "WA-05: remaining 15% <= 20% → notify")
         XCTAssertEqual(mockSender.sendRecords[0].identifier, "claudeusagetracker-weekly")
         XCTAssertTrue(mockSender.sendRecords[0].title.contains("Weekly"))
     }
 
-    func testWA06_weeklySameSession_skips() {
+    func testWA06_weeklySameSession_skips() async {
         let result = makeResult(sevenDayPercent: 85, sevenDayResetsAt: epochA)
         let settings = makeSettings(weeklyEnabled: true, weeklyThreshold: 20)
         // First check: notify
-        checker.checkAlerts(result: result, settings: settings)
-        waitForNotifications()
+        await checker.checkAlertsAndWait(result: result, settings: settings)
         XCTAssertEqual(mockSender.sendRecords.count, 1)
 
         // Second check same session: skip
         let result2 = makeResult(sevenDayPercent: 90, sevenDayResetsAt: epochA)
-        checker.checkAlerts(result: result2, settings: settings)
-        waitForNotifications()
+        await checker.checkAlertsAndWait(result: result2, settings: settings)
         XCTAssertEqual(mockSender.sendRecords.count, 1, "WA-06: same session → skip")
     }
 
-    func testWA07_weeklyNewSession_notifies() {
+    func testWA07_weeklyNewSession_notifies() async {
         let result = makeResult(sevenDayPercent: 85, sevenDayResetsAt: epochA)
         let settings = makeSettings(weeklyEnabled: true, weeklyThreshold: 20)
-        checker.checkAlerts(result: result, settings: settings)
-        waitForNotifications()
+        await checker.checkAlertsAndWait(result: result, settings: settings)
         XCTAssertEqual(mockSender.sendRecords.count, 1)
 
         // New session (different resets_at): should re-notify
         let result2 = makeResult(sevenDayPercent: 85, sevenDayResetsAt: epochB)
-        checker.checkAlerts(result: result2, settings: settings)
-        waitForNotifications()
+        await checker.checkAlertsAndWait(result: result2, settings: settings)
         XCTAssertEqual(mockSender.sendRecords.count, 2, "WA-07: new session → notify again")
     }
 
     // MARK: - Hourly Alert (HA-01 to HA-07)
 
-    func testHA01_hourlyDisabled_skips() {
+    func testHA01_hourlyDisabled_skips() async {
         let result = makeResult(fiveHourPercent: 90, fiveHourResetsAt: epochA)
         let settings = makeSettings(hourlyEnabled: false, hourlyThreshold: 20)
-        checker.checkAlerts(result: result, settings: settings)
-        waitForNotifications()
+        await checker.checkAlertsAndWait(result: result, settings: settings)
         XCTAssertEqual(mockSender.sendRecords.count, 0, "HA-01: disabled → skip")
     }
 
-    func testHA02_hourlyPercentNil_skips() {
+    func testHA02_hourlyPercentNil_skips() async {
         let result = makeResult(fiveHourPercent: nil, fiveHourResetsAt: epochA)
         let settings = makeSettings(hourlyEnabled: true, hourlyThreshold: 20)
-        checker.checkAlerts(result: result, settings: settings)
-        waitForNotifications()
+        await checker.checkAlertsAndWait(result: result, settings: settings)
         XCTAssertEqual(mockSender.sendRecords.count, 0, "HA-02: percent nil → skip")
     }
 
-    func testHA03_hourlyResetsAtNil_skips() {
+    func testHA03_hourlyResetsAtNil_skips() async {
         let result = makeResult(fiveHourPercent: 90, fiveHourResetsAt: nil)
         let settings = makeSettings(hourlyEnabled: true, hourlyThreshold: 20)
-        checker.checkAlerts(result: result, settings: settings)
-        waitForNotifications()
+        await checker.checkAlertsAndWait(result: result, settings: settings)
         XCTAssertEqual(mockSender.sendRecords.count, 0, "HA-03: resets_at nil → skip")
     }
 
-    func testHA04_hourlyAboveThreshold_skips() {
+    func testHA04_hourlyAboveThreshold_skips() async {
         let result = makeResult(fiveHourPercent: 75, fiveHourResetsAt: epochA)
         let settings = makeSettings(hourlyEnabled: true, hourlyThreshold: 20)
-        checker.checkAlerts(result: result, settings: settings)
-        waitForNotifications()
+        await checker.checkAlertsAndWait(result: result, settings: settings)
         XCTAssertEqual(mockSender.sendRecords.count, 0, "HA-04: remaining 25% > 20% → skip")
     }
 
-    func testHA05_hourlyBelowThreshold_notifies() {
+    func testHA05_hourlyBelowThreshold_notifies() async {
         let result = makeResult(fiveHourPercent: 85, fiveHourResetsAt: epochA)
         let settings = makeSettings(hourlyEnabled: true, hourlyThreshold: 20)
-        checker.checkAlerts(result: result, settings: settings)
-        waitForNotifications()
+        await checker.checkAlertsAndWait(result: result, settings: settings)
         XCTAssertEqual(mockSender.sendRecords.count, 1, "HA-05: remaining 15% <= 20% → notify")
         XCTAssertEqual(mockSender.sendRecords[0].identifier, "claudeusagetracker-hourly")
         XCTAssertTrue(mockSender.sendRecords[0].title.contains("Hourly"))
     }
 
-    func testHA06_hourlySameSession_skips() {
+    func testHA06_hourlySameSession_skips() async {
         let result = makeResult(fiveHourPercent: 85, fiveHourResetsAt: epochA)
         let settings = makeSettings(hourlyEnabled: true, hourlyThreshold: 20)
-        checker.checkAlerts(result: result, settings: settings)
-        waitForNotifications()
+        await checker.checkAlertsAndWait(result: result, settings: settings)
         XCTAssertEqual(mockSender.sendRecords.count, 1)
 
         let result2 = makeResult(fiveHourPercent: 95, fiveHourResetsAt: epochA)
-        checker.checkAlerts(result: result2, settings: settings)
-        waitForNotifications()
+        await checker.checkAlertsAndWait(result: result2, settings: settings)
         XCTAssertEqual(mockSender.sendRecords.count, 1, "HA-06: same session → skip")
     }
 
-    func testHA07_hourlyNewSession_notifies() {
+    func testHA07_hourlyNewSession_notifies() async {
         let result = makeResult(fiveHourPercent: 85, fiveHourResetsAt: epochA)
         let settings = makeSettings(hourlyEnabled: true, hourlyThreshold: 20)
-        checker.checkAlerts(result: result, settings: settings)
-        waitForNotifications()
+        await checker.checkAlertsAndWait(result: result, settings: settings)
         XCTAssertEqual(mockSender.sendRecords.count, 1)
 
         let result2 = makeResult(fiveHourPercent: 85, fiveHourResetsAt: epochB)
-        checker.checkAlerts(result: result2, settings: settings)
-        waitForNotifications()
+        await checker.checkAlertsAndWait(result: result2, settings: settings)
         XCTAssertEqual(mockSender.sendRecords.count, 2, "HA-07: new session → notify again")
     }
 
     // MARK: - Notification Content
 
-    func testWeeklyNotification_bodyFormat() {
+    func testWeeklyNotification_bodyFormat() async {
         let result = makeResult(sevenDayPercent: 85, sevenDayResetsAt: epochA)
         let settings = makeSettings(weeklyEnabled: true, weeklyThreshold: 20)
-        checker.checkAlerts(result: result, settings: settings)
-        waitForNotifications()
+        await checker.checkAlertsAndWait(result: result, settings: settings)
         XCTAssertEqual(mockSender.sendRecords[0].title, "ClaudeUsageTracker: Weekly Alert")
         XCTAssertEqual(mockSender.sendRecords[0].body, "Weekly usage at 85% — 15% remaining")
     }
 
-    func testHourlyNotification_bodyFormat() {
+    func testHourlyNotification_bodyFormat() async {
         let result = makeResult(fiveHourPercent: 90, fiveHourResetsAt: epochA)
         let settings = makeSettings(hourlyEnabled: true, hourlyThreshold: 20)
-        checker.checkAlerts(result: result, settings: settings)
-        waitForNotifications()
+        await checker.checkAlertsAndWait(result: result, settings: settings)
         XCTAssertEqual(mockSender.sendRecords[0].title, "ClaudeUsageTracker: Hourly Alert")
         XCTAssertEqual(mockSender.sendRecords[0].body, "Hourly usage at 90% — 10% remaining")
     }
 
     // MARK: - Edge: both alerts simultaneously
 
-    func testBothAlertsCanFireSimultaneously() {
+    func testBothAlertsCanFireSimultaneously() async {
         let result = makeResult(
             fiveHourPercent: 90, sevenDayPercent: 85,
             fiveHourResetsAt: epochA, sevenDayResetsAt: epochA
@@ -220,31 +202,56 @@ final class AlertCheckerTests: XCTestCase {
             weeklyEnabled: true, weeklyThreshold: 20,
             hourlyEnabled: true, hourlyThreshold: 20
         )
-        checker.checkAlerts(result: result, settings: settings)
-        waitForNotifications()
+        let completedSendCount = await checker.checkAlertsAndWait(result: result, settings: settings)
+        XCTAssertEqual(completedSendCount, 2)
         XCTAssertEqual(mockSender.sendRecords.count, 2, "Both weekly and hourly should fire")
         let identifiers = Set(mockSender.sendRecords.map(\.identifier))
         XCTAssertTrue(identifiers.contains("claudeusagetracker-weekly"))
         XCTAssertTrue(identifiers.contains("claudeusagetracker-hourly"))
     }
 
+    func testAwaitableCompletion_waitsForDeniedAndErrorSendTerminalsInSelectionOrder() async {
+        let terminalSender = TerminalNotificationSender(outcomes: [.denied, .error])
+        let terminalChecker = AlertChecker(notificationSender: terminalSender, usageStore: mockStore)
+        let result = makeResult(
+            fiveHourPercent: 90, sevenDayPercent: 85,
+            fiveHourResetsAt: epochA, sevenDayResetsAt: epochA
+        )
+        let settings = makeSettings(
+            weeklyEnabled: true, weeklyThreshold: 20,
+            hourlyEnabled: true, hourlyThreshold: 20
+        )
+
+        let completedSendCount = await terminalChecker.checkAlertsAndWait(
+            result: result,
+            settings: settings
+        )
+        let completedOutcomes = await terminalSender.completedOutcomes
+        let completedIdentifiers = await terminalSender.completedIdentifiers
+
+        XCTAssertEqual(completedSendCount, 2)
+        XCTAssertEqual(completedOutcomes, [.denied, .error])
+        XCTAssertEqual(
+            completedIdentifiers,
+            ["claudeusagetracker-weekly", "claudeusagetracker-hourly"]
+        )
+    }
+
     // MARK: - Edge: threshold boundary (exactly equal)
 
-    func testWeekly_exactlyAtThreshold_notifies() {
+    func testWeekly_exactlyAtThreshold_notifies() async {
         // remaining = 100 - 80 = 20, threshold = 20 → should notify (<=)
         let result = makeResult(sevenDayPercent: 80, sevenDayResetsAt: epochA)
         let settings = makeSettings(weeklyEnabled: true, weeklyThreshold: 20)
-        checker.checkAlerts(result: result, settings: settings)
-        waitForNotifications()
+        await checker.checkAlertsAndWait(result: result, settings: settings)
         XCTAssertEqual(mockSender.sendRecords.count, 1, "Exactly at threshold → notify")
     }
 
-    func testWeekly_justAboveThreshold_skips() {
+    func testWeekly_justAboveThreshold_skips() async {
         // remaining = 100 - 79 = 21, threshold = 20 → should skip (>)
         let result = makeResult(sevenDayPercent: 79, sevenDayResetsAt: epochA)
         let settings = makeSettings(weeklyEnabled: true, weeklyThreshold: 20)
-        checker.checkAlerts(result: result, settings: settings)
-        waitForNotifications()
+        await checker.checkAlertsAndWait(result: result, settings: settings)
         XCTAssertEqual(mockSender.sendRecords.count, 0, "Just above threshold → skip")
     }
 
@@ -260,125 +267,130 @@ final class AlertCheckerTests: XCTestCase {
         return s
     }
 
-    func testDA01_dailyDisabled_skips() {
+    func testDA01_dailyDisabled_skips() async {
         mockStore.dailyUsageToReturn = 20.0
         let result = makeResult(sevenDayPercent: 50, sevenDayResetsAt: epochA)
         let settings = makeDailySettings(enabled: false)
-        checker.checkAlerts(result: result, settings: settings)
-        waitForNotifications()
+        await checker.checkAlertsAndWait(result: result, settings: settings)
         XCTAssertEqual(mockSender.sendRecords.count, 0, "DA-01: disabled → skip")
     }
 
-    func testDA02_dailyPercentNil_skips() {
+    func testDA02_dailyPercentNil_skips() async {
         mockStore.dailyUsageToReturn = 20.0
         let result = makeResult(sevenDayPercent: nil, sevenDayResetsAt: epochA)
         let settings = makeDailySettings()
-        checker.checkAlerts(result: result, settings: settings)
-        waitForNotifications()
+        await checker.checkAlertsAndWait(result: result, settings: settings)
         XCTAssertEqual(mockSender.sendRecords.count, 0, "DA-02: percent nil → skip")
     }
 
-    func testDA03_dailyNoData_skips() {
+    func testDA03_dailyNoData_skips() async {
         mockStore.dailyUsageToReturn = nil
         let result = makeResult(sevenDayPercent: 50, sevenDayResetsAt: epochA)
         let settings = makeDailySettings()
-        checker.checkAlerts(result: result, settings: settings)
-        waitForNotifications()
+        await checker.checkAlertsAndWait(result: result, settings: settings)
         XCTAssertEqual(mockSender.sendRecords.count, 0, "DA-03: no data → skip")
     }
 
-    func testDA04_dailyBelowThreshold_skips() {
+    func testDA04_dailyBelowThreshold_skips() async {
         mockStore.dailyUsageToReturn = 10.0
         let result = makeResult(sevenDayPercent: 50, sevenDayResetsAt: epochA)
         let settings = makeDailySettings(threshold: 15)
-        checker.checkAlerts(result: result, settings: settings)
-        waitForNotifications()
+        await checker.checkAlertsAndWait(result: result, settings: settings)
         XCTAssertEqual(mockSender.sendRecords.count, 0, "DA-04: usage 10% < threshold 15% → skip")
     }
 
-    func testDA05_dailyCalendar_aboveThreshold_notifies() {
+    func testDA05_dailyCalendar_aboveThreshold_notifies() async {
         mockStore.dailyUsageToReturn = 18.0
         let result = makeResult(sevenDayPercent: 50, sevenDayResetsAt: epochA)
         let settings = makeDailySettings(threshold: 15, definition: .calendar)
-        checker.checkAlerts(result: result, settings: settings)
-        waitForNotifications()
+        await checker.checkAlertsAndWait(result: result, settings: settings)
         XCTAssertEqual(mockSender.sendRecords.count, 1, "DA-05: usage 18% >= 15% → notify")
         XCTAssertEqual(mockSender.sendRecords[0].identifier, "claudeusagetracker-daily")
         XCTAssertTrue(mockSender.sendRecords[0].body.contains("today"))
     }
 
-    func testDA06_dailyCalendar_sameDateDuplicate_skips() {
+    func testDA06_dailyCalendar_sameDateDuplicate_skips() async {
         mockStore.dailyUsageToReturn = 18.0
         let result = makeResult(sevenDayPercent: 50, sevenDayResetsAt: epochA)
         let settings = makeDailySettings(threshold: 15, definition: .calendar)
         // First check
-        checker.checkAlerts(result: result, settings: settings)
-        waitForNotifications()
+        await checker.checkAlertsAndWait(result: result, settings: settings)
         XCTAssertEqual(mockSender.sendRecords.count, 1)
 
         // Second check same day
         mockStore.dailyUsageToReturn = 20.0
-        checker.checkAlerts(result: result, settings: settings)
-        waitForNotifications()
+        await checker.checkAlertsAndWait(result: result, settings: settings)
         XCTAssertEqual(mockSender.sendRecords.count, 1, "DA-06: same date → skip")
     }
 
-    func testDA08_dailySession_aboveThreshold_notifies() {
+    func testDA08_dailySession_aboveThreshold_notifies() async {
         mockStore.dailyUsageToReturn = 18.0
         let result = makeResult(sevenDayPercent: 50, sevenDayResetsAt: epochA)
         let settings = makeDailySettings(threshold: 15, definition: .session)
-        checker.checkAlerts(result: result, settings: settings)
-        waitForNotifications()
+        await checker.checkAlertsAndWait(result: result, settings: settings)
         XCTAssertEqual(mockSender.sendRecords.count, 1, "DA-08: session-based, usage >= threshold → notify")
         XCTAssertTrue(mockSender.sendRecords[0].body.contains("session period"))
     }
 
-    func testDA09_dailySession_sameDuplicate_skips() {
+    func testDA09_dailySession_sameDuplicate_skips() async {
         mockStore.dailyUsageToReturn = 18.0
         let result = makeResult(sevenDayPercent: 50, sevenDayResetsAt: epochA)
         let settings = makeDailySettings(threshold: 15, definition: .session)
-        checker.checkAlerts(result: result, settings: settings)
-        waitForNotifications()
+        await checker.checkAlertsAndWait(result: result, settings: settings)
         XCTAssertEqual(mockSender.sendRecords.count, 1)
 
         mockStore.dailyUsageToReturn = 20.0
-        checker.checkAlerts(result: result, settings: settings)
-        waitForNotifications()
+        await checker.checkAlertsAndWait(result: result, settings: settings)
         XCTAssertEqual(mockSender.sendRecords.count, 1, "DA-09: same session → skip")
     }
 
-    func testDA10_dailySession_newSession_notifies() {
+    func testDA10_dailySession_newSession_notifies() async {
         mockStore.dailyUsageToReturn = 18.0
         let result = makeResult(sevenDayPercent: 50, sevenDayResetsAt: epochA)
         let settings = makeDailySettings(threshold: 15, definition: .session)
-        checker.checkAlerts(result: result, settings: settings)
-        waitForNotifications()
+        await checker.checkAlertsAndWait(result: result, settings: settings)
         XCTAssertEqual(mockSender.sendRecords.count, 1)
 
         // New session
         let result2 = makeResult(sevenDayPercent: 50, sevenDayResetsAt: epochB)
-        checker.checkAlerts(result: result2, settings: settings)
-        waitForNotifications()
+        await checker.checkAlertsAndWait(result: result2, settings: settings)
         XCTAssertEqual(mockSender.sendRecords.count, 2, "DA-10: new session → notify again")
     }
 
     // MARK: - Daily: session definition with nil resets_at
 
-    func testDailySession_nilResetsAt_skips() {
+    func testDailySession_nilResetsAt_skips() async {
         mockStore.dailyUsageToReturn = 18.0
         let result = makeResult(sevenDayPercent: 50, sevenDayResetsAt: nil)
         let settings = makeDailySettings(threshold: 15, definition: .session)
-        checker.checkAlerts(result: result, settings: settings)
-        waitForNotifications()
+        await checker.checkAlertsAndWait(result: result, settings: settings)
         XCTAssertEqual(mockSender.sendRecords.count, 0, "Session-based with nil resets_at → skip")
     }
 
-    // MARK: - Helpers
+}
 
-    /// Wait briefly for Task {} fire-and-forget to complete
-    private func waitForNotifications() {
-        let exp = expectation(description: "notifications")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { exp.fulfill() }
-        wait(for: [exp], timeout: 2.0)
+private actor TerminalNotificationSender: NotificationSending {
+    enum Outcome: Equatable {
+        case denied
+        case error
+    }
+
+    private var pendingOutcomes: [Outcome]
+    private(set) var completedOutcomes: [Outcome] = []
+    private(set) var completedIdentifiers: [String] = []
+
+    init(outcomes: [Outcome]) {
+        pendingOutcomes = outcomes
+    }
+
+    func requestAuthorization() async -> Bool {
+        false
+    }
+
+    func send(title: String, body: String, identifier: String) async {
+        let outcome = pendingOutcomes.removeFirst()
+        await Task.yield()
+        completedOutcomes.append(outcome)
+        completedIdentifiers.append(identifier)
     }
 }

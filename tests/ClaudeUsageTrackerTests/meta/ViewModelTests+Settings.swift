@@ -68,10 +68,6 @@ extension ViewModelTests {
             userInfo: [NSLocalizedDescriptionKey: "Operation not permitted"])
         let vm = makeVM()
 
-        let done = expectation(description: "init")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { done.fulfill() }
-        wait(for: [done], timeout: 2.0)
-
         XCTAssertFalse(vm.settings.startAtLogin,
             "init must revert startAtLogin when register fails")
         XCTAssertFalse(settingsStore.current.startAtLogin,

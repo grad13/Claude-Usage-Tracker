@@ -6,7 +6,98 @@ import ServiceManagement
 import ClaudeUsageTrackerShared
 
 @MainActor
+protocol ViewModelTimer: AnyObject {
+    var timeInterval: TimeInterval { get }
+    var isValid: Bool { get }
+    func invalidate()
+}
+
+@MainActor
+private final class WeakUsageViewModelBox {
+    private weak var value: UsageViewModel?
+
+    init(_ value: UsageViewModel) {
+        self.value = value
+    }
+
+    func withValue<Result>(_ body: (UsageViewModel) -> Result) -> Result? {
+        guard let value else { return nil }
+        return body(value)
+    }
+}
+
+private enum PageReadyDecision {
+    case terminal(UsageViewModel.PageReadyOutcome)
+    case fetch(UInt64)
+}
+
+private enum SilentFetchDecision {
+    case terminal(UsageViewModel.FetchOutcome)
+    case retry(after: TimeInterval)
+}
+
+extension Timer: ViewModelTimer {}
+
+protocol ViewModelTimerScheduling {
+    @MainActor
+    func schedule(
+        interval: TimeInterval,
+        repeats: Bool,
+        handler: @escaping @MainActor () -> Void
+    ) -> any ViewModelTimer
+}
+
+struct FoundationViewModelTimerScheduler: ViewModelTimerScheduling {
+    @MainActor
+    func schedule(
+        interval: TimeInterval,
+        repeats: Bool,
+        handler: @escaping @MainActor () -> Void
+    ) -> any ViewModelTimer {
+        Timer.scheduledTimer(withTimeInterval: interval, repeats: repeats) { _ in
+            MainActor.assumeIsolated {
+                handler()
+            }
+        }
+    }
+}
+
+@MainActor
+private final class OperationTerminal<Outcome> {
+    private var didFinish = false
+    private let completion: (@MainActor (Outcome) -> Void)?
+
+    init(completion: (@MainActor (Outcome) -> Void)?) {
+        self.completion = completion
+    }
+
+    func finish(_ outcome: Outcome) {
+        guard !didFinish else { return }
+        didFinish = true
+        completion?(outcome)
+    }
+}
+
+@MainActor
 final class UsageViewModel: ObservableObject, WebViewCoordinatorDelegate {
+    typealias Sleeper = @MainActor (TimeInterval) async throws -> Void
+
+    enum FetchOutcome: Equatable {
+        case success
+        case failure
+        case authenticationRequired
+        case busy
+        case cancelled
+    }
+
+    enum PageReadyOutcome: Equatable {
+        case noSession
+        case redirected
+        case cooldownSuppressed
+        case fetch(FetchOutcome)
+        case cancelled
+    }
+
     @Published var fiveHourPercent: Double?
     @Published var sevenDayPercent: Double?
     @Published var fiveHourResetsAt: Date?
@@ -34,16 +125,26 @@ final class UsageViewModel: ObservableObject, WebViewCoordinatorDelegate {
     let alertChecker: any AlertChecking
     var coordinator: WebViewCoordinator?
     var cookieObserver: CookieChangeObserver?
-    var refreshTimer: Timer?
-    var loginPollTimer: Timer?
+    var refreshTimer: (any ViewModelTimer)?
+    var loginPollTimer: (any ViewModelTimer)?
     /// Controls auto-refresh eligibility. nil=undetermined, true=enabled, false=disabled (auth error).
     var isAutoRefreshEnabled: Bool?
     /// Throttle usage-page redirects to prevent infinite loops.
     var lastRedirectAt: Date?
-    /// Current retry count for fetchSilently (reset on success or after max retries).
-    private var retryCount = 0
     private static let maxRetries = 3
     private static let retryDelays: [TimeInterval] = [30, 60, 120]
+    let sleeper: Sleeper
+    let timerScheduler: any ViewModelTimerScheduling
+    let now: () -> Date
+    private var lifecycleGeneration: UInt64 = 0
+    private var fetchOperationID: UInt64 = 0
+    private var activeFetchOperationID: UInt64?
+    private var fetchTask: Task<Void, Never>?
+    private var fetchTerminal: OperationTerminal<FetchOutcome>?
+    private var pageReadyTask: Task<Void, Never>?
+    private var pageReadyTerminal: OperationTerminal<PageReadyOutcome>?
+    private var pageReadyFetchOperationID: UInt64?
+    private var refreshTimerToken = UUID()
 
     var statusText: String {
         let fiveH = fiveHourPercent.map { String(format: "%.0f%%", $0) } ?? "--"
@@ -93,7 +194,13 @@ final class UsageViewModel: ObservableObject, WebViewCoordinatorDelegate {
         widgetReloader: any WidgetReloading = DefaultWidgetReloader(),
         loginItemManager: any LoginItemManaging = DefaultLoginItemManager(),
         alertChecker: any AlertChecking = DefaultAlertChecker(),
-        webViewConfiguration: WKWebViewConfiguration? = nil
+        webViewConfiguration: WKWebViewConfiguration? = nil,
+        startLifecycle: Bool = true,
+        sleeper: @escaping Sleeper = { delay in
+            try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+        },
+        timerScheduler: any ViewModelTimerScheduling = FoundationViewModelTimerScheduler(),
+        now: @escaping () -> Date = Date.init
     ) {
         self.fetcher = fetcher
         self.settingsStore = settingsStore
@@ -101,6 +208,9 @@ final class UsageViewModel: ObservableObject, WebViewCoordinatorDelegate {
         self.widgetReloader = widgetReloader
         self.loginItemManager = loginItemManager
         self.alertChecker = alertChecker
+        self.sleeper = sleeper
+        self.timerScheduler = timerScheduler
+        self.now = now
 
         Self.markLaunch()
 
@@ -117,7 +227,9 @@ final class UsageViewModel: ObservableObject, WebViewCoordinatorDelegate {
         self.webView = WKWebView(frame: .zero, configuration: config)
         self.settings = settingsStore.load()
 
-        let coord = WebViewCoordinator(viewModel: self)
+        let coord = WebViewCoordinator(viewModel: self) { [weak self] finishedURL in
+            self?.handlePageReady(finishedURL: finishedURL)
+        }
         self.coordinator = coord
         webView.navigationDelegate = coord
         webView.uiDelegate = coord
@@ -128,121 +240,357 @@ final class UsageViewModel: ObservableObject, WebViewCoordinatorDelegate {
         SQLiteBackup.perform(dbPath: (usageStore as? UsageStore)?.dbPath ?? "")
 
         syncLoginItem()
-        startCookieObservation()
+        if startLifecycle {
+            startCookieObservation()
 
-        // .default() DataStore auto-loads persisted cookies — no restore needed
-        loadUsagePage()
-        startLoginPolling()
+            // .default() DataStore auto-loads persisted cookies — no restore needed
+            loadUsagePage()
+            startLoginPolling()
+        }
     }
 
     // MARK: - Page Ready (called by coordinator when claude.ai page finishes loading)
 
     func handlePageReady() {
-        let currentURL = webView.url?.absoluteString ?? "nil"
-        debug("handlePageReady: url=\(currentURL)")
-        Task {
-            let isLoggedIn = await fetcher.hasValidSession(using: webView)
-            debug("handlePageReady: hasValidSession=\(isLoggedIn)")
-            guard isLoggedIn else {
-                debug("handlePageReady: no session, skipping")
-                return
-            }
-            self.isLoggedIn = true
-            startAutoRefresh()
+        startPageReadyOperation(finishedURL: webView.url, completion: nil)
+    }
 
-            if !isOnUsagePage() {
-                debug("handlePageReady: not on usage page, redirecting")
-                guard canRedirect() else {
-                    debug("handlePageReady: redirect cooldown active")
-                    return
+    func handlePageReady(finishedURL: URL) {
+        startPageReadyOperation(finishedURL: finishedURL, completion: nil)
+    }
+
+    func handlePageReady(
+        finishedURL: URL?,
+        completion: @escaping @MainActor (PageReadyOutcome) -> Void
+    ) {
+        startPageReadyOperation(finishedURL: finishedURL, completion: completion)
+    }
+
+    private func startPageReadyOperation(
+        finishedURL: URL?,
+        completion: (@MainActor (PageReadyOutcome) -> Void)?
+    ) {
+        cancelPageReadyOperation()
+
+        let generation = lifecycleGeneration
+        let terminal = OperationTerminal(completion: completion)
+        let owner = WeakUsageViewModelBox(self)
+        let fetcher = self.fetcher
+        let webView = self.webView
+        let sleeper = self.sleeper
+        pageReadyTerminal = terminal
+        debug("handlePageReady: url=\(finishedURL?.absoluteString ?? "nil")")
+
+        pageReadyTask = Task {
+            let outcome = await Self.performPageReady(
+                owner: owner,
+                fetcher: fetcher,
+                webView: webView,
+                sleeper: sleeper,
+                finishedURL: finishedURL,
+                generation: generation
+            )
+            let isCurrent = owner.withValue { viewModel in
+                guard viewModel.pageReadyTerminal === terminal else { return false }
+                viewModel.pageReadyTask = nil
+                viewModel.pageReadyTerminal = nil
+                return true
+            }
+            terminal.finish(isCurrent == true ? outcome : .cancelled)
+        }
+    }
+
+    private static func performPageReady(
+        owner: WeakUsageViewModelBox,
+        fetcher: any UsageFetching,
+        webView: WKWebView,
+        sleeper: @escaping Sleeper,
+        finishedURL: URL?,
+        generation: UInt64
+    ) async -> PageReadyOutcome {
+        let hasSession = await fetcher.hasValidSession(using: webView)
+        let decision = owner.withValue { viewModel -> PageReadyDecision in
+            guard viewModel.isCurrent(generation) else { return .terminal(.cancelled) }
+            viewModel.debug("handlePageReady: hasValidSession=\(hasSession)")
+            guard hasSession else {
+                viewModel.debug("handlePageReady: no session, skipping")
+                return .terminal(.noSession)
+            }
+
+            viewModel.isLoggedIn = true
+            viewModel.startAutoRefresh()
+
+            guard viewModel.isOnUsagePage(finishedURL) else {
+                viewModel.debug("handlePageReady: not on usage page, redirecting")
+                guard viewModel.canRedirect() else {
+                    viewModel.debug("handlePageReady: redirect cooldown active")
+                    return .terminal(.cooldownSuppressed)
                 }
-                lastRedirectAt = Date()
-                loadUsagePage()
-                return
+                viewModel.lastRedirectAt = viewModel.now()
+                viewModel.loadUsagePage()
+                return .terminal(.redirected)
             }
 
-            debug("handlePageReady: on usage page, fetching")
-            fetchSilently()
+            viewModel.debug("handlePageReady: on usage page, fetching")
+            guard let operationID = viewModel.beginFetchOperation() else {
+                return .terminal(.fetch(.busy))
+            }
+            viewModel.pageReadyFetchOperationID = operationID
+            return .fetch(operationID)
+        }
+        guard let decision else { return .cancelled }
+        switch decision {
+        case .terminal(let outcome):
+            return outcome
+        case .fetch(let operationID):
+            let outcome = await performSilentFetch(
+                owner: owner,
+                fetcher: fetcher,
+                webView: webView,
+                sleeper: sleeper,
+                operationID: operationID,
+                generation: generation
+            )
+            owner.withValue { viewModel in
+                viewModel.finishFetchOperation(operationID)
+                if viewModel.pageReadyFetchOperationID == operationID {
+                    viewModel.pageReadyFetchOperationID = nil
+                }
+            }
+            return .fetch(outcome)
         }
     }
 
     // MARK: - Fetch
 
     /// Manual fetch triggered by user (Refresh button). Always runs regardless of isAutoRefreshEnabled.
-    func fetch() {
-        guard !isFetching else { return }
-        isFetching = true
+    func fetch(completion: (@MainActor (FetchOutcome) -> Void)? = nil) {
+        let terminal = OperationTerminal(completion: completion)
+        guard let operationID = beginFetchOperation() else {
+            terminal.finish(.busy)
+            return
+        }
         error = nil
+        let generation = lifecycleGeneration
+        let owner = WeakUsageViewModelBox(self)
+        let fetcher = self.fetcher
+        let webView = self.webView
+        fetchTerminal = terminal
 
-        Task {
-            do {
-                let result = try await fetcher.fetch(from: webView)
-                applyResult(result)
-                isLoggedIn = true
-                isAutoRefreshEnabled = true
-                startAutoRefresh()
-            } catch {
-                if let fetchError = error as? UsageFetchError {
-                    NSLog("[ClaudeUsageTracker] fetch error: %@", fetchError.diagnosticMessage)
-                    if fetchError.isAuthError {
-                        isAutoRefreshEnabled = false
-                        isLoggedIn = false
-                        self.error = nil
-                    } else {
-                        self.error = error.localizedDescription
-                    }
-                } else {
-                    self.error = error.localizedDescription
-                }
+        fetchTask = Task {
+            let outcome = await Self.performManualFetch(
+                owner: owner,
+                fetcher: fetcher,
+                webView: webView,
+                operationID: operationID,
+                generation: generation
+            )
+            let isCurrent = owner.withValue { viewModel in
+                viewModel.finishFetchOperation(operationID)
+                guard viewModel.fetchTerminal === terminal else { return false }
+                viewModel.fetchTerminal = nil
+                return true
             }
-            isFetching = false
+            terminal.finish(isCurrent == true ? outcome : .cancelled)
         }
     }
 
     /// Automatic fetch (launch, after login, auto-refresh)
-    func fetchSilently() {
-        guard !isFetching else {
+    func fetchSilently(completion: (@MainActor (FetchOutcome) -> Void)? = nil) {
+        let terminal = OperationTerminal(completion: completion)
+        guard let operationID = beginFetchOperation() else {
             debug("fetchSilently: already fetching, skipping")
+            terminal.finish(.busy)
             return
         }
-        isFetching = true
+        let generation = lifecycleGeneration
+        let owner = WeakUsageViewModelBox(self)
+        let fetcher = self.fetcher
+        let webView = self.webView
+        let sleeper = self.sleeper
+        fetchTerminal = terminal
         debug("fetchSilently: starting fetch")
 
-        Task {
+        fetchTask = Task {
+            let outcome = await Self.performSilentFetch(
+                owner: owner,
+                fetcher: fetcher,
+                webView: webView,
+                sleeper: sleeper,
+                operationID: operationID,
+                generation: generation
+            )
+            let isCurrent = owner.withValue { viewModel in
+                viewModel.finishFetchOperation(operationID)
+                guard viewModel.fetchTerminal === terminal else { return false }
+                viewModel.fetchTerminal = nil
+                return true
+            }
+            terminal.finish(isCurrent == true ? outcome : .cancelled)
+        }
+    }
+
+    private static func performManualFetch(
+        owner: WeakUsageViewModelBox,
+        fetcher: any UsageFetching,
+        webView: WKWebView,
+        operationID: UInt64,
+        generation: UInt64
+    ) async -> FetchOutcome {
+        do {
+            let result = try await fetcher.fetch(from: webView)
+            return owner.withValue { viewModel in
+                guard viewModel.isCurrent(generation, operationID: operationID) else {
+                    return .cancelled
+                }
+                viewModel.applyResult(result)
+                viewModel.isLoggedIn = true
+                viewModel.isAutoRefreshEnabled = true
+                viewModel.startAutoRefresh()
+                return .success
+            } ?? .cancelled
+        } catch {
+            return owner.withValue { viewModel in
+                guard viewModel.isCurrent(generation, operationID: operationID) else {
+                    return .cancelled
+                }
+                if let fetchError = error as? UsageFetchError {
+                    NSLog("[ClaudeUsageTracker] fetch error: %@", fetchError.diagnosticMessage)
+                    if fetchError.isAuthError {
+                        viewModel.isAutoRefreshEnabled = false
+                        viewModel.isLoggedIn = false
+                        viewModel.error = nil
+                        return .authenticationRequired
+                    }
+                }
+                viewModel.error = error.localizedDescription
+                return .failure
+            } ?? .cancelled
+        }
+    }
+
+    private static func performSilentFetch(
+        owner: WeakUsageViewModelBox,
+        fetcher: any UsageFetching,
+        webView: WKWebView,
+        sleeper: @escaping Sleeper,
+        operationID: UInt64,
+        generation: UInt64
+    ) async -> FetchOutcome {
+        for attempt in 0...Self.maxRetries {
+            guard owner.withValue({ $0.isCurrent(generation, operationID: operationID) }) == true else {
+                return .cancelled
+            }
             do {
                 let result = try await fetcher.fetch(from: webView)
-                debug("fetchSilently: success 5h=\(result.fiveHourPercent ?? -1) 7d=\(result.sevenDayPercent ?? -1)")
-                applyResult(result)
-                isLoggedIn = true
-                isAutoRefreshEnabled = true
-                error = nil
-                retryCount = 0
-                startAutoRefresh()
+                return owner.withValue { viewModel in
+                    guard viewModel.isCurrent(generation, operationID: operationID) else {
+                        return .cancelled
+                    }
+                    viewModel.debug("fetchSilently: success 5h=\(result.fiveHourPercent ?? -1) 7d=\(result.sevenDayPercent ?? -1)")
+                    viewModel.applyResult(result)
+                    viewModel.isLoggedIn = true
+                    viewModel.isAutoRefreshEnabled = true
+                    viewModel.error = nil
+                    viewModel.startAutoRefresh()
+                    return .success
+                } ?? .cancelled
             } catch {
-                let isAuthError = (error as? UsageFetchError)?.isAuthError == true
-                if let fetchError = error as? UsageFetchError {
-                    debug("fetchSilently: error=\(fetchError.diagnosticMessage)")
-                    if isAuthError { isAutoRefreshEnabled = false }
-                } else {
-                    debug("fetchSilently: error=\(error)")
-                }
-                if isLoggedIn {
-                    self.error = error.localizedDescription
-                }
+                let decision = owner.withValue { viewModel -> SilentFetchDecision in
+                    guard viewModel.isCurrent(generation, operationID: operationID) else {
+                        return .terminal(.cancelled)
+                    }
+                    let isAuthError = (error as? UsageFetchError)?.isAuthError == true
+                    if let fetchError = error as? UsageFetchError {
+                        viewModel.debug("fetchSilently: error=\(fetchError.diagnosticMessage)")
+                        if isAuthError {
+                            viewModel.isAutoRefreshEnabled = false
+                        }
+                    } else {
+                        viewModel.debug("fetchSilently: error=\(error)")
+                    }
+                    if viewModel.isLoggedIn {
+                        viewModel.error = error.localizedDescription
+                    }
+                    if isAuthError {
+                        return .terminal(.authenticationRequired)
+                    }
+                    guard attempt < Self.maxRetries else {
+                        return .terminal(.failure)
+                    }
 
-                // Retry on non-auth errors with exponential backoff
-                if !isAuthError && retryCount < Self.maxRetries {
-                    let delay = Self.retryDelays[retryCount]
-                    retryCount += 1
-                    debug("fetchSilently: scheduling retry \(retryCount)/\(Self.maxRetries) in \(delay)s")
-                    isFetching = false
-                    try? await Task.sleep(for: .seconds(delay))
-                    fetchSilently()
-                    return
+                    let delay = Self.retryDelays[attempt]
+                    viewModel.debug("fetchSilently: scheduling retry \(attempt + 1)/\(Self.maxRetries) in \(delay)s")
+                    return .retry(after: delay)
+                } ?? .terminal(.cancelled)
+
+                switch decision {
+                case .terminal(let outcome):
+                    return outcome
+                case .retry(let delay):
+                    do {
+                        try await sleeper(delay)
+                    } catch {
+                        return .cancelled
+                    }
                 }
-                retryCount = 0
+                guard owner.withValue({ $0.isCurrent(generation, operationID: operationID) }) == true else {
+                    return .cancelled
+                }
             }
-            isFetching = false
+        }
+        return .failure
+    }
+
+    private func beginFetchOperation() -> UInt64? {
+        guard activeFetchOperationID == nil, !isFetching else { return nil }
+        fetchOperationID &+= 1
+        activeFetchOperationID = fetchOperationID
+        isFetching = true
+        return fetchOperationID
+    }
+
+    private func finishFetchOperation(_ operationID: UInt64) {
+        guard activeFetchOperationID == operationID else { return }
+        activeFetchOperationID = nil
+        fetchTask = nil
+        isFetching = false
+    }
+
+    private func isCurrent(_ generation: UInt64, operationID: UInt64? = nil) -> Bool {
+        guard !Task.isCancelled, lifecycleGeneration == generation else { return false }
+        guard let operationID else { return true }
+        return activeFetchOperationID == operationID
+    }
+
+    var currentLifecycleGeneration: UInt64 {
+        lifecycleGeneration
+    }
+
+    func isCurrentLifecycleGeneration(_ generation: UInt64) -> Bool {
+        lifecycleGeneration == generation
+    }
+
+    func invalidateAsyncOperations() {
+        lifecycleGeneration &+= 1
+        refreshTimerToken = UUID()
+        fetchTask?.cancel()
+        fetchTask = nil
+        fetchTerminal?.finish(.cancelled)
+        fetchTerminal = nil
+        activeFetchOperationID = nil
+        isFetching = false
+        cancelPageReadyOperation()
+    }
+
+    private func cancelPageReadyOperation() {
+        pageReadyTask?.cancel()
+        pageReadyTask = nil
+        pageReadyTerminal?.finish(.cancelled)
+        pageReadyTerminal = nil
+        if let operationID = pageReadyFetchOperationID {
+            finishFetchOperation(operationID)
+            pageReadyFetchOperationID = nil
         }
     }
 
@@ -296,14 +644,14 @@ final class UsageViewModel: ObservableObject, WebViewCoordinatorDelegate {
         webView.load(request)
     }
 
-    func isOnUsagePage() -> Bool {
-        guard let url = webView.url else { return false }
+    func isOnUsagePage(_ finishedURL: URL? = nil) -> Bool {
+        guard let url = finishedURL ?? webView.url else { return false }
         return url.host == Self.targetHost
     }
 
     func canRedirect() -> Bool {
         guard let lastRedirectAt else { return true }
-        return Date().timeIntervalSince(lastRedirectAt) > 5
+        return now().timeIntervalSince(lastRedirectAt) > 5
     }
 
     func reloadHistory() {
@@ -338,19 +686,20 @@ final class UsageViewModel: ObservableObject, WebViewCoordinatorDelegate {
     func startAutoRefresh() {
         guard refreshTimer == nil else { return }
         guard settings.refreshIntervalMinutes > 0 else { return }
-        refreshTimer = Timer.scheduledTimer(
-            withTimeInterval: refreshInterval,
-            repeats: true
-        ) { [weak self] _ in
-            Task { @MainActor in
-                guard let self else { return }
-                guard self.isAutoRefreshEnabled != false else { return }
-                self.fetch()
-            }
+        let generation = lifecycleGeneration
+        let token = UUID()
+        refreshTimerToken = token
+        refreshTimer = timerScheduler.schedule(interval: refreshInterval, repeats: true) { [weak self] in
+            guard let self else { return }
+            guard self.lifecycleGeneration == generation else { return }
+            guard self.refreshTimerToken == token else { return }
+            guard self.isAutoRefreshEnabled != false else { return }
+            self.fetch()
         }
     }
 
     func restartAutoRefresh() {
+        refreshTimerToken = UUID()
         refreshTimer?.invalidate()
         refreshTimer = nil
         if isLoggedIn {

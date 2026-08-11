@@ -1,4 +1,4 @@
-// meta: updated=2026-03-07 06:52 checked=-
+// meta: updated=2026-08-12 checked=-
 import XCTest
 import WebKit
 import ClaudeUsageTrackerShared
@@ -36,14 +36,21 @@ final class ViewModelSessionTests: XCTestCase {
         alertChecker = MockAlertChecker()
     }
 
-    func makeVM() -> UsageViewModel {
+    func makeVM(
+        startLifecycle: Bool = true,
+        sleeper: @escaping UsageViewModel.Sleeper = { _ in },
+        timerScheduler: any ViewModelTimerScheduling = ManualViewModelTimerScheduler()
+    ) -> UsageViewModel {
         ViewModelTestFactory.makeVM(
             fetcher: stubFetcher,
             settingsStore: settingsStore,
             usageStore: usageStore,
             widgetReloader: widgetReloader,
             loginItemManager: loginItemManager,
-            alertChecker: alertChecker
+            alertChecker: alertChecker,
+            startLifecycle: startLifecycle,
+            sleeper: sleeper,
+            timerScheduler: timerScheduler
         )
     }
 
@@ -170,91 +177,208 @@ final class ViewModelSessionTests: XCTestCase {
         XCTAssertNoThrow(vm.startLoginPolling())
     }
 
-    // MARK: - checkPopupLogin: 500ms 待機
+    // MARK: - checkPopupLogin: 500ms clock semantics
 
-    /// checkPopupLogin() は hasValidSession が true のとき closePopup() を呼ぶ。
-    /// 500ms 待機の後に closePopup() が呼ばれるため、非同期で検証する。
-    func testCheckPopupLogin_closesPopup_whenSessionValid() async throws {
-        let vm = makeVM()
+    func testCheckPopupLogin_validSessionWaits500msThenClosesAndReleasesPopupReference() {
+        let sleeper = ManualSleeper()
+        let sleepStarted = expectation(description: "500ms popup feedback delay started")
+        sleeper.onSleep = { delay in
+            XCTAssertEqual(delay, 0.5)
+            sleepStarted.fulfill()
+        }
+        let completed = expectation(description: "valid popup session accepted")
+        completed.assertForOverFulfill = true
+        let vm = makeVM(startLifecycle: false, sleeper: sleeper.sleep)
         stubFetcher.hasValidSessionResult = true
 
         let popup = WKWebView(frame: .zero)
         vm.popupWebView = popup
-        XCTAssertNotNil(vm.popupWebView)
+        var completionCount = 0
 
-        vm.checkPopupLogin()
+        vm.checkPopupLogin { outcome in
+            completionCount += 1
+            XCTAssertEqual(outcome, .sessionAccepted)
+            completed.fulfill()
+        }
 
-        // 500ms + マージン = 800ms 待機
-        try await Task.sleep(nanoseconds: 800_000_000)
-
-        XCTAssertNil(vm.popupWebView,
-            "checkPopupLogin should call closePopup() after 500ms when session is valid")
-    }
-
-    /// checkPopupLogin() は hasValidSession が true のとき handleSessionDetected() を呼び、isLoggedIn が true になる。
-    func testCheckPopupLogin_callsHandleSessionDetected_whenSessionValid() async throws {
-        let vm = makeVM()
-        stubFetcher.hasValidSessionResult = true
-
-        let popup = WKWebView(frame: .zero)
-        vm.popupWebView = popup
+        wait(for: [sleepStarted], timeout: 2.0)
+        XCTAssertEqual(sleeper.requestedDelays, [0.5])
+        XCTAssertNotNil(vm.popupWebView, "the popup must remain visible during the feedback delay")
         XCTAssertFalse(vm.isLoggedIn)
 
-        vm.checkPopupLogin()
+        sleeper.resumeNext()
+        wait(for: [completed], timeout: 2.0)
 
-        // 500ms + マージン = 800ms 待機
-        try await Task.sleep(nanoseconds: 800_000_000)
-
-        XCTAssertTrue(vm.isLoggedIn,
-            "checkPopupLogin should call handleSessionDetected() which sets isLoggedIn=true")
+        XCTAssertTrue(vm.isLoggedIn)
+        XCTAssertNil(vm.popupWebView)
+        XCTAssertEqual(completionCount, 1, "the popup check must complete exactly once")
     }
 
-    /// checkPopupLogin() は hasValidSession が false のとき closePopup() を呼ばない。
-    func testCheckPopupLogin_doesNotClosePopup_whenSessionInvalid() async throws {
-        let vm = makeVM()
+    func testCheckPopupLogin_invalidSessionFinishesWithoutDelayOrClosingPopup() {
+        let sleeper = ManualSleeper()
+        let completed = expectation(description: "invalid popup session rejected")
+        completed.assertForOverFulfill = true
+        let vm = makeVM(startLifecycle: false, sleeper: sleeper.sleep)
         stubFetcher.hasValidSessionResult = false
-
         let popup = WKWebView(frame: .zero)
         vm.popupWebView = popup
 
-        vm.checkPopupLogin()
+        vm.checkPopupLogin { outcome in
+            XCTAssertEqual(outcome, .noValidSession)
+            completed.fulfill()
+        }
 
-        // 500ms + マージン 待機後も popupWebView は残る
-        try await Task.sleep(nanoseconds: 800_000_000)
-
-        XCTAssertNotNil(vm.popupWebView,
-            "checkPopupLogin should NOT call closePopup() when session is invalid")
+        wait(for: [completed], timeout: 2.0)
+        XCTAssertEqual(stubFetcher.hasValidSessionCallCount, 1)
+        XCTAssertTrue(sleeper.requestedDelays.isEmpty,
+            "the 500ms visual delay applies only after a valid session is found")
+        XCTAssertTrue(vm.popupWebView === popup)
+        XCTAssertFalse(vm.isLoggedIn)
     }
 
-    // MARK: - handlePopupClosed: 1秒待機
-
-    /// handlePopupClosed() は 1秒待機後に hasValidSession を確認し、
-    /// true であれば handleSessionDetected() を呼ぶ（isLoggedIn = true になる）。
-    func testHandlePopupClosed_callsHandleSessionDetected_whenSessionValid() async throws {
-        let vm = makeVM()
+    func testClosePopupCancelsPendingCheckAndStaleWorkCannotRestoreSession() {
+        let sleeper = ManualSleeper()
+        let sleepStarted = expectation(description: "popup check reached delay")
+        sleeper.onSleep = { _ in sleepStarted.fulfill() }
+        let sleepReturned = expectation(description: "stale popup delay returned")
+        sleeper.onSleepReturn = { sleepReturned.fulfill() }
+        let cancelled = expectation(description: "pending popup check cancelled")
+        cancelled.assertForOverFulfill = true
+        let vm = makeVM(startLifecycle: false, sleeper: sleeper.sleep)
         stubFetcher.hasValidSessionResult = true
+
+        let popup = WKWebView(frame: .zero)
+        vm.popupWebView = popup
+        var completionCount = 0
+        vm.checkPopupLogin { outcome in
+            completionCount += 1
+            XCTAssertEqual(outcome, .cancelled)
+            cancelled.fulfill()
+        }
+        wait(for: [sleepStarted], timeout: 2.0)
+        XCTAssertTrue(vm.popupWebView === popup,
+            "the ViewModel must own the popup until it is explicitly closed")
+
+        vm.closePopup()
+        wait(for: [cancelled], timeout: 2.0)
+        XCTAssertNil(vm.popupWebView)
+        XCTAssertEqual(completionCount, 1, "closing the popup must cancel the check exactly once")
+
+        sleeper.resumeNext()
+        wait(for: [sleepReturned], timeout: 2.0)
+        XCTAssertFalse(vm.isLoggedIn, "cancelled stale work must not accept the old session")
+        XCTAssertNil(vm.popupWebView, "cancelled stale work must not restore the popup reference")
+        XCTAssertEqual(completionCount, 1, "cancelled stale work must not complete again")
+    }
+
+    // MARK: - handlePopupClosed: 1s clock semantics
+
+    func testHandlePopupClosed_validSessionChecksOnlyAfterOneSecondDelay() {
+        let sleeper = ManualSleeper()
+        let sleepStarted = expectation(description: "cookie propagation delay started")
+        sleeper.onSleep = { delay in
+            XCTAssertEqual(delay, 1.0)
+            sleepStarted.fulfill()
+        }
+        let completed = expectation(description: "closed popup session accepted")
+        completed.assertForOverFulfill = true
+        let vm = makeVM(startLifecycle: false, sleeper: sleeper.sleep)
+        stubFetcher.hasValidSessionResult = true
+
+        vm.handlePopupClosed { outcome in
+            XCTAssertEqual(outcome, .sessionAccepted)
+            completed.fulfill()
+        }
+
+        wait(for: [sleepStarted], timeout: 2.0)
+        XCTAssertEqual(sleeper.requestedDelays, [1.0])
+        XCTAssertEqual(stubFetcher.hasValidSessionCallCount, 0,
+            "session lookup must happen after the cookie propagation delay")
         XCTAssertFalse(vm.isLoggedIn)
 
-        vm.handlePopupClosed()
-
-        // 1000ms + マージン = 1500ms 待機
-        try await Task.sleep(nanoseconds: 1_500_000_000)
-
-        XCTAssertTrue(vm.isLoggedIn,
-            "handlePopupClosed should call handleSessionDetected after 1s when session is valid")
+        sleeper.resumeNext()
+        wait(for: [completed], timeout: 2.0)
+        XCTAssertEqual(stubFetcher.hasValidSessionCallCount, 1)
+        XCTAssertTrue(vm.isLoggedIn)
     }
 
-    /// handlePopupClosed() は hasValidSession が false のとき handleSessionDetected() を呼ばない。
-    func testHandlePopupClosed_doesNotSetLoggedIn_whenSessionInvalid() async throws {
-        let vm = makeVM()
+    func testHandlePopupClosed_invalidSessionReturnsExplicitOutcome() {
+        let sleeper = ManualSleeper()
+        let sleepStarted = expectation(description: "cookie propagation delay started")
+        sleeper.onSleep = { delay in
+            XCTAssertEqual(delay, 1.0)
+            sleepStarted.fulfill()
+        }
+        let completed = expectation(description: "closed popup session rejected")
+        completed.assertForOverFulfill = true
+        let vm = makeVM(startLifecycle: false, sleeper: sleeper.sleep)
         stubFetcher.hasValidSessionResult = false
 
-        vm.handlePopupClosed()
+        vm.handlePopupClosed { outcome in
+            XCTAssertEqual(outcome, .noValidSession)
+            completed.fulfill()
+        }
 
-        try await Task.sleep(nanoseconds: 1_500_000_000)
+        wait(for: [sleepStarted], timeout: 2.0)
+        sleeper.resumeNext()
+        wait(for: [completed], timeout: 2.0)
+        XCTAssertEqual(stubFetcher.hasValidSessionCallCount, 1)
+        XCTAssertFalse(vm.isLoggedIn)
+    }
 
-        XCTAssertFalse(vm.isLoggedIn,
-            "handlePopupClosed should NOT call handleSessionDetected when session is invalid")
+    func testHandlePopupClosedReplacementCancelsStaleDelayedCheck() {
+        let sleeper = ManualSleeper()
+        let firstSleepStarted = expectation(description: "first popup-close delay started")
+        let sleepsStarted = expectation(description: "both popup-close delays started")
+        sleepsStarted.expectedFulfillmentCount = 2
+        var sleepStartCount = 0
+        sleeper.onSleep = { delay in
+            XCTAssertEqual(delay, 1.0)
+            sleepStartCount += 1
+            if sleepStartCount == 1 {
+                firstSleepStarted.fulfill()
+            }
+            sleepsStarted.fulfill()
+        }
+        let firstCancelled = expectation(description: "first popup-close check cancelled")
+        firstCancelled.assertForOverFulfill = true
+        let secondCompleted = expectation(description: "replacement popup-close check completed")
+        secondCompleted.assertForOverFulfill = true
+        let staleSleepReturned = expectation(description: "stale popup-close delay returned")
+        let currentSleepReturned = expectation(description: "current popup-close delay returned")
+        var sleepReturnCount = 0
+        sleeper.onSleepReturn = {
+            sleepReturnCount += 1
+            if sleepReturnCount == 1 {
+                staleSleepReturned.fulfill()
+            } else {
+                currentSleepReturned.fulfill()
+            }
+        }
+        let vm = makeVM(startLifecycle: false, sleeper: sleeper.sleep)
+        stubFetcher.hasValidSessionResult = true
+
+        vm.handlePopupClosed { outcome in
+            XCTAssertEqual(outcome, .cancelled)
+            firstCancelled.fulfill()
+        }
+        wait(for: [firstSleepStarted], timeout: 2.0)
+        stubFetcher.hasValidSessionResult = false
+        vm.handlePopupClosed { outcome in
+            XCTAssertEqual(outcome, .noValidSession)
+            secondCompleted.fulfill()
+        }
+
+        wait(for: [sleepsStarted, firstCancelled], timeout: 2.0)
+        sleeper.resumeNext()
+        wait(for: [staleSleepReturned], timeout: 2.0)
+        XCTAssertEqual(stubFetcher.hasValidSessionCallCount, 0,
+            "resumed stale work must not perform a session lookup")
+
+        sleeper.resumeNext()
+        wait(for: [currentSleepReturned, secondCompleted], timeout: 2.0)
+        XCTAssertEqual(stubFetcher.hasValidSessionCallCount, 1)
+        XCTAssertFalse(vm.isLoggedIn)
     }
 
     // MARK: - signOut: @Published 状態リセット
@@ -373,34 +497,59 @@ final class ViewModelSessionTests: XCTestCase {
 
     // MARK: - signOut: loginPollTimer 再開
 
-    /// signOut() は非同期コールバック完了後に startLoginPolling() を呼び、
-    /// loginPollTimer 再設定後に completion を1回呼ぶ。
-    func testSignOut_restartsLoginPolling() async {
-        let vm = makeVM()
-        // init() calls startLoginPolling(), so timer is already set
-        XCTAssertNotNil(vm.loginPollTimer)
+    /// The terminal callback runs only after WebView cleanup, page reload, and polling restart.
+    func testSignOut_completionObservesExactTerminalOrdering() {
+        let scheduler = ManualViewModelTimerScheduler()
+        let vm = makeVM(startLifecycle: false, timerScheduler: scheduler)
+        let cookieStore = vm.webView.configuration.websiteDataStore.httpCookieStore
+        let cookie = HTTPCookie(properties: [
+            .domain: "claude.ai",
+            .path: "/",
+            .name: "sessionKey",
+            .value: "test-session",
+            .secure: "TRUE"
+        ])!
+        let cookieStored = expectation(description: "cookie stored before sign-out")
+        cookieStore.setCookie(cookie) { cookieStored.fulfill() }
+        wait(for: [cookieStored], timeout: 2.0)
 
-        // Simulate state where polling has been stopped (e.g., by applyResult).
-        vm.loginPollTimer?.invalidate()
-        vm.loginPollTimer = nil
-        XCTAssertNil(vm.loginPollTimer)
-
-        let completed = expectation(description: "signOut asynchronous cleanup completed")
+        vm.handleSessionDetected()
+        vm.fiveHourPercent = 50
+        vm.sevenDayPercent = 80
+        let completed = expectation(description: "sign-out terminal completion")
         completed.assertForOverFulfill = true
         var completionCount = 0
 
-        vm.signOut {
+        vm.signOut { outcome in
             completionCount += 1
+            XCTAssertEqual(outcome, .completed)
+            XCTAssertFalse(vm.isLoggedIn)
+            XCTAssertNil(vm.fiveHourPercent)
+            XCTAssertNil(vm.sevenDayPercent)
+            XCTAssertEqual(self.widgetReloader.reloadCount, 1,
+                "widget reload must precede asynchronous WebView cleanup")
             XCTAssertNotNil(vm.loginPollTimer,
-                "signOut completion must run after startLoginPolling()")
+                "terminal completion must follow startLoginPolling()")
+            XCTAssertEqual(scheduler.validTimers.count, 1)
+            XCTAssertEqual(scheduler.validTimers[0].timeInterval, 3.0)
+            XCTAssertEqual(vm.webView.url?.host, UsageViewModel.targetHost,
+                "terminal completion must follow loadUsagePage()")
             completed.fulfill()
         }
 
-        await fulfillment(of: [completed], timeout: 5.0)
-        XCTAssertEqual(completionCount, 1,
-            "signOut completion should be called exactly once")
-        XCTAssertNotNil(vm.loginPollTimer,
-            "signOut should restart login polling via startLoginPolling()")
+        XCTAssertFalse(vm.isLoggedIn, "published state resets synchronously")
+        XCTAssertEqual(widgetReloader.reloadCount, 1,
+            "widget reload is requested before asynchronous cleanup finishes")
+        wait(for: [completed], timeout: 5.0)
+        XCTAssertEqual(completionCount, 1)
+
+        let cookiesRead = expectation(description: "cookies inspected after sign-out")
+        cookieStore.getAllCookies { cookies in
+            XCTAssertFalse(cookies.contains { $0.name == "sessionKey" },
+                "terminal completion must follow individual cookie deletion")
+            cookiesRead.fulfill()
+        }
+        wait(for: [cookiesRead], timeout: 2.0)
     }
 
     // MARK: - signOut: lastRedirectAt リセット

@@ -7,6 +7,7 @@ final class UsageStoreTests: XCTestCase {
 
     private var tmpDir: URL!
     private var store: UsageStore!
+    private let fixtureTime = Date(timeIntervalSince1970: 1_786_450_000)
 
     override func setUp() {
         super.setUp()
@@ -362,18 +363,17 @@ final class UsageStoreTests: XCTestCase {
     }
 
     func testLoadAllHistory_orderedByTimestamp() {
-        store.save(makeResult(fiveHourPercent: 10.0))
-        usleep(1_100_000) // 1.1s gap for unique epoch seconds
-        store.save(makeResult(fiveHourPercent: 20.0))
-        usleep(1_100_000)
-        store.save(makeResult(fiveHourPercent: 30.0))
+        let timestamps = (0..<3).map {
+            fixtureTime.addingTimeInterval(TimeInterval($0))
+        }
+        store.save(makeResult(fiveHourPercent: 10.0), timestamp: timestamps[0])
+        store.save(makeResult(fiveHourPercent: 20.0), timestamp: timestamps[1])
+        store.save(makeResult(fiveHourPercent: 30.0), timestamp: timestamps[2])
 
         let history = store.loadAllHistory()
         XCTAssertEqual(history.count, 3)
-        for i in 1..<history.count {
-            XCTAssertTrue(history[i].timestamp >= history[i-1].timestamp,
-                          "History should be ordered by timestamp ASC")
-        }
+        XCTAssertEqual(history.map(\.timestamp), timestamps,
+                       "History should be ordered by timestamp ASC")
     }
 
     func testLoadAllHistory_resetsAtParsed() {
@@ -405,53 +405,66 @@ final class UsageStoreTests: XCTestCase {
     // MARK: - Load History (windowed)
 
     func testLoadHistory_windowFilter() {
-        store.save(makeResult(fiveHourPercent: 50.0))
+        store.save(makeResult(fiveHourPercent: 50.0), timestamp: fixtureTime)
 
-        let recent = store.loadHistory(windowSeconds: 3600)
+        let recent = store.loadHistory(
+            windowSeconds: 3600,
+            now: fixtureTime.addingTimeInterval(3600)
+        )
         XCTAssertEqual(recent.count, 1)
 
-        let none = store.loadHistory(windowSeconds: 0)
-        XCTAssertLessThanOrEqual(none.count, 1)
+        let none = store.loadHistory(
+            windowSeconds: 0,
+            now: fixtureTime.addingTimeInterval(1)
+        )
+        XCTAssertEqual(none.count, 0)
     }
 
     func testLoadHistory_emptyDB() {
-        let history = store.loadHistory(windowSeconds: 3600)
+        let history = store.loadHistory(windowSeconds: 3600, now: fixtureTime)
         XCTAssertEqual(history.count, 0)
     }
 
     func testLoadHistory_epochComparison() {
-        store.save(makeResult(fiveHourPercent: 50.0))
+        store.save(makeResult(fiveHourPercent: 50.0), timestamp: fixtureTime)
 
         // 1-hour window should include it
-        let recent = store.loadHistory(windowSeconds: 3600)
+        let recent = store.loadHistory(
+            windowSeconds: 3600,
+            now: fixtureTime.addingTimeInterval(3600)
+        )
         XCTAssertEqual(recent.count, 1)
 
-        // Verify timestamp is a valid recent epoch (within last minute)
-        let now = Date().timeIntervalSince1970
         let ts = recent[0].timestamp.timeIntervalSince1970
-        XCTAssertTrue(abs(now - ts) < 60, "Timestamp should be recent epoch, got \(ts)")
+        XCTAssertEqual(ts, fixtureTime.timeIntervalSince1970, accuracy: 0.0)
     }
 
     // MARK: - Timestamp epoch round-trip
 
     func testTimestamp_epochRoundTrip() {
-        store.save(makeResult(fiveHourPercent: 42.0))
+        store.save(makeResult(fiveHourPercent: 42.0), timestamp: fixtureTime)
 
         let history = store.loadAllHistory()
         XCTAssertEqual(history.count, 1)
         let ts = history[0].timestamp.timeIntervalSince1970
-        let now = Date().timeIntervalSince1970
-        // Timestamp should be within 1 second of now (epoch seconds precision)
-        XCTAssertEqual(ts, now, accuracy: 1.0, "Epoch round-trip should preserve second precision")
+        XCTAssertEqual(ts, fixtureTime.timeIntervalSince1970, accuracy: 0.0,
+                       "Epoch round-trip should preserve second precision")
     }
 
     // MARK: - loadHistory returns resets_at via JOIN
 
     func testLoadHistory_returnsResetsAt() {
         let resetsAt = Date(timeIntervalSince1970: 1_740_024_000)
-        store.save(makeResult(fiveHourPercent: 50.0, fiveHourResetsAt: resetsAt, sevenDayResetsAt: resetsAt))
+        store.save(
+            makeResult(
+                fiveHourPercent: 50.0,
+                fiveHourResetsAt: resetsAt,
+                sevenDayResetsAt: resetsAt
+            ),
+            timestamp: fixtureTime
+        )
 
-        let windowed = store.loadHistory(windowSeconds: 3600)
+        let windowed = store.loadHistory(windowSeconds: 3600, now: fixtureTime)
         XCTAssertEqual(windowed.count, 1)
         XCTAssertNotNil(windowed[0].fiveHourResetsAt,
                         "loadHistory should return resets_at via JOIN")
@@ -464,8 +477,10 @@ final class UsageStoreTests: XCTestCase {
 
     func testSave_sequentialSavesAccumulate() {
         for i in 0..<10 {
-            store.save(makeResult(fiveHourPercent: Double(i * 10)))
-            usleep(5_000)
+            store.save(
+                makeResult(fiveHourPercent: Double(i * 10)),
+                timestamp: fixtureTime.addingTimeInterval(TimeInterval(i))
+            )
         }
         let history = store.loadAllHistory()
         XCTAssertEqual(history.count, 10, "10 sequential saves should produce 10 rows")
@@ -506,8 +521,8 @@ final class UsageStoreTests: XCTestCase {
     // MARK: - loadHistory with negative windowSeconds
 
     func testLoadHistory_negativeWindow() {
-        store.save(makeResult(fiveHourPercent: 50.0))
-        let history = store.loadHistory(windowSeconds: -3600)
+        store.save(makeResult(fiveHourPercent: 50.0), timestamp: fixtureTime)
+        let history = store.loadHistory(windowSeconds: -3600, now: fixtureTime)
         XCTAssertEqual(history.count, 0, "Negative window should return no records")
     }
 
@@ -536,11 +551,19 @@ final class UsageStoreTests: XCTestCase {
     // MARK: - NULL percent rows
 
     func testLoadHistory_includesRowsWithPartialNilPercents() {
-        store.save(makeResult(fiveHourPercent: nil, sevenDayPercent: 10.0))
-        usleep(1_100_000)
-        store.save(makeResult(fiveHourPercent: 26.0, sevenDayPercent: 54.0))
+        store.save(
+            makeResult(fiveHourPercent: nil, sevenDayPercent: 10.0),
+            timestamp: fixtureTime
+        )
+        store.save(
+            makeResult(fiveHourPercent: 26.0, sevenDayPercent: 54.0),
+            timestamp: fixtureTime.addingTimeInterval(1)
+        )
 
-        let history = store.loadHistory(windowSeconds: 3600)
+        let history = store.loadHistory(
+            windowSeconds: 3600,
+            now: fixtureTime.addingTimeInterval(3600)
+        )
         XCTAssertEqual(history.count, 2)
         XCTAssertNil(history[0].fiveHourPercent)
         XCTAssertEqual(history[0].sevenDayPercent, 10.0)
@@ -548,11 +571,18 @@ final class UsageStoreTests: XCTestCase {
     }
 
     func testLoadAllHistory_mixedNilAndValid() {
-        store.save(makeResult(fiveHourPercent: nil, sevenDayPercent: 10.0))
-        usleep(1_100_000)
-        store.save(makeResult(fiveHourPercent: 25.0, sevenDayPercent: nil))
-        usleep(1_100_000)
-        store.save(makeResult(fiveHourPercent: 30.0, sevenDayPercent: 50.0))
+        store.save(
+            makeResult(fiveHourPercent: nil, sevenDayPercent: 10.0),
+            timestamp: fixtureTime
+        )
+        store.save(
+            makeResult(fiveHourPercent: 25.0, sevenDayPercent: nil),
+            timestamp: fixtureTime.addingTimeInterval(1)
+        )
+        store.save(
+            makeResult(fiveHourPercent: 30.0, sevenDayPercent: 50.0),
+            timestamp: fixtureTime.addingTimeInterval(2)
+        )
 
         let history = store.loadAllHistory()
         XCTAssertEqual(history.count, 3)
@@ -575,11 +605,18 @@ final class UsageStoreTests: XCTestCase {
 
     func testLoadCurrentWeeklySession_singleSession() {
         let weeklyResets = Date(timeIntervalSince1970: 1_740_096_000) // 2025-02-20 22:00 UTC
-        store.save(makeResult(sevenDayPercent: 5.0, sevenDayResetsAt: weeklyResets))
-        usleep(1_100_000)
-        store.save(makeResult(sevenDayPercent: 10.0, sevenDayResetsAt: weeklyResets))
-        usleep(1_100_000)
-        store.save(makeResult(sevenDayPercent: 15.0, sevenDayResetsAt: weeklyResets))
+        store.save(
+            makeResult(sevenDayPercent: 5.0, sevenDayResetsAt: weeklyResets),
+            timestamp: fixtureTime
+        )
+        store.save(
+            makeResult(sevenDayPercent: 10.0, sevenDayResetsAt: weeklyResets),
+            timestamp: fixtureTime.addingTimeInterval(1)
+        )
+        store.save(
+            makeResult(sevenDayPercent: 15.0, sevenDayResetsAt: weeklyResets),
+            timestamp: fixtureTime.addingTimeInterval(2)
+        )
 
         guard let session = store.loadCurrentWeeklySession() else {
             XCTFail("Expected session")
@@ -595,14 +632,23 @@ final class UsageStoreTests: XCTestCase {
         let olderResets = Date(timeIntervalSince1970: 1_740_096_000)  // older
         let newerResets = Date(timeIntervalSince1970: 1_740_700_800)  // ~7 days later
         // Older session rows
-        store.save(makeResult(sevenDayPercent: 40.0, sevenDayResetsAt: olderResets))
-        usleep(1_100_000)
-        store.save(makeResult(sevenDayPercent: 50.0, sevenDayResetsAt: olderResets))
-        usleep(1_100_000)
+        store.save(
+            makeResult(sevenDayPercent: 40.0, sevenDayResetsAt: olderResets),
+            timestamp: fixtureTime
+        )
+        store.save(
+            makeResult(sevenDayPercent: 50.0, sevenDayResetsAt: olderResets),
+            timestamp: fixtureTime.addingTimeInterval(1)
+        )
         // Newer session rows
-        store.save(makeResult(sevenDayPercent: 5.0, sevenDayResetsAt: newerResets))
-        usleep(1_100_000)
-        store.save(makeResult(sevenDayPercent: 10.0, sevenDayResetsAt: newerResets))
+        store.save(
+            makeResult(sevenDayPercent: 5.0, sevenDayResetsAt: newerResets),
+            timestamp: fixtureTime.addingTimeInterval(2)
+        )
+        store.save(
+            makeResult(sevenDayPercent: 10.0, sevenDayResetsAt: newerResets),
+            timestamp: fixtureTime.addingTimeInterval(3)
+        )
 
         guard let session = store.loadCurrentWeeklySession() else {
             XCTFail("Expected session")
@@ -621,13 +667,20 @@ final class UsageStoreTests: XCTestCase {
     func testLoadCurrentWeeklySession_nullSessionRowsExcluded() {
         let weeklyResets = Date(timeIntervalSince1970: 1_740_096_000)
         // Row with a weekly session
-        store.save(makeResult(sevenDayPercent: 20.0, sevenDayResetsAt: weeklyResets))
-        usleep(1_100_000)
+        store.save(
+            makeResult(sevenDayPercent: 20.0, sevenDayResetsAt: weeklyResets),
+            timestamp: fixtureTime
+        )
         // Row with weekly_percent but NO resets_at → weekly_session_id will be NULL
-        store.save(makeResult(sevenDayPercent: 25.0, sevenDayResetsAt: nil))
-        usleep(1_100_000)
+        store.save(
+            makeResult(sevenDayPercent: 25.0, sevenDayResetsAt: nil),
+            timestamp: fixtureTime.addingTimeInterval(1)
+        )
         // Another row with session
-        store.save(makeResult(sevenDayPercent: 30.0, sevenDayResetsAt: weeklyResets))
+        store.save(
+            makeResult(sevenDayPercent: 30.0, sevenDayResetsAt: weeklyResets),
+            timestamp: fixtureTime.addingTimeInterval(2)
+        )
 
         guard let session = store.loadCurrentWeeklySession() else {
             XCTFail("Expected session")
@@ -638,14 +691,12 @@ final class UsageStoreTests: XCTestCase {
     }
 
     func testLoadCurrentWeeklySession_windowBounds() {
-        // resetsAt must be in the future relative to save() timestamps (which use Date()).
-        let weeklyResets = Date().addingTimeInterval(7 * 24 * 3600)
-        // Round to the hour to match normalizeResetsAt() and ensure stable comparison.
-        let normalizedEpoch = Int64(store.normalizeResetsAt(weeklyResets))
-        let stableResets = Date(timeIntervalSince1970: TimeInterval(normalizedEpoch))
-        for percent in [3.0, 7.0, 11.0] {
-            store.save(makeResult(sevenDayPercent: percent, sevenDayResetsAt: stableResets))
-            usleep(1_100_000)
+        let stableResets = Date(timeIntervalSince1970: 1_787_058_000)
+        for (offset, percent) in [3.0, 7.0, 11.0].enumerated() {
+            store.save(
+                makeResult(sevenDayPercent: percent, sevenDayResetsAt: stableResets),
+                timestamp: fixtureTime.addingTimeInterval(TimeInterval(offset))
+            )
         }
         guard let session = store.loadCurrentWeeklySession() else {
             XCTFail("Expected session")

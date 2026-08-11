@@ -89,8 +89,16 @@ final class UsageStore {
     // MARK: - Static convenience (delegates to shared)
 
     static func save(_ result: UsageResult) { shared.save(result) }
+    static func save(_ result: UsageResult, timestamp: Date) {
+        shared.save(result, timestamp: timestamp)
+    }
     static func loadAllHistory() -> [DataPoint] { shared.loadAllHistory() }
-    static func loadHistory(windowSeconds: TimeInterval) -> [DataPoint] { shared.loadHistory(windowSeconds: windowSeconds) }
+    static func loadHistory(windowSeconds: TimeInterval) -> [DataPoint] {
+        shared.loadHistory(windowSeconds: windowSeconds)
+    }
+    static func loadHistory(windowSeconds: TimeInterval, now: Date) -> [DataPoint] {
+        shared.loadHistory(windowSeconds: windowSeconds, now: now)
+    }
     static func loadCurrentWeeklySession() -> WeeklySession? { shared.loadCurrentWeeklySession() }
 
     // MARK: - normalizeResetsAt
@@ -106,6 +114,10 @@ final class UsageStore {
     // MARK: - Save
 
     func save(_ result: UsageResult) {
+        save(result, timestamp: Date())
+    }
+
+    func save(_ result: UsageResult, timestamp: Date) {
         guard result.fiveHourPercent != nil || result.sevenDayPercent != nil else { return }
 
         do {
@@ -124,7 +136,7 @@ final class UsageStore {
             }
             self.migrateUsageLog(db)
 
-            let now = Int64(Date().timeIntervalSince1970)
+            let timestampEpoch = Int64(timestamp.timeIntervalSince1970)
 
             let hourlySID = result.fiveHourResetsAt.flatMap { self.getOrCreateHourlySessionId(db: db, date: $0) }
             let weeklySID = result.sevenDayResetsAt.flatMap { self.getOrCreateWeeklySessionId(db: db, date: $0) }
@@ -136,7 +148,7 @@ final class UsageStore {
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?);
                 """
             SQLiteHelper.withStatement(db: db, sql: insertSQL) { stmt in
-                sqlite3_bind_int64(stmt, 1, now)
+                sqlite3_bind_int64(stmt, 1, timestampEpoch)
                 SQLiteHelper.bindDouble(stmt, 2, result.fiveHourPercent)
                 SQLiteHelper.bindDouble(stmt, 3, result.sevenDayPercent)
                 SQLiteHelper.bindInt64(stmt, 4, hourlySID)
@@ -146,7 +158,7 @@ final class UsageStore {
                 let hasExactReset = result.fiveHourResetsAt != nil || result.sevenDayResetsAt != nil
                 SQLiteHelper.bindDouble(
                     stmt, 8,
-                    hasExactReset ? (result.resetTimesObservedAt ?? Date()).timeIntervalSince1970 : nil
+                    hasExactReset ? (result.resetTimesObservedAt ?? timestamp).timeIntervalSince1970 : nil
                 )
 
                 if sqlite3_step(stmt) != SQLITE_DONE {
@@ -196,7 +208,7 @@ final class UsageStore {
                 FROM usage_log u
                 LEFT JOIN hourly_sessions hs ON u.hourly_session_id = hs.id
                 LEFT JOIN weekly_sessions ws ON u.weekly_session_id = ws.id
-                ORDER BY u.timestamp ASC;
+                ORDER BY u.timestamp ASC, u.id ASC;
                 """
             return SQLiteHelper.withStatement(db: db, sql: sql) { stmt in
                 readDataPoints(stmt)
@@ -207,8 +219,12 @@ final class UsageStore {
     // MARK: - Load History (windowed)
 
     func loadHistory(windowSeconds: TimeInterval) -> [DataPoint] {
+        loadHistory(windowSeconds: windowSeconds, now: Date())
+    }
+
+    func loadHistory(windowSeconds: TimeInterval, now: Date) -> [DataPoint] {
         withDatabase { db in
-            let cutoff = Int64(Date().addingTimeInterval(-windowSeconds).timeIntervalSince1970)
+            let cutoff = Int64(now.addingTimeInterval(-windowSeconds).timeIntervalSince1970)
             let sql = """
                 SELECT u.timestamp, u.hourly_percent, u.weekly_percent,
                        COALESCE(u.five_hour_resets_at, hs.resets_at) AS hourly_resets_at,
@@ -221,7 +237,7 @@ final class UsageStore {
                 LEFT JOIN hourly_sessions hs ON u.hourly_session_id = hs.id
                 LEFT JOIN weekly_sessions ws ON u.weekly_session_id = ws.id
                 WHERE u.timestamp >= ?
-                ORDER BY u.timestamp ASC;
+                ORDER BY u.timestamp ASC, u.id ASC;
                 """
             return SQLiteHelper.withStatement(db: db, sql: sql) { stmt in
                 sqlite3_bind_int64(stmt, 1, cutoff)
@@ -262,7 +278,7 @@ final class UsageStore {
                     ORDER BY id DESC LIMIT 1
                 )
                 AND u.weekly_percent IS NOT NULL
-                ORDER BY u.timestamp ASC;
+                ORDER BY u.timestamp ASC, u.id ASC;
                 """
             return SQLiteHelper.withStatement(db: db, sql: sql) { stmt -> WeeklySession? in
                 let points = readDataPoints(stmt)
@@ -293,7 +309,7 @@ final class UsageStore {
                 FROM usage_log u
                 LEFT JOIN weekly_sessions ws ON u.weekly_session_id = ws.id
                 WHERE u.timestamp >= ? AND u.weekly_percent IS NOT NULL
-                ORDER BY u.timestamp ASC;
+                ORDER BY u.timestamp ASC, u.id ASC;
                 """
             var stmt: OpaquePointer?
             guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return nil }

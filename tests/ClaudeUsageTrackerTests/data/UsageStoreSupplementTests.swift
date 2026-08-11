@@ -8,6 +8,7 @@ final class UsageStoreSupplementTests: XCTestCase {
 
     private var tmpDir: URL!
     private var store: UsageStore!
+    private let fixtureTime = Date(timeIntervalSince1970: 1_786_450_000)
 
     override func setUp() {
         super.setUp()
@@ -40,15 +41,15 @@ final class UsageStoreSupplementTests: XCTestCase {
 
     func testLoadDailyUsage_noRecords_returnsNil() {
         // Spec: "対象期間のレコードが2件未満" → nil
-        let since = Date(timeIntervalSinceNow: -3600)
+        let since = fixtureTime
         let result = store.loadDailyUsage(since: since)
         XCTAssertNil(result, "0 records in period should return nil")
     }
 
     func testLoadDailyUsage_oneRecord_returnsNil() {
         // Spec: "対象期間のレコードが2件未満" → nil (1件でも同様)
-        let since = Date(timeIntervalSinceNow: -3600)
-        store.save(makeResult(sevenDayPercent: 10.0))
+        let since = fixtureTime
+        store.save(makeResult(sevenDayPercent: 10.0), timestamp: fixtureTime)
         let result = store.loadDailyUsage(since: since)
         XCTAssertNil(result, "1 record in period should return nil")
     }
@@ -58,10 +59,16 @@ final class UsageStoreSupplementTests: XCTestCase {
     func testLoadDailyUsage_singleSession_twoRecords_returnsIncrease() {
         // Spec: 1セッション内 last - first の増加量を返す
         // Session A: [10%, 30%] → 30 - 10 = 20
-        let since = Date(timeIntervalSinceNow: -3600)
+        let since = fixtureTime
         let sessionResets = Date(timeIntervalSince1970: 1_740_024_000) // exact hour
-        store.save(makeResult(sevenDayPercent: 10.0, sevenDayResetsAt: sessionResets))
-        store.save(makeResult(sevenDayPercent: 30.0, sevenDayResetsAt: sessionResets))
+        store.save(
+            makeResult(sevenDayPercent: 10.0, sevenDayResetsAt: sessionResets),
+            timestamp: fixtureTime
+        )
+        store.save(
+            makeResult(sevenDayPercent: 30.0, sevenDayResetsAt: sessionResets),
+            timestamp: fixtureTime.addingTimeInterval(1)
+        )
         let result = store.loadDailyUsage(since: since)
         XCTAssertNotNil(result)
         XCTAssertEqual(result!, 20.0, accuracy: 0.01,
@@ -75,14 +82,18 @@ final class UsageStoreSupplementTests: XCTestCase {
         //   Session A: [10%, 20%, 30%] → 20%
         //   Session B: [5%, 15%]       → 10%
         //   合計: 30%
-        let since = Date(timeIntervalSinceNow: -3600)
+        let since = fixtureTime
         let sessionA = Date(timeIntervalSince1970: 1_740_024_000) // hour N
         let sessionB = Date(timeIntervalSince1970: 1_740_042_000) // hour N+5
-        store.save(makeResult(sevenDayPercent: 10.0, sevenDayResetsAt: sessionA))
-        store.save(makeResult(sevenDayPercent: 20.0, sevenDayResetsAt: sessionA))
-        store.save(makeResult(sevenDayPercent: 30.0, sevenDayResetsAt: sessionA))
-        store.save(makeResult(sevenDayPercent: 5.0, sevenDayResetsAt: sessionB))
-        store.save(makeResult(sevenDayPercent: 15.0, sevenDayResetsAt: sessionB))
+        store.save(makeResult(sevenDayPercent: 10.0, sevenDayResetsAt: sessionA), timestamp: fixtureTime)
+        store.save(makeResult(sevenDayPercent: 20.0, sevenDayResetsAt: sessionA),
+                   timestamp: fixtureTime.addingTimeInterval(1))
+        store.save(makeResult(sevenDayPercent: 30.0, sevenDayResetsAt: sessionA),
+                   timestamp: fixtureTime.addingTimeInterval(2))
+        store.save(makeResult(sevenDayPercent: 5.0, sevenDayResetsAt: sessionB),
+                   timestamp: fixtureTime.addingTimeInterval(3))
+        store.save(makeResult(sevenDayPercent: 15.0, sevenDayResetsAt: sessionB),
+                   timestamp: fixtureTime.addingTimeInterval(4))
         let result = store.loadDailyUsage(since: since)
         XCTAssertNotNil(result)
         XCTAssertEqual(result!, 30.0, accuracy: 0.01,
@@ -93,10 +104,16 @@ final class UsageStoreSupplementTests: XCTestCase {
 
     func testLoadDailyUsage_decreasingWithinSession_treatedAsZero() {
         // Spec: "各セッション内: max(0, last - first) で増加量を計算（減少は 0 扱い）"
-        let since = Date(timeIntervalSinceNow: -3600)
+        let since = fixtureTime
         let sessionResets = Date(timeIntervalSince1970: 1_740_024_000)
-        store.save(makeResult(sevenDayPercent: 50.0, sevenDayResetsAt: sessionResets))
-        store.save(makeResult(sevenDayPercent: 20.0, sevenDayResetsAt: sessionResets))
+        store.save(
+            makeResult(sevenDayPercent: 50.0, sevenDayResetsAt: sessionResets),
+            timestamp: fixtureTime
+        )
+        store.save(
+            makeResult(sevenDayPercent: 20.0, sevenDayResetsAt: sessionResets),
+            timestamp: fixtureTime.addingTimeInterval(1)
+        )
         let result = store.loadDailyUsage(since: since)
         XCTAssertNotNil(result)
         XCTAssertEqual(result!, 0.0, accuracy: 0.01,
@@ -107,10 +124,12 @@ final class UsageStoreSupplementTests: XCTestCase {
 
     func testLoadDailyUsage_nullResetsAt_treatedAsSameSession() {
         // Spec: "weekly_resets_at が NULL のレコードも、NULL 同士は同一セッションとして扱う"
-        let since = Date(timeIntervalSinceNow: -3600)
+        let since = fixtureTime
         // Save with nil sevenDayResetsAt (NULL in DB)
-        store.save(makeResult(sevenDayPercent: 5.0, sevenDayResetsAt: nil))
-        store.save(makeResult(sevenDayPercent: 25.0, sevenDayResetsAt: nil))
+        store.save(makeResult(sevenDayPercent: 5.0, sevenDayResetsAt: nil),
+                   timestamp: fixtureTime)
+        store.save(makeResult(sevenDayPercent: 25.0, sevenDayResetsAt: nil),
+                   timestamp: fixtureTime.addingTimeInterval(1))
         let result = store.loadDailyUsage(since: since)
         XCTAssertNotNil(result)
         XCTAssertEqual(result!, 20.0, accuracy: 0.01,
@@ -125,18 +144,19 @@ final class UsageStoreSupplementTests: XCTestCase {
         let oldResets = Date(timeIntervalSince1970: 1_740_024_000)
         let recentResets = Date(timeIntervalSince1970: 1_740_042_000)
 
-        // Old record (before since): use a far-past store to simulate an older timestamp
-        // We cannot control exact timestamp, so we use a wide-enough since to include only recent saves.
-        // Save "old" record first (it will have an earlier timestamp).
-        store.save(makeResult(sevenDayPercent: 80.0, sevenDayResetsAt: oldResets))
-        usleep(1_100_000) // ensure different epoch seconds
-
-        // "since" is set after the old record, just before the next saves
-        let since = Date()
-        usleep(100_000)
-
-        store.save(makeResult(sevenDayPercent: 5.0, sevenDayResetsAt: recentResets))
-        store.save(makeResult(sevenDayPercent: 15.0, sevenDayResetsAt: recentResets))
+        store.save(
+            makeResult(sevenDayPercent: 80.0, sevenDayResetsAt: oldResets),
+            timestamp: fixtureTime.addingTimeInterval(-1)
+        )
+        let since = fixtureTime
+        store.save(
+            makeResult(sevenDayPercent: 5.0, sevenDayResetsAt: recentResets),
+            timestamp: fixtureTime
+        )
+        store.save(
+            makeResult(sevenDayPercent: 15.0, sevenDayResetsAt: recentResets),
+            timestamp: fixtureTime.addingTimeInterval(1)
+        )
 
         let result = store.loadDailyUsage(since: since)
         XCTAssertNotNil(result)
@@ -149,10 +169,12 @@ final class UsageStoreSupplementTests: XCTestCase {
     func testLoadDailyUsage_rowsWithoutWeeklyPercent_notCounted() {
         // Spec query: WHERE ... AND u.weekly_percent IS NOT NULL
         // Rows with only fiveHourPercent should be ignored
-        let since = Date(timeIntervalSinceNow: -3600)
+        let since = fixtureTime
         // Only fiveHour rows → weekly_percent IS NULL → excluded from query → < 2 records → nil
-        store.save(makeResult(fiveHourPercent: 10.0, sevenDayPercent: nil))
-        store.save(makeResult(fiveHourPercent: 20.0, sevenDayPercent: nil))
+        store.save(makeResult(fiveHourPercent: 10.0, sevenDayPercent: nil),
+                   timestamp: fixtureTime)
+        store.save(makeResult(fiveHourPercent: 20.0, sevenDayPercent: nil),
+                   timestamp: fixtureTime.addingTimeInterval(1))
         let result = store.loadDailyUsage(since: since)
         XCTAssertNil(result,
                      "Rows with NULL weekly_percent must be excluded; 0 qualifying rows → nil")
@@ -165,16 +187,21 @@ final class UsageStoreSupplementTests: XCTestCase {
         // Session B: [50%, 30%] → max(0, 30-50) = 0 (decrease)
         // Session C: [10%, 40%] → 30
         // Total: 30%
-        let since = Date(timeIntervalSinceNow: -3600)
+        let since = fixtureTime
         let sessionA = Date(timeIntervalSince1970: 1_740_024_000)
         let sessionB = Date(timeIntervalSince1970: 1_740_042_000)
         let sessionC = Date(timeIntervalSince1970: 1_740_060_000)
-        store.save(makeResult(sevenDayPercent: 20.0, sevenDayResetsAt: sessionA))
-        store.save(makeResult(sevenDayPercent: 20.0, sevenDayResetsAt: sessionA))
-        store.save(makeResult(sevenDayPercent: 50.0, sevenDayResetsAt: sessionB))
-        store.save(makeResult(sevenDayPercent: 30.0, sevenDayResetsAt: sessionB))
-        store.save(makeResult(sevenDayPercent: 10.0, sevenDayResetsAt: sessionC))
-        store.save(makeResult(sevenDayPercent: 40.0, sevenDayResetsAt: sessionC))
+        store.save(makeResult(sevenDayPercent: 20.0, sevenDayResetsAt: sessionA), timestamp: fixtureTime)
+        store.save(makeResult(sevenDayPercent: 20.0, sevenDayResetsAt: sessionA),
+                   timestamp: fixtureTime.addingTimeInterval(1))
+        store.save(makeResult(sevenDayPercent: 50.0, sevenDayResetsAt: sessionB),
+                   timestamp: fixtureTime.addingTimeInterval(2))
+        store.save(makeResult(sevenDayPercent: 30.0, sevenDayResetsAt: sessionB),
+                   timestamp: fixtureTime.addingTimeInterval(3))
+        store.save(makeResult(sevenDayPercent: 10.0, sevenDayResetsAt: sessionC),
+                   timestamp: fixtureTime.addingTimeInterval(4))
+        store.save(makeResult(sevenDayPercent: 40.0, sevenDayResetsAt: sessionC),
+                   timestamp: fixtureTime.addingTimeInterval(5))
         let result = store.loadDailyUsage(since: since)
         XCTAssertNotNil(result)
         XCTAssertEqual(result!, 30.0, accuracy: 0.01,

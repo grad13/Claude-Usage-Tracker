@@ -3,7 +3,6 @@
 // Covers: fetchSilently success/error state, retry/retryCount reset, debug() logging
 
 import XCTest
-import Combine
 import ClaudeUsageTrackerShared
 @testable import ClaudeUsageTracker
 
@@ -29,14 +28,18 @@ final class ViewModelFetchSilentlyRetryTests: XCTestCase {
         alertChecker = MockAlertChecker()
     }
 
-    func makeVM() -> UsageViewModel {
+    func makeVM(
+        sleeper: @escaping UsageViewModel.Sleeper = { _ in }
+    ) -> UsageViewModel {
         ViewModelTestFactory.makeVM(
             fetcher: stubFetcher,
             settingsStore: settingsStore,
             usageStore: usageStore,
             widgetReloader: widgetReloader,
             loginItemManager: loginItemManager,
-            alertChecker: alertChecker
+            alertChecker: alertChecker,
+            startLifecycle: false,
+            sleeper: sleeper
         )
     }
 
@@ -48,10 +51,11 @@ final class ViewModelFetchSilentlyRetryTests: XCTestCase {
         let vm = makeVM()
         vm.isLoggedIn = true
 
-        vm.fetchSilently()
-
         let done = expectation(description: "fetchSilently completes without retry")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { done.fulfill() }
+        vm.fetchSilently { outcome in
+            XCTAssertEqual(outcome, .authenticationRequired)
+            done.fulfill()
+        }
         wait(for: [done], timeout: 3.0)
 
         // Auth error: should only call fetch once (no retry).
@@ -70,10 +74,11 @@ final class ViewModelFetchSilentlyRetryTests: XCTestCase {
         vm.isLoggedIn = false
         vm.error = "previous error"
 
-        vm.fetchSilently()
-
         let done = expectation(description: "fetchSilently success")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { done.fulfill() }
+        vm.fetchSilently { outcome in
+            XCTAssertEqual(outcome, .success)
+            done.fulfill()
+        }
         wait(for: [done], timeout: 2.0)
 
         XCTAssertTrue(vm.isLoggedIn,
@@ -86,7 +91,7 @@ final class ViewModelFetchSilentlyRetryTests: XCTestCase {
     }
 
     /// Spec: On success, retryCount resets to 0 and isAutoRefreshEnabled = true.
-    func testFetchSilently_success_enablesAutoRefresh() async {
+    func testFetchSilently_success_enablesAutoRefresh() {
         stubFetcher.fetchResult = .success(UsageResultFactory.make(
             fiveHourPercent: 30.0, sevenDayPercent: 10.0
         ))
@@ -95,19 +100,11 @@ final class ViewModelFetchSilentlyRetryTests: XCTestCase {
         vm.isAutoRefreshEnabled = false // was disabled by prior auth error
 
         let completed = expectation(description: "fetchSilently success")
-        completed.assertForOverFulfill = true
-        var observedFetching = false
-        let cancellable = vm.$isFetching.sink { isFetching in
-            if isFetching {
-                observedFetching = true
-            } else if observedFetching {
-                completed.fulfill()
-            }
+        vm.fetchSilently { outcome in
+            XCTAssertEqual(outcome, .success)
+            completed.fulfill()
         }
-
-        vm.fetchSilently()
-        await fulfillment(of: [completed], timeout: 2.0)
-        _ = cancellable
+        wait(for: [completed], timeout: 2.0)
 
         XCTAssertEqual(vm.isAutoRefreshEnabled, true,
                        "fetchSilently success must re-enable auto-refresh")
@@ -115,21 +112,119 @@ final class ViewModelFetchSilentlyRetryTests: XCTestCase {
     }
 
     /// Spec: isFetching guard prevents concurrent fetchSilently calls.
-    func testFetchSilently_isFetchingGuard_skipsDuplicate() {
-        // The isFetching guard is synchronous, so assert its result immediately.
-        stubFetcher.fetchResult = .success(UsageResultFactory.make(
-            fiveHourPercent: 10.0
-        ))
-
+    func testFetchSilently_isFetchingGuard_returnsBusy() {
         let vm = makeVM()
         vm.isFetching = true // simulate an in-progress fetch
 
-        let beforeCount = stubFetcher.fetchCallCount
-        vm.fetchSilently()
+        var observedOutcome: UsageViewModel.FetchOutcome?
+        vm.fetchSilently { observedOutcome = $0 }
 
-        XCTAssertEqual(stubFetcher.fetchCallCount, beforeCount,
+        XCTAssertEqual(observedOutcome, .busy)
+        XCTAssertEqual(stubFetcher.fetchCallCount, 0,
                        "fetchSilently must skip when isFetching is already true")
-        _ = vm
+    }
+
+    func testFetchSilently_retriesScriptedFailureThenSucceeds() {
+        struct TransientError: Error {}
+        stubFetcher.scriptedFetchResults = [
+            .failure(TransientError()),
+            .success(UsageResultFactory.make(fiveHourPercent: 61.0))
+        ]
+        var delays: [TimeInterval] = []
+        let vm = makeVM { delays.append($0) }
+
+        let completed = expectation(description: "retry succeeds")
+        vm.fetchSilently { outcome in
+            XCTAssertEqual(outcome, .success)
+            completed.fulfill()
+        }
+        wait(for: [completed], timeout: 2.0)
+
+        XCTAssertEqual(stubFetcher.fetchCallCount, 2)
+        XCTAssertEqual(delays, [30])
+        XCTAssertEqual(vm.fiveHourPercent, 61.0)
+    }
+
+    func testFetchSilently_exhaustsScriptedRetries() {
+        struct TransientError: LocalizedError {
+            var errorDescription: String? { "transient" }
+        }
+        stubFetcher.scriptedFetchResults = Array(
+            repeating: .failure(TransientError()),
+            count: 4
+        )
+        var delays: [TimeInterval] = []
+        let vm = makeVM { delays.append($0) }
+        vm.isLoggedIn = true
+
+        let completed = expectation(description: "retries exhausted")
+        vm.fetchSilently { outcome in
+            XCTAssertEqual(outcome, .failure)
+            completed.fulfill()
+        }
+        wait(for: [completed], timeout: 2.0)
+
+        XCTAssertEqual(stubFetcher.fetchCallCount, 4)
+        XCTAssertEqual(delays, [30, 60, 120])
+        XCTAssertEqual(vm.error, "transient")
+    }
+
+    func testFetchSilently_cancelledDuringRetrySleep_finishesOnce() {
+        struct TransientError: Error {}
+        stubFetcher.fetchResult = .failure(TransientError())
+        let sleeper = ManualSleeper()
+        let sleepStarted = expectation(description: "retry sleep started")
+        sleeper.onSleep = { delay in
+            XCTAssertEqual(delay, 30)
+            sleepStarted.fulfill()
+        }
+        let sleepReturned = expectation(description: "cancelled retry sleep returned")
+        sleeper.onSleepReturn = { sleepReturned.fulfill() }
+        let vm = makeVM(sleeper: sleeper.sleep)
+
+        let completed = expectation(description: "cancelled terminal outcome")
+        completed.assertForOverFulfill = true
+        vm.fetchSilently { outcome in
+            XCTAssertEqual(outcome, .cancelled)
+            completed.fulfill()
+        }
+        wait(for: [sleepStarted], timeout: 2.0)
+
+        vm.invalidateAsyncOperations()
+        wait(for: [completed], timeout: 2.0)
+        sleeper.cancelNext()
+        wait(for: [sleepReturned], timeout: 2.0)
+
+        XCTAssertFalse(vm.isFetching)
+        XCTAssertEqual(stubFetcher.fetchCallCount, 1)
+    }
+
+    func testFetch_staleSuspendedResultCannotMutateNewGeneration() {
+        stubFetcher.shouldSuspendFetch = true
+        let fetchStarted = expectation(description: "fetch suspended")
+        stubFetcher.onFetch = { _ in fetchStarted.fulfill() }
+        let fetchReturned = expectation(description: "stale fetch returned")
+        stubFetcher.onFetchReturn = { fetchReturned.fulfill() }
+        let vm = makeVM()
+
+        let completed = expectation(description: "cancelled terminal outcome")
+        completed.assertForOverFulfill = true
+        vm.fetch { outcome in
+            XCTAssertEqual(outcome, .cancelled)
+            completed.fulfill()
+        }
+        wait(for: [fetchStarted], timeout: 2.0)
+
+        let generation = vm.currentLifecycleGeneration
+        vm.invalidateAsyncOperations()
+        XCTAssertFalse(vm.isCurrentLifecycleGeneration(generation))
+        wait(for: [completed], timeout: 2.0)
+
+        stubFetcher.resumeNextFetch(with: .success(
+            UsageResultFactory.make(fiveHourPercent: 88.0)
+        ))
+        wait(for: [fetchReturned], timeout: 2.0)
+        XCTAssertNil(vm.fiveHourPercent, "stale result must not update state")
     }
 }
 

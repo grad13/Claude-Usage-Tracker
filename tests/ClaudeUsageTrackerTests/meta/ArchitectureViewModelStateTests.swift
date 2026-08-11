@@ -25,7 +25,7 @@ import WebKit
 @MainActor
 final class ArchitectureAutoRefreshFlagTests: XCTestCase {
 
-    func makeVM() -> UsageViewModel { ViewModelTestFactory.makeVM() }
+    func makeVM() -> UsageViewModel { ViewModelTestFactory.makeVM(startLifecycle: false) }
 
     // spec: "nil（未確定）: ページ準備完了時にフェッチを試行"
     // → 初期状態は nil であることを確認。
@@ -35,6 +35,7 @@ final class ArchitectureAutoRefreshFlagTests: XCTestCase {
             vm.isAutoRefreshEnabled,
             "isAutoRefreshEnabled must be nil on init — undetermined state before page ready"
         )
+        XCTAssertNil(vm.loginPollTimer, "isolated initialization must not schedule lifecycle timers")
     }
 
     // spec: "true: 自動リフレッシュ有効。タイマーでフェッチ"
@@ -83,7 +84,11 @@ final class ArchitectureAutoRefreshFlagTests: XCTestCase {
 @MainActor
 final class ArchitectureRedirectCooldownTests: XCTestCase {
 
-    func makeVM() -> UsageViewModel { ViewModelTestFactory.makeVM() }
+    let currentTime = Date(timeIntervalSince1970: 1_000)
+
+    func makeVM() -> UsageViewModel {
+        ViewModelTestFactory.makeVM(startLifecycle: false, now: { self.currentTime })
+    }
 
     // spec: "5秒のクールダウンで無限ループを防止する"
     // → 初期状態では lastRedirectTime が nil（クールダウン未発動）であることを確認。
@@ -100,7 +105,7 @@ final class ArchitectureRedirectCooldownTests: XCTestCase {
     func testCanRedirectNow_falseWhenCooldownActive() {
         let vm = makeVM()
         // lastRedirectTime を現在時刻に設定してクールダウン発動状態にする
-        vm.lastRedirectAt = Date()
+        vm.lastRedirectAt = currentTime
         XCTAssertFalse(
             vm.canRedirect(),
             "canRedirectNow must return false within 5-second cooldown to prevent redirect loops"
@@ -111,11 +116,19 @@ final class ArchitectureRedirectCooldownTests: XCTestCase {
     // → 6秒前の時刻を lastRedirectTime に設定した場合、canRedirectNow() が true を返すことを確認。
     func testCanRedirectNow_trueAfterCooldownExpires() {
         let vm = makeVM()
-        vm.lastRedirectAt = Date().addingTimeInterval(-6)
+        vm.lastRedirectAt = currentTime.addingTimeInterval(-6)
         XCTAssertTrue(
             vm.canRedirect(),
             "canRedirectNow must return true after 5-second cooldown has elapsed"
         )
+    }
+
+    func testCanRedirectNow_falseAtExactCooldownBoundary() {
+        let vm = makeVM()
+        vm.lastRedirectAt = currentTime.addingTimeInterval(-5)
+
+        XCTAssertFalse(vm.canRedirect(),
+            "exactly five seconds remains inside the strict cooldown boundary")
     }
 
     // spec: "ログイン済みかつ usage ページ以外にいる場合" → isLoggedIn が必要条件
@@ -139,7 +152,7 @@ final class ArchitectureRedirectCooldownTests: XCTestCase {
 @MainActor
 final class ArchitectureSignOutTests: XCTestCase {
 
-    func makeVM() -> UsageViewModel { ViewModelTestFactory.makeVM() }
+    func makeVM() -> UsageViewModel { ViewModelTestFactory.makeVM(startLifecycle: false) }
 
     // spec: signOut 後に isLoggedIn=false になることを確認
     // （実際の Cookie 削除の完了は非同期・実機依存のため、フラグ変化のみを検証）
@@ -187,7 +200,9 @@ final class ArchitectureCookieObserverTests: XCTestCase {
         stubFetcher = StubUsageFetcher()
     }
 
-    func makeVM() -> UsageViewModel { ViewModelTestFactory.makeVM(fetcher: stubFetcher) }
+    func makeVM() -> UsageViewModel {
+        ViewModelTestFactory.makeVM(fetcher: stubFetcher, startLifecycle: false)
+    }
 
     /// Cookie monitoring is handled by CookieChangeObserver, NOT WebViewCoordinator.
     /// WebViewCoordinator conforms to WKNavigationDelegate + WKUIDelegate.

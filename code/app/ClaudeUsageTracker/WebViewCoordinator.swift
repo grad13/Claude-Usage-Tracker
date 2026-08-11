@@ -6,16 +6,22 @@ import WebKit
 
 final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
     private weak var viewModel: (any WebViewCoordinatorDelegate)?
+    private let finishedURLHandler: (@MainActor (URL) -> Void)?
 
-    init(viewModel: any WebViewCoordinatorDelegate) {
+    init(
+        viewModel: any WebViewCoordinatorDelegate,
+        finishedURLHandler: (@MainActor (URL) -> Void)? = nil
+    ) {
         self.viewModel = viewModel
+        self.finishedURLHandler = finishedURLHandler
     }
 
     // MARK: Navigation
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         guard let viewModel else { return }
-        let url = webView.url?.absoluteString ?? "nil"
+        let finishedURL = webView.url
+        let url = finishedURL?.absoluteString ?? "nil"
 
         // Popup: check login status, close if logged in
         if webView === viewModel.popupWebView {
@@ -27,8 +33,12 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
         viewModel.debug("didFinish[main]: url=\(url)")
 
         // Main WebView: notify ViewModel if on target host
-        if let host = webView.url?.host, host == "claude.ai" {
-            viewModel.handlePageReady()
+        if let finishedURL, finishedURL.host == "claude.ai" {
+            if let finishedURLHandler {
+                finishedURLHandler(finishedURL)
+            } else {
+                viewModel.handlePageReady()
+            }
         } else {
             viewModel.debug("didFinish[main]: host is not claude.ai, skipping")
         }

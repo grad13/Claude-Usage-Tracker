@@ -21,6 +21,8 @@ import ClaudeUsageTrackerShared
 @MainActor
 final class ViewModelSessionSupplementTests: XCTestCase {
 
+    let currentTime = Date(timeIntervalSince1970: 1_000)
+
     var stubFetcher: StubUsageFetcher!
     var settingsStore: InMemorySettingsStore!
     var usageStore: InMemoryUsageStore!
@@ -38,14 +40,20 @@ final class ViewModelSessionSupplementTests: XCTestCase {
         alertChecker = MockAlertChecker()
     }
 
-    func makeVM() -> UsageViewModel {
+    func makeVM(
+        timerScheduler: any ViewModelTimerScheduling = ManualViewModelTimerScheduler()
+    ) -> UsageViewModel {
         ViewModelTestFactory.makeVM(
             fetcher: stubFetcher,
             settingsStore: settingsStore,
             usageStore: usageStore,
             widgetReloader: widgetReloader,
             loginItemManager: loginItemManager,
-            alertChecker: alertChecker
+            alertChecker: alertChecker,
+            startLifecycle: false,
+            sleeper: { _ in },
+            timerScheduler: timerScheduler,
+            now: { self.currentTime }
         )
     }
 
@@ -91,7 +99,7 @@ final class ViewModelSessionSupplementTests: XCTestCase {
     /// Spec: canRedirect() returns false within 5 seconds of lastRedirectAt.
     func testCanRedirect_returnsFalse_withinCooldown() {
         let vm = makeVM()
-        vm.lastRedirectAt = Date()  // just now
+        vm.lastRedirectAt = currentTime
         XCTAssertFalse(vm.canRedirect(),
             "canRedirect should return false within 5-second cooldown")
     }
@@ -99,7 +107,7 @@ final class ViewModelSessionSupplementTests: XCTestCase {
     /// Spec: canRedirect() returns true after 5 seconds have elapsed.
     func testCanRedirect_returnsTrue_afterCooldownExpired() {
         let vm = makeVM()
-        vm.lastRedirectAt = Date(timeIntervalSinceNow: -6)  // 6 seconds ago
+        vm.lastRedirectAt = currentTime.addingTimeInterval(-6)
         XCTAssertTrue(vm.canRedirect(),
             "canRedirect should return true after 5-second cooldown has expired")
     }
@@ -107,9 +115,9 @@ final class ViewModelSessionSupplementTests: XCTestCase {
     /// Spec: canRedirect() returns false at exactly 5 seconds (boundary: > 5, not >= 5).
     func testCanRedirect_returnsFalse_atExactly5Seconds() {
         let vm = makeVM()
-        vm.lastRedirectAt = Date(timeIntervalSinceNow: -4.99)  // just under 5 seconds ago
+        vm.lastRedirectAt = currentTime.addingTimeInterval(-5)
         XCTAssertFalse(vm.canRedirect(),
-            "canRedirect should return false at 4.99 seconds (strictly greater than 5)")
+            "canRedirect should return false at exactly 5 seconds (strictly greater than 5)")
     }
 
     // MARK: - handleSessionDetected: lastRedirectAt set (loadUsagePage invocation proxy)
@@ -120,16 +128,10 @@ final class ViewModelSessionSupplementTests: XCTestCase {
         let vm = makeVM()
         XCTAssertNil(vm.lastRedirectAt)
 
-        let before = Date()
         vm.handleSessionDetected()
-        let after = Date()
 
-        XCTAssertNotNil(vm.lastRedirectAt,
-            "handleSessionDetected should set lastRedirectAt when canRedirect returns true")
-        XCTAssertGreaterThanOrEqual(vm.lastRedirectAt!.timeIntervalSince1970,
-            before.timeIntervalSince1970)
-        XCTAssertLessThanOrEqual(vm.lastRedirectAt!.timeIntervalSince1970,
-            after.timeIntervalSince1970)
+        XCTAssertEqual(vm.lastRedirectAt, currentTime,
+            "handleSessionDetected should use the injected clock when redirecting")
     }
 
     /// Spec: When canRedirect() returns false (within cooldown), lastRedirectAt is NOT updated.
@@ -137,7 +139,7 @@ final class ViewModelSessionSupplementTests: XCTestCase {
     func testHandleSessionDetected_doesNotUpdateLastRedirectAt_whenCooldownActive() {
         let vm = makeVM()
         // Simulate a recent redirect
-        let recentRedirect = Date(timeIntervalSinceNow: -2)  // 2 seconds ago
+        let recentRedirect = currentTime.addingTimeInterval(-2)
         vm.lastRedirectAt = recentRedirect
 
         vm.handleSessionDetected()
@@ -190,26 +192,40 @@ final class ViewModelSessionSupplementTests: XCTestCase {
 
     /// Spec: Login polling uses a 3-second interval.
     func testLoginPolling_usesThreeSecondInterval() {
-        let vm = makeVM()
+        let scheduler = ManualViewModelTimerScheduler()
+        let vm = makeVM(timerScheduler: scheduler)
         vm.startLoginPolling()
 
         let timer = vm.loginPollTimer
         XCTAssertNotNil(timer)
         XCTAssertEqual(timer!.timeInterval, 3.0, accuracy: 0.001,
             "Login polling timer should fire at 3-second intervals")
+        XCTAssertTrue(scheduler.validTimers.first?.repeats == true)
     }
 
     /// Spec: Login polling timer repeats.
     func testLoginPolling_timerRepeats() {
-        let vm = makeVM()
+        let scheduler = ManualViewModelTimerScheduler()
+        let vm = makeVM(timerScheduler: scheduler)
         vm.startLoginPolling()
 
-        let timer = vm.loginPollTimer
-        XCTAssertNotNil(timer)
-        // Timer.scheduledTimer(withTimeInterval:repeats:) with repeats: true
-        // Unfortunately Timer does not expose an `isRepeating` property.
-        // We verify the timer is valid (repeating timers stay valid after first fire).
-        XCTAssertTrue(timer!.isValid,
-            "Login polling timer should be a valid repeating timer")
+        XCTAssertEqual(scheduler.validTimers.count, 1)
+        XCTAssertTrue(scheduler.validTimers[0].repeats,
+            "Login polling timer should repeat")
+    }
+
+    func testRefreshTimer_staleGenerationTickDoesNotFetch() {
+        let scheduler = ManualViewModelTimerScheduler()
+        let vm = makeVM(timerScheduler: scheduler)
+        vm.isLoggedIn = true
+        vm.isAutoRefreshEnabled = true
+        vm.startAutoRefresh()
+        let staleTimer = scheduler.validTimers[0]
+
+        vm.invalidateAsyncOperations()
+        staleTimer.fire()
+
+        XCTAssertTrue(staleTimer.isValid, "generation guard must isolate the stale timer callback")
+        XCTAssertEqual(stubFetcher.fetchCallCount, 0)
     }
 }
