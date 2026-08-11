@@ -203,16 +203,21 @@ final class FetcherTests: XCTestCase {
     // MARK: - Format A: five_hour/utilization (actual API response 2026-02)
 
     func testParse_formatA_realResponse() throws {
+        let observedAt = Date(timeIntervalSince1970: 1_786_450_000.25)
         let json = """
-        {"five_hour":{"utilization":25,"resets_at":"2026-02-23T10:00:00.696818+00:00"},\
-        "seven_day":{"utilization":54,"resets_at":"2026-02-27T08:00:00.696853+00:00"},\
+        {"five_hour":{"utilization":25,"resets_at":"2026-08-11T12:34:56Z"},\
+        "seven_day":{"utilization":54,"resets_at":"2026-08-18T03:21:09Z"},\
         "seven_day_sonnet":{"utilization":11,"resets_at":"2026-02-25T06:59:59.696861+00:00"}}
         """
-        let result = try UsageFetcher.parse(jsonString: json)
+        let result = try UsageFetcher.parse(jsonString: json, observedAt: observedAt)
         XCTAssertEqual(result.fiveHourPercent!, 25.0, accuracy: 0.001)
         XCTAssertEqual(result.sevenDayPercent!, 54.0, accuracy: 0.001)
-        XCTAssertNotNil(result.fiveHourResetsAt)
-        XCTAssertNotNil(result.sevenDayResetsAt)
+        XCTAssertEqual(result.fiveHourResetsAt!.timeIntervalSince1970,
+                       1_786_451_696, accuracy: 0.001)
+        XCTAssertEqual(result.sevenDayResetsAt!.timeIntervalSince1970,
+                       1_787_023_269, accuracy: 0.001)
+        XCTAssertEqual(result.resetTimesObservedAt, observedAt,
+                       "One parse observation timestamp applies to both exact window values")
     }
 
     func testParse_formatA_integerUtilization() throws {
@@ -317,6 +322,24 @@ final class FetcherTests: XCTestCase {
         let result = try UsageFetcher.parse(jsonString: json)
         XCTAssertEqual(result.fiveHourPercent!, 25.0, accuracy: 0.001)
         XCTAssertNil(result.sevenDayPercent, "Missing 7d window should yield nil")
+    }
+
+    func testParse_formatB_preservesExactResetSecondsAndObservedAt() throws {
+        let observedAt = Date(timeIntervalSince1970: 1_786_400_123.875)
+        let json = """
+        {"windows":{
+          "5h":{"limit":100,"remaining":75,"resets_at":1786451696.625},
+          "7d":{"limit":500,"remaining":200,"resets_at":1787023269.125}
+        }}
+        """
+
+        let result = try UsageFetcher.parse(jsonString: json, observedAt: observedAt)
+
+        XCTAssertEqual(result.fiveHourResetsAt!.timeIntervalSince1970,
+                       1_786_451_696.625, accuracy: 0.000_001)
+        XCTAssertEqual(result.sevenDayResetsAt!.timeIntervalSince1970,
+                       1_787_023_269.125, accuracy: 0.000_001)
+        XCTAssertEqual(result.resetTimesObservedAt, observedAt)
     }
 
     func testParse_formatB_zeroRemaining() throws {

@@ -1,5 +1,5 @@
 ---
-updated: 2026-04-19 02:25
+updated: 2026-08-11
 checked: -
 Deprecated: -
 Format: spec-v2.1
@@ -99,11 +99,19 @@ On non-auth errors, `fetchSilently()` automatically retries with exponential bac
 - **Task cancellation**: `Task.sleep` respects cancellation (e.g., app backgrounding)
 
 Shared success processing (within `applyResult`, 5 phases):
-1. Update `@Published` properties (5h/7d percent, resetsAt)
-2. Save to SQLite via `usageStore.save(result)` + `reloadHistory()`
-3. Evaluate thresholds and send notifications via `alertChecker.checkAlerts(result:settings:)`
-4. Update widget via `widgetReloader.reloadAllTimelines()`
+1. Update percentages and accept each non-nil exact reset value only when its observation is not older than that window's retained provenance.
+2. Save the observed result to SQLite, reload history, and atomically write the widget snapshot.
+3. Evaluate thresholds and send notifications via `alertChecker.checkAlerts(result:settings:)`.
+4. Update the widget via `widgetReloader.reloadAllTimelines()`.
 5. Stop login polling: `loginPollTimer?.invalidate(); loginPollTimer = nil`. This is the SOLE place the timer is stopped — `handleSessionDetected()` and `handlePageReady()` keep it alive so any failure between cookie detection and successful data fetch is automatically retried by the next polling tick.
+
+### Reset value and provenance rules
+
+- `applyResult` uses `UsageResult.resetTimesObservedAt`, falling back to the application time of the result when it is nil.
+- Reset values and observation times are retained independently for 5-hour and 7-day windows. If a response omits one window, that window's current value and provenance are not cleared or relabeled with the other window's observation time.
+- An older observation cannot replace a newer retained value for the same window.
+- `reloadHistory()` supplies an exact-first database value, or a normalized legacy session value, only when the corresponding in-memory reset value is nil. Therefore a fresh API value is never overwritten by a rounded session identity during the save/reload cycle.
+- `writeWidgetSnapshot` uses the resolved in-memory reset values and their per-window provenance, so partial API responses remain truthful in the widget snapshot.
 
 ## statusText Calculation Logic
 
@@ -191,6 +199,7 @@ Appends a `========== LAUNCH {ISO8601 timestamp} ==========` separator to the lo
 | `popupWebView` | `WKWebView?` | `nil` | OAuth popup WebView |
 | `fiveHourHistory` | `[UsageStore.DataPoint]` | `[]` | 5-hour window history data |
 | `sevenDayHistory` | `[UsageStore.DataPoint]` | `[]` | 7-day window history data |
+| `sevenDayStartedAt` | `Date?` | `nil` | Start of the current persisted weekly session |
 
 
 ## Internal State Properties (non-@Published)
@@ -204,6 +213,12 @@ Appends a `========== LAUNCH {ISO8601 timestamp} ==========` separator to the lo
 | `isAutoRefreshEnabled` | `Bool?` | Auto-refresh state (nil=undetermined, true=enabled, false=disabled) |
 | `lastRedirectAt` | `Date?` | Last redirect time (for 5-second cooldown) |
 | `retryCount` | `Int` (private) | Current retry count for fetchSilently (0 when idle) |
+| `fiveHourResetsAtObservedAt` | `Date?` | Observation time for the currently retained exact 5-hour reset value |
+| `sevenDayResetsAtObservedAt` | `Date?` | Observation time for the currently retained exact 7-day reset value |
+
+## Widget Snapshot Contract
+
+After persistence and history reload, `writeWidgetSnapshot` writes `UsageSnapshot` atomically. Alongside existing percentage, reset, history, login, and `sevenDayStartedAt` fields, it includes optional `fiveHourResetsAtObservedAt` and `sevenDayResetsAtObservedAt`. Optional snapshot fields decode as nil when absent, preserving compatibility with snapshots written before these fields existed. Sign-out writes nil reset values and empty histories.
 
 ## handlePageReady() Flow
 

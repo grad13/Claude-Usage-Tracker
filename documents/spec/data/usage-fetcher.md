@@ -1,5 +1,5 @@
 ---
-updated: 2026-03-16 06:59
+updated: 2026-08-11
 checked: -
 Deprecated: -
 Format: spec-v2.1
@@ -36,6 +36,17 @@ Struct returned by `UsageFetcher.parse()`. All fields are optional.
 | `sevenDayLimit` | `Double?` | 7-day window limit (Format B only) |
 | `sevenDayRemaining` | `Double?` | 7-day window remaining (Format B only) |
 | `rawJSON` | `String?` | Raw JSON string from API response (for debugging/logging) |
+| `resetTimesObservedAt` | `Date?` | Time of the refresh that returned exact reset timestamps. One authenticated API response covers both windows; downstream state separates provenance per window when one value is missing |
+
+## Reset-time authority and refresh contract
+
+- Every manual, launch, retry, and timer refresh uses the authenticated `WKWebView` page context to call the internal `/api/organizations/{orgId}/usage` endpoint.
+- A valid internal API `resets_at` is the primary reset/end timestamp on every refresh. It is parsed without hour normalization and retained at the precision provided by the API.
+- The normalized hour used to identify a storage session is not a display value and is not produced by `UsageFetcher`.
+- Format A and Format B can omit either window independently. A missing or invalid window value remains `nil`; it does not erase the other window's valid value.
+- `parse(jsonString:observedAt:)` records `observedAt` on the result so persistence and display freshness can be compared independently from the reset timestamp itself.
+
+The fixture prototype documents candidate embedded-state/DOM extraction and validates source priority, but a live DOM reset-time fallback is intentionally deferred pending authenticated validation against the real Usage page. Production currently uses the internal API value only; it does not claim a DOM-derived reset time. This does not affect the existing HTML scan used only to discover the organization ID.
 
 ## UsageFetchError error type
 

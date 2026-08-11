@@ -1,4 +1,4 @@
-// meta: updated=2026-04-25 05:00 checked=-
+// meta: updated=2026-08-11 checked=-
 import Foundation
 import SQLite3
 import ClaudeUsageTrackerShared
@@ -12,6 +12,7 @@ final class UsageStore {
         self.dbPath = dbPath
         self.dirURL = URL(fileURLWithPath: dbPath).deletingLastPathComponent()
         checkIntegrity()
+        migrateExistingDatabase()
     }
 
     private func checkIntegrity() {
@@ -78,6 +79,9 @@ final class UsageStore {
             weekly_percent REAL,
             hourly_session_id INTEGER REFERENCES hourly_sessions(id),
             weekly_session_id INTEGER REFERENCES weekly_sessions(id),
+            five_hour_resets_at REAL,
+            seven_day_resets_at REAL,
+            resets_at_observed_at REAL,
             CHECK (hourly_percent IS NOT NULL OR weekly_percent IS NOT NULL)
         );
         """
@@ -118,6 +122,7 @@ final class UsageStore {
                 NSLog("[UsageStore] Failed to create table")
                 return
             }
+            self.migrateUsageLog(db)
 
             let now = Int64(Date().timeIntervalSince1970)
 
@@ -126,7 +131,9 @@ final class UsageStore {
 
             let insertSQL = """
                 INSERT INTO usage_log (timestamp, hourly_percent, weekly_percent,
-                    hourly_session_id, weekly_session_id) VALUES (?, ?, ?, ?, ?);
+                    hourly_session_id, weekly_session_id, five_hour_resets_at,
+                    seven_day_resets_at, resets_at_observed_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?);
                 """
             SQLiteHelper.withStatement(db: db, sql: insertSQL) { stmt in
                 sqlite3_bind_int64(stmt, 1, now)
@@ -134,6 +141,13 @@ final class UsageStore {
                 SQLiteHelper.bindDouble(stmt, 3, result.sevenDayPercent)
                 SQLiteHelper.bindInt64(stmt, 4, hourlySID)
                 SQLiteHelper.bindInt64(stmt, 5, weeklySID)
+                SQLiteHelper.bindDouble(stmt, 6, result.fiveHourResetsAt?.timeIntervalSince1970)
+                SQLiteHelper.bindDouble(stmt, 7, result.sevenDayResetsAt?.timeIntervalSince1970)
+                let hasExactReset = result.fiveHourResetsAt != nil || result.sevenDayResetsAt != nil
+                SQLiteHelper.bindDouble(
+                    stmt, 8,
+                    hasExactReset ? (result.resetTimesObservedAt ?? Date()).timeIntervalSince1970 : nil
+                )
 
                 if sqlite3_step(stmt) != SQLITE_DONE {
                     NSLog("[UsageStore] Failed to insert row")
@@ -150,14 +164,20 @@ final class UsageStore {
         let sevenDayPercent: Double?
         let fiveHourResetsAt: Date?
         let sevenDayResetsAt: Date?
+        let fiveHourResetsAtObservedAt: Date?
+        let sevenDayResetsAtObservedAt: Date?
 
         init(timestamp: Date, fiveHourPercent: Double?, sevenDayPercent: Double?,
-             fiveHourResetsAt: Date? = nil, sevenDayResetsAt: Date? = nil) {
+             fiveHourResetsAt: Date? = nil, sevenDayResetsAt: Date? = nil,
+             fiveHourResetsAtObservedAt: Date? = nil,
+             sevenDayResetsAtObservedAt: Date? = nil) {
             self.timestamp = timestamp
             self.fiveHourPercent = fiveHourPercent
             self.sevenDayPercent = sevenDayPercent
             self.fiveHourResetsAt = fiveHourResetsAt
             self.sevenDayResetsAt = sevenDayResetsAt
+            self.fiveHourResetsAtObservedAt = fiveHourResetsAtObservedAt
+            self.sevenDayResetsAtObservedAt = sevenDayResetsAtObservedAt
         }
     }
 
@@ -167,8 +187,12 @@ final class UsageStore {
         withDatabase { db in
             let sql = """
                 SELECT u.timestamp, u.hourly_percent, u.weekly_percent,
-                       hs.resets_at AS hourly_resets_at,
-                       ws.resets_at AS weekly_resets_at
+                       COALESCE(u.five_hour_resets_at, hs.resets_at) AS hourly_resets_at,
+                       COALESCE(u.seven_day_resets_at, ws.resets_at) AS weekly_resets_at,
+                       CASE WHEN u.five_hour_resets_at IS NOT NULL
+                            THEN u.resets_at_observed_at END AS hourly_resets_at_observed_at,
+                       CASE WHEN u.seven_day_resets_at IS NOT NULL
+                            THEN u.resets_at_observed_at END AS weekly_resets_at_observed_at
                 FROM usage_log u
                 LEFT JOIN hourly_sessions hs ON u.hourly_session_id = hs.id
                 LEFT JOIN weekly_sessions ws ON u.weekly_session_id = ws.id
@@ -187,8 +211,12 @@ final class UsageStore {
             let cutoff = Int64(Date().addingTimeInterval(-windowSeconds).timeIntervalSince1970)
             let sql = """
                 SELECT u.timestamp, u.hourly_percent, u.weekly_percent,
-                       hs.resets_at AS hourly_resets_at,
-                       ws.resets_at AS weekly_resets_at
+                       COALESCE(u.five_hour_resets_at, hs.resets_at) AS hourly_resets_at,
+                       COALESCE(u.seven_day_resets_at, ws.resets_at) AS weekly_resets_at,
+                       CASE WHEN u.five_hour_resets_at IS NOT NULL
+                            THEN u.resets_at_observed_at END AS hourly_resets_at_observed_at,
+                       CASE WHEN u.seven_day_resets_at IS NOT NULL
+                            THEN u.resets_at_observed_at END AS weekly_resets_at_observed_at
                 FROM usage_log u
                 LEFT JOIN hourly_sessions hs ON u.hourly_session_id = hs.id
                 LEFT JOIN weekly_sessions ws ON u.weekly_session_id = ws.id
@@ -219,8 +247,12 @@ final class UsageStore {
         withDatabase { db -> WeeklySession? in
             let sql = """
                 SELECT u.timestamp, u.hourly_percent, u.weekly_percent,
-                       hs.resets_at AS hourly_resets_at,
-                       ws.resets_at AS weekly_resets_at
+                       COALESCE(u.five_hour_resets_at, hs.resets_at) AS hourly_resets_at,
+                       COALESCE(u.seven_day_resets_at, ws.resets_at) AS weekly_resets_at,
+                       CASE WHEN u.five_hour_resets_at IS NOT NULL
+                            THEN u.resets_at_observed_at END AS hourly_resets_at_observed_at,
+                       CASE WHEN u.seven_day_resets_at IS NOT NULL
+                            THEN u.resets_at_observed_at END AS weekly_resets_at_observed_at
                 FROM usage_log u
                 INNER JOIN weekly_sessions ws ON u.weekly_session_id = ws.id
                 LEFT JOIN hourly_sessions hs ON u.hourly_session_id = hs.id
@@ -234,8 +266,11 @@ final class UsageStore {
                 """
             return SQLiteHelper.withStatement(db: db, sql: sql) { stmt -> WeeklySession? in
                 let points = readDataPoints(stmt)
-                guard let first = points.first,
-                      let resetsAt = first.sevenDayResetsAt else { return nil }
+                guard let first = points.first else { return nil }
+                let exactPoint = points.last(where: { $0.sevenDayResetsAtObservedAt != nil })
+                guard let resetsAt = exactPoint?.sevenDayResetsAt ?? points.last?.sevenDayResetsAt else {
+                    return nil
+                }
                 return WeeklySession(
                     dataPoints: points,
                     startedAt: first.timestamp,
@@ -309,8 +344,8 @@ final class UsageStore {
         } ?? nil
     }
 
-    /// Read DataPoints from a prepared statement with 5 columns:
-    /// timestamp, hourly_percent, weekly_percent, hourly_resets_at, weekly_resets_at
+    /// Read DataPoints from a prepared statement with 7 columns. Exact per-observation
+    /// reset values are selected first; normalized session values are legacy fallback.
     private func readDataPoints(_ stmt: OpaquePointer) -> [DataPoint] {
         var results: [DataPoint] = []
         while sqlite3_step(stmt) == SQLITE_ROW {
@@ -318,17 +353,68 @@ final class UsageStore {
             let ts = Date(timeIntervalSince1970: TimeInterval(tsEpoch))
             let fiveH = SQLiteHelper.columnDouble(stmt, 1)
             let sevenD = SQLiteHelper.columnDouble(stmt, 2)
-            let fiveHResets: Date? = SQLiteHelper.columnInt64(stmt, 3)
-                .map { Date(timeIntervalSince1970: TimeInterval($0)) }
-            let sevenDResets: Date? = SQLiteHelper.columnInt64(stmt, 4)
-                .map { Date(timeIntervalSince1970: TimeInterval($0)) }
+            let fiveHResets = SQLiteHelper.columnDouble(stmt, 3)
+                .map { Date(timeIntervalSince1970: $0) }
+            let sevenDResets = SQLiteHelper.columnDouble(stmt, 4)
+                .map { Date(timeIntervalSince1970: $0) }
+            let fiveHourObservedAt = SQLiteHelper.columnDouble(stmt, 5)
+                .map { Date(timeIntervalSince1970: $0) }
+            let sevenDayObservedAt = SQLiteHelper.columnDouble(stmt, 6)
+                .map { Date(timeIntervalSince1970: $0) }
             results.append(DataPoint(timestamp: ts, fiveHourPercent: fiveH, sevenDayPercent: sevenD,
-                                     fiveHourResetsAt: fiveHResets, sevenDayResetsAt: sevenDResets))
+                                     fiveHourResetsAt: fiveHResets, sevenDayResetsAt: sevenDResets,
+                                     fiveHourResetsAtObservedAt: fiveHourObservedAt,
+                                     sevenDayResetsAtObservedAt: sevenDayObservedAt))
         }
         return results
     }
 
     // MARK: - Private Helpers
+
+    private func migrateExistingDatabase() {
+        guard FileManager.default.fileExists(atPath: dbPath) else { return }
+        withDatabase { db in
+            self.migrateUsageLog(db)
+        }
+    }
+
+    /// Additive, idempotent migration. Legacy rows remain NULL and therefore
+    /// continue to fall back to normalized session timestamps on reads.
+    private func migrateUsageLog(_ db: OpaquePointer) {
+        guard tableExists(db, name: "usage_log") else { return }
+        let columns: [(String, String)] = [
+            ("five_hour_resets_at", "REAL"),
+            ("seven_day_resets_at", "REAL"),
+            ("resets_at_observed_at", "REAL"),
+        ]
+        for (name, type) in columns where !columnExists(db, table: "usage_log", name: name) {
+            let sql = "ALTER TABLE usage_log ADD COLUMN \(name) \(type)"
+            if sqlite3_exec(db, sql, nil, nil, nil) != SQLITE_OK {
+                NSLog("[UsageStore] Failed to add migration column %@", name)
+            }
+        }
+    }
+
+    private func tableExists(_ db: OpaquePointer, name: String) -> Bool {
+        SQLiteHelper.withStatement(
+            db: db,
+            sql: "SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1"
+        ) { stmt in
+            SQLiteHelper.bindText(stmt, 1, name)
+            return sqlite3_step(stmt) == SQLITE_ROW
+        } ?? false
+    }
+
+    private func columnExists(_ db: OpaquePointer, table: String, name: String) -> Bool {
+        SQLiteHelper.withStatement(db: db, sql: "PRAGMA table_info(\(table))") { stmt in
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                if let text = sqlite3_column_text(stmt, 1), String(cString: text) == name {
+                    return true
+                }
+            }
+            return false
+        } ?? false
+    }
 
     private func getOrCreateHourlySessionId(db: OpaquePointer, date: Date) -> Int64? {
         getOrCreateSessionId(

@@ -1,4 +1,4 @@
-// meta: updated=2026-03-06 09:14 checked=-
+// meta: updated=2026-08-11 checked=-
 import XCTest
 import WebKit
 import SQLite3
@@ -112,6 +112,16 @@ final class AnalysisSchemeHandlerTests: XCTestCase {
         let json = try! JSONSerialization.jsonObject(with: task.receivedData!) as! [[String: Any]]
         XCTAssertEqual(json.count, 1)
         XCTAssertEqual(json[0]["hourly_percent"] as? Double, 42.5)
+        XCTAssertEqual(json[0]["hourly_resets_at"] as? Int, 1771945200,
+                       "Legacy schema falls back to normalized hourly session reset")
+        XCTAssertEqual(json[0]["weekly_resets_at"] as? Int, 1772532000,
+                       "Legacy schema falls back to normalized weekly session reset")
+        XCTAssertTrue(json[0]["hourly_resets_at_observed_at"] is NSNull,
+                      "Legacy hourly rows have no observation provenance")
+        XCTAssertTrue(json[0]["weekly_resets_at_observed_at"] is NSNull,
+                      "Legacy weekly rows have no observation provenance")
+        XCTAssertTrue(json[0]["resets_at_observed_at"] is NSNull,
+                      "Legacy compatibility alias has no observation provenance")
 
         let httpResponse = task.receivedResponse as? HTTPURLResponse
         XCTAssertEqual(httpResponse?.statusCode, 200)

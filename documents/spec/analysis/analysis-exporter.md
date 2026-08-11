@@ -1,5 +1,5 @@
 ---
-updated: 2026-03-16 06:59
+updated: 2026-08-11
 checked: -
 Deprecated: -
 Format: spec-v2.1
@@ -178,37 +178,26 @@ When a resets_at timestamp falls between prev and curr, inserts a usage-rate-0 p
 
 **Note**: The comparison target for resets_at is `prev` (the most recent valid record), not curr. The condition is `resetTime > prevTime && resetTime < currTime` (strict open interval).
 
-### 3.2 isGapSegment(ctx)
+### 3.2 buildHourlyTimelineData(data, gapMs)
 
-Chart.js segment callback. Determines whether the time difference between two points exceeds a threshold.
+Builds the single Hourly fill and crosshair sequence from valid chronological samples. The default `gapMs` is 30 minutes (`1,800,000ms`). Exact reset/session identity is deliberately ignored for fill continuity; it remains authoritative elsewhere for metadata, navigation, reset display, and bands.
 
-| Case ID | p1.x - p0.x (ms) | gapThresholdMs | Expected | Notes |
-|---------|-------------------|----------------|----------|-------|
-| GS-01 | 1,800,001 | 1,800,000 (30min) | `true` | Exceeds threshold (by 1ms) |
-| GS-02 | 1,800,000 | 1,800,000 (30min) | `false` | Exactly at threshold (`>` so false) |
-| GS-03 | 1,799,999 | 1,800,000 (30min) | `false` | Below threshold |
-| GS-04 | 21,600,001 | 21,600,000 (360min) | `true` | Slider maximum |
-| GS-05 | 300,001 | 300,000 (5min) | `true` | Slider minimum |
+| Case ID | Input | Expected | Notes |
+|---------|-------|----------|-------|
+| HT-01 | Valid points every minute with alternating `hourly_resets_at` values | 1 segment, 0 separators | Reset identity changes are not visual gaps |
+| HT-02 | Two contiguous runs separated by more than `gapMs` | 2 segments, exactly 1 `{x: midpoint, y: null}` separator | `spanGaps: false` leaves the true gap empty |
+| HT-03 | Adjacent timestamps differ by exactly `gapMs` | 1 segment, 0 separators | Separation condition is strict `>` |
+| HT-04 | Unordered input with invalid timestamp/percent rows | Valid points only, ordered by timestamp | Each Chart.js data item has a finite `x`; literal `null` items are forbidden |
 
-**Global state**: `gapThresholdMs` is dynamically changed via slider (default 30 * 60 * 1000 = 1,800,000ms).
-
-### 3.3 formatMin(m) -- Gap Slider Display
-
-| Case ID | m (minutes) | Expected | Notes |
-|---------|-------------|----------|-------|
-| FM-01 | 5 | `"5 min"` | Minimum value |
-| FM-02 | 30 | `"30 min"` | Default |
-| FM-03 | 59 | `"59 min"` | Largest below 1 hour |
-| FM-04 | 60 | `"1h"` | Exactly 1 hour (remainder 0 -> no minutes shown) |
-| FM-05 | 90 | `"1h 30min"` | Hours + minutes |
-| FM-06 | 360 | `"6h"` | Maximum value |
-
-### 3.4 renderMain(usageData) -- Summary Display
+### 3.3 renderMain(usageData) -- Usage Dataset Construction
 
 | Case ID | usageData | Expected | Notes |
 |---------|-----------|----------|-------|
 | MN-01 | 100 records | Renders usage chart | Normal |
 | MN-02 | 0 records | Empty chart | No data |
+| MN-03 | Hourly samples containing reset-identity changes and a true time gap | Exactly one hourly dataset with `fill: true`, `spanGaps: false`, and `stepped: 'before'`; reset changes add no separator; the true `> gapMs` interval adds exactly one parser-safe `{x: finite midpoint, y: null}` skipped point; no dataset item is a literal `null` | Prevents independent origin-closing triangles and prevents a line/fill bridge only across actual missing time |
+
+`renderUsageTab()` uses `buildHourlyTimelineData()` for both the one logical Hourly dataset and crosshair samples (with separator points excluded from lookup). Chart.js object-data parsing requires every array item to expose `x` and `y`; therefore a literal `null` must never be used as a dataset item. `buildHourlySessions()` remains available only for session bands/reset metadata behavior and cannot influence fill continuity. Weekly sessions remain separate datasets.
 
 ## 4. Side Effects (Integration)
 
@@ -221,18 +210,16 @@ Chart.js segment callback. Determines whether the time difference between two po
 | DOM | `#loading` -- text update + display:none |
 | DOM | `#app` -- display:'' to show |
 | DOM | `<canvas>` -- Chart.js instances render usage chart (usageTimeline) |
-| DOM | `#gapSlider` -- input event updates `gapThresholdMs` + chart.update() |
 | DOM | Session nav buttons -- prev/next + 4 mode buttons (Session Weekly/Hourly, Cal Week/Day) |
 | Global State | `_usageData` -- set in renderMain() |
 | Global State | `_meta` -- meta.json response |
 | Global State | `_allSlots`, `_navMode`, `_navSlots`, `_navIndex` -- session navigation state |
 | Global State | `_charts` -- Chart.js instance cache (for destroy) |
-| Global State | `gapThresholdMs` -- gap threshold (changed via slider) |
 
 ## 5. Notes
 
 - **CDN dependency**: Chart.js does not work offline (dynamically loaded from CDN)
 - **fetchJSON error handling**: Returns `null` on fetch failure; the corresponding data array becomes empty. Errors are only logged via console.warn
-- **Gap segment**: Chart.js's `segment` property sets borderColor/backgroundColor to `'transparent'` to hide lines. Slider changes are reflected without full chart redraw (`chart.update()` only)
+- **Hourly fill gaps**: Chronological Hourly samples use one filled dataset. Only elapsed time above the 30-minute default adds a parser-safe `{x, y: null}` skipped point; `spanGaps: false` keeps that true gap empty without creating per-session triangles. Reset/session identity changes alone remain continuous.
 - **Data serving architecture**: `AnalysisExporter.htmlTemplate` loads `analysis.html` from the bundle, and `AnalysisSchemeHandler` serves JSON endpoints via the `cut://` scheme
 - **Session navigation**: Entry point fetches `meta.json` to get timestamp range and session lists, builds slots for all 4 modes (sessionWeekly, sessionHourly, calWeek, calDay), then navigates to the latest slot in the default mode (sessionWeekly)

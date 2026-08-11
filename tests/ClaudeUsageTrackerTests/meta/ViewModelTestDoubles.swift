@@ -149,7 +149,8 @@ enum UsageResultFactory {
         fiveHourRemaining: Double? = nil,
         sevenDayLimit: Double? = nil,
         sevenDayRemaining: Double? = nil,
-        rawJSON: String? = nil
+        rawJSON: String? = nil,
+        resetTimesObservedAt: Date? = nil
     ) -> UsageResult {
         UsageResult(
             fiveHourPercent: fiveHourPercent,
@@ -162,7 +163,8 @@ enum UsageResultFactory {
             fiveHourRemaining: fiveHourRemaining,
             sevenDayLimit: sevenDayLimit,
             sevenDayRemaining: sevenDayRemaining,
-            rawJSON: rawJSON
+            rawJSON: rawJSON,
+            resetTimesObservedAt: resetTimesObservedAt
         )
     }
 }

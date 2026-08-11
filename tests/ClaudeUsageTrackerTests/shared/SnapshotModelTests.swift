@@ -18,12 +18,16 @@ final class SnapshotModelTests: XCTestCase {
 
     func testCodableRoundTrip() throws {
         let now = Date(timeIntervalSince1970: 1740000000) // fixed timestamp
+        let fiveHourObservedAt = now.addingTimeInterval(-12.25)
+        let sevenDayObservedAt = now.addingTimeInterval(-34.75)
         let snapshot = UsageSnapshot(
             timestamp: now,
             fiveHourPercent: 42.5,
             sevenDayPercent: 18.2,
             fiveHourResetsAt: now.addingTimeInterval(3600),
             sevenDayResetsAt: now.addingTimeInterval(86400),
+            fiveHourResetsAtObservedAt: fiveHourObservedAt,
+            sevenDayResetsAtObservedAt: sevenDayObservedAt,
             fiveHourHistory: [HistoryPoint(timestamp: now, percent: 42.5)],
             sevenDayHistory: [HistoryPoint(timestamp: now, percent: 18.2)],
             isLoggedIn: true
@@ -35,6 +39,10 @@ final class SnapshotModelTests: XCTestCase {
         XCTAssertEqual(decoded.timestamp.timeIntervalSince1970, now.timeIntervalSince1970, accuracy: 1)
         XCTAssertEqual(decoded.fiveHourPercent, 42.5)
         XCTAssertEqual(decoded.sevenDayPercent, 18.2)
+        XCTAssertEqual(decoded.fiveHourResetsAtObservedAt!.timeIntervalSince1970,
+                       fiveHourObservedAt.timeIntervalSince1970, accuracy: 1)
+        XCTAssertEqual(decoded.sevenDayResetsAtObservedAt!.timeIntervalSince1970,
+                       sevenDayObservedAt.timeIntervalSince1970, accuracy: 1)
         XCTAssertEqual(decoded.fiveHourHistory.count, 1)
         XCTAssertEqual(decoded.sevenDayHistory.count, 1)
         XCTAssertTrue(decoded.isLoggedIn)
@@ -258,6 +266,10 @@ final class SnapshotModelTests: XCTestCase {
         let decoded = try JSONDecoder().decode(UsageSnapshot.self, from: data)
         XCTAssertNil(decoded.sevenDayStartedAt,
                      "Missing optional field should decode as nil")
+        XCTAssertNil(decoded.fiveHourResetsAtObservedAt,
+                     "Legacy JSON without 5h observation provenance remains decodable")
+        XCTAssertNil(decoded.sevenDayResetsAtObservedAt,
+                     "Legacy JSON without 7d observation provenance remains decodable")
         XCTAssertEqual(decoded.sevenDayPercent, 12.0)
     }
 

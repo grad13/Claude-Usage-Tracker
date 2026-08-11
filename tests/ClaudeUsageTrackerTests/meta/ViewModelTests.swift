@@ -107,6 +107,82 @@ final class ViewModelTests: XCTestCase {
         XCTAssertTrue(vm.sevenDayHistory.isEmpty)
     }
 
+    func testApplyResult_freshExactSevenDayResetIsNotOverwrittenByRoundedSession() {
+        let roundedSessionReset = Date(timeIntervalSince1970: 1_787_025_600)
+        let exactAPIReset = Date(timeIntervalSince1970: 1_787_023_269.125)
+        let observedAt = Date(timeIntervalSince1970: 1_786_450_123.875)
+        let point = UsageStore.DataPoint(
+            timestamp: observedAt.addingTimeInterval(-60),
+            fiveHourPercent: 20.0,
+            sevenDayPercent: 10.0,
+            sevenDayResetsAt: roundedSessionReset
+        )
+        usageStore.weeklySessionToReturn = UsageStore.WeeklySession(
+            dataPoints: [point],
+            startedAt: point.timestamp,
+            resetsAt: roundedSessionReset
+        )
+        let vm = makeVM()
+        XCTAssertEqual(vm.sevenDayResetsAt, roundedSessionReset,
+                       "Initialization may use the normalized session as legacy fallback")
+
+        vm.applyResult(UsageResultFactory.make(
+            sevenDayPercent: 11.0,
+            sevenDayResetsAt: exactAPIReset,
+            resetTimesObservedAt: observedAt
+        ))
+
+        XCTAssertEqual(vm.sevenDayResetsAt, exactAPIReset,
+                       "reloadHistory must not replace a fresh API value with session identity")
+        XCTAssertEqual(vm.sevenDayResetsAtObservedAt, observedAt)
+        XCTAssertEqual(usageStore.savedResults.last?.sevenDayResetsAt, exactAPIReset)
+    }
+
+    func testApplyResult_tracksObservationFreshnessIndependentlyPerWindow() {
+        let vm = makeVM()
+        let firstObservedAt = Date(timeIntervalSince1970: 200)
+        let staleObservedAt = Date(timeIntervalSince1970: 100)
+        let newerFiveHourObservedAt = Date(timeIntervalSince1970: 300)
+        let initialFiveHourReset = Date(timeIntervalSince1970: 1_000)
+        let initialSevenDayReset = Date(timeIntervalSince1970: 2_000)
+
+        vm.applyResult(UsageResultFactory.make(
+            fiveHourPercent: 10.0,
+            sevenDayPercent: 20.0,
+            fiveHourResetsAt: initialFiveHourReset,
+            sevenDayResetsAt: initialSevenDayReset,
+            resetTimesObservedAt: firstObservedAt
+        ))
+        vm.applyResult(UsageResultFactory.make(
+            fiveHourPercent: 11.0,
+            sevenDayPercent: 21.0,
+            fiveHourResetsAt: Date(timeIntervalSince1970: 900),
+            sevenDayResetsAt: Date(timeIntervalSince1970: 1_900),
+            resetTimesObservedAt: staleObservedAt
+        ))
+
+        XCTAssertEqual(vm.fiveHourResetsAt, initialFiveHourReset)
+        XCTAssertEqual(vm.sevenDayResetsAt, initialSevenDayReset)
+        XCTAssertEqual(vm.fiveHourResetsAtObservedAt, firstObservedAt)
+        XCTAssertEqual(vm.sevenDayResetsAtObservedAt, firstObservedAt)
+
+        let newerFiveHourReset = Date(timeIntervalSince1970: 1_100)
+        vm.applyResult(UsageResultFactory.make(
+            fiveHourPercent: 12.0,
+            sevenDayPercent: 22.0,
+            fiveHourResetsAt: newerFiveHourReset,
+            sevenDayResetsAt: nil,
+            resetTimesObservedAt: newerFiveHourObservedAt
+        ))
+
+        XCTAssertEqual(vm.fiveHourResetsAt, newerFiveHourReset)
+        XCTAssertEqual(vm.fiveHourResetsAtObservedAt, newerFiveHourObservedAt)
+        XCTAssertEqual(vm.sevenDayResetsAt, initialSevenDayReset,
+                       "Omitting 7d must retain its independently observed value")
+        XCTAssertEqual(vm.sevenDayResetsAtObservedAt, firstObservedAt,
+                       "A newer 5h observation must not relabel retained 7d data as fresh")
+    }
+
     // MARK: - Alert Integration
 
     func testApplyResult_callsAlertChecker() {

@@ -1,4 +1,4 @@
-// meta: updated=2026-03-16 06:52 checked=2026-03-03 00:00
+// meta: updated=2026-08-11 checked=2026-03-03 00:00
 import Foundation
 import SQLite3
 import WebKit
@@ -67,10 +67,22 @@ final class AnalysisSchemeHandler: NSObject, WKURLSchemeHandler {
     private func queryUsageJSON(from: String?, to: String?) -> Data? {
         let fallback = "[]".data(using: .utf8)
         return SQLiteHelper.withDatabase(path: usageDbPath, flags: SQLITE_OPEN_READONLY) { db in
+            guard self.tableExists(db, name: "usage_log") else { return fallback }
+            let hasFiveHourExact = self.columnExists(db, table: "usage_log", name: "five_hour_resets_at")
+            let hasSevenDayExact = self.columnExists(db, table: "usage_log", name: "seven_day_resets_at")
+            let hasObservedAt = self.columnExists(db, table: "usage_log", name: "resets_at_observed_at")
+            let fiveHourResetSelect = hasFiveHourExact
+                ? "COALESCE(u.five_hour_resets_at, hs.resets_at)" : "hs.resets_at"
+            let sevenDayResetSelect = hasSevenDayExact
+                ? "COALESCE(u.seven_day_resets_at, ws.resets_at)" : "ws.resets_at"
+            let fiveHourObservedAtSelect = hasFiveHourExact && hasObservedAt
+                ? "CASE WHEN u.five_hour_resets_at IS NOT NULL THEN u.resets_at_observed_at END" : "NULL"
+            let sevenDayObservedAtSelect = hasSevenDayExact && hasObservedAt
+                ? "CASE WHEN u.seven_day_resets_at IS NOT NULL THEN u.resets_at_observed_at END" : "NULL"
             var sql = """
                 SELECT u.timestamp, u.hourly_percent, u.weekly_percent,
-                       hs.resets_at AS hourly_resets_at,
-                       ws.resets_at AS weekly_resets_at
+                       \(fiveHourResetSelect), \(sevenDayResetSelect),
+                       \(fiveHourObservedAtSelect), \(sevenDayObservedAtSelect)
                 FROM usage_log u
                 LEFT JOIN hourly_sessions hs ON u.hourly_session_id = hs.id
                 LEFT JOIN weekly_sessions ws ON u.weekly_session_id = ws.id
@@ -94,8 +106,13 @@ final class AnalysisSchemeHandler: NSObject, WKURLSchemeHandler {
                         "timestamp": SQLiteHelper.columnInt(stmt, 0),
                         "hourly_percent": SQLiteHelper.columnDouble(stmt, 1),
                         "weekly_percent": SQLiteHelper.columnDouble(stmt, 2),
-                        "hourly_resets_at": SQLiteHelper.columnInt(stmt, 3),
-                        "weekly_resets_at": SQLiteHelper.columnInt(stmt, 4),
+                        "hourly_resets_at": self.columnNumber(stmt, 3),
+                        "weekly_resets_at": self.columnNumber(stmt, 4),
+                        "hourly_resets_at_observed_at": self.columnNumber(stmt, 5),
+                        "weekly_resets_at_observed_at": self.columnNumber(stmt, 6),
+                        // Kept for old consumers. Per-window keys above are authoritative.
+                        "resets_at_observed_at": self.columnNumber(stmt, 5)
+                            ?? self.columnNumber(stmt, 6),
                     ])
                 }
                 return serializeJSON(rows)
@@ -106,22 +123,33 @@ final class AnalysisSchemeHandler: NSObject, WKURLSchemeHandler {
     private func queryMetaJSON() -> Data? {
         let fallback = "{}".data(using: .utf8)
         return SQLiteHelper.withDatabase(path: usageDbPath, flags: SQLITE_OPEN_READONLY) { db -> Data? in
+            guard self.tableExists(db, name: "usage_log") else { return fallback }
             var result: [String: Any] = [:]
             var hasUsageData = false
+            let hasSevenDayExact = self.columnExists(db, table: "usage_log", name: "seven_day_resets_at")
+            let hasObservedAt = self.columnExists(db, table: "usage_log", name: "resets_at_observed_at")
+            let latestSevenDayResetSelect = hasSevenDayExact
+                ? "COALESCE((SELECT u2.seven_day_resets_at FROM usage_log u2 WHERE u2.seven_day_resets_at IS NOT NULL ORDER BY u2.timestamp DESC, u2.id DESC LIMIT 1), MAX(ws.resets_at))"
+                : "MAX(ws.resets_at)"
+            let latestSevenDayObservedAtSelect = hasSevenDayExact && hasObservedAt
+                ? "(SELECT u2.resets_at_observed_at FROM usage_log u2 WHERE u2.seven_day_resets_at IS NOT NULL ORDER BY u2.timestamp DESC, u2.id DESC LIMIT 1)"
+                : "NULL"
 
             // Aggregate meta (timestamps)
             SQLiteHelper.withStatement(db: db, sql: """
-                SELECT MAX(ws.resets_at), MAX(u.timestamp), MIN(u.timestamp)
+                SELECT \(latestSevenDayResetSelect), \(latestSevenDayObservedAtSelect),
+                       MAX(u.timestamp), MIN(u.timestamp)
                 FROM usage_log u
                 LEFT JOIN weekly_sessions ws ON u.weekly_session_id = ws.id
                 """) { stmt in
                 guard sqlite3_step(stmt) == SQLITE_ROW else { return }
-                guard SQLiteHelper.columnInt(stmt, 1) != nil ||
-                      SQLiteHelper.columnInt(stmt, 2) != nil else { return }
+                guard SQLiteHelper.columnInt(stmt, 2) != nil ||
+                      SQLiteHelper.columnInt(stmt, 3) != nil else { return }
                 hasUsageData = true
-                result["latestSevenDayResetsAt"] = SQLiteHelper.columnInt(stmt, 0) ?? NSNull()
-                result["latestTimestamp"] = SQLiteHelper.columnInt(stmt, 1) ?? NSNull()
-                result["oldestTimestamp"] = SQLiteHelper.columnInt(stmt, 2) ?? NSNull()
+                result["latestSevenDayResetsAt"] = self.columnNumber(stmt, 0) ?? NSNull()
+                result["latestSevenDayResetsAtObservedAt"] = self.columnNumber(stmt, 1) ?? NSNull()
+                result["latestTimestamp"] = SQLiteHelper.columnInt(stmt, 2) ?? NSNull()
+                result["oldestTimestamp"] = SQLiteHelper.columnInt(stmt, 3) ?? NSNull()
             }
 
             // Session lists for session-based navigation. `started_at` is the
@@ -129,13 +157,24 @@ final class AnalysisSchemeHandler: NSObject, WKURLSchemeHandler {
             // session start, not `resets_at - 7d`. Sessions are not always
             // exactly 7 days, so the JS side uses started_at to draw the
             // navigation slot range correctly.
-            let sessionQueries: [(String, String, String)] = [
-                ("weeklySessions", "weekly_sessions", "weekly_session_id"),
-                ("hourlySessions", "hourly_sessions", "hourly_session_id"),
+            let sessionQueries: [(String, String, String, String)] = [
+                ("weeklySessions", "weekly_sessions", "weekly_session_id", "seven_day_resets_at"),
+                ("hourlySessions", "hourly_sessions", "hourly_session_id", "five_hour_resets_at"),
             ]
-            for (key, table, fkColumn) in sessionQueries {
+            for (key, table, fkColumn, exactColumn) in sessionQueries {
+                guard self.tableExists(db, name: table) else { continue }
+                let hasExact = self.columnExists(db, table: "usage_log", name: exactColumn)
+                let exactResetSelect = hasExact
+                    ? "COALESCE((SELECT u2.\(exactColumn) FROM usage_log u2 WHERE u2.\(fkColumn) = s.id AND u2.\(exactColumn) IS NOT NULL ORDER BY u2.timestamp DESC, u2.id DESC LIMIT 1), s.resets_at)"
+                    : "s.resets_at"
+                let observedAtSelect = hasExact && hasObservedAt
+                    ? "(SELECT u2.resets_at_observed_at FROM usage_log u2 WHERE u2.\(fkColumn) = s.id AND u2.\(exactColumn) IS NOT NULL ORDER BY u2.timestamp DESC, u2.id DESC LIMIT 1)"
+                    : "NULL"
                 let sql = """
-                    SELECT s.id, s.resets_at, MIN(u.timestamp) AS started_at
+                    SELECT s.id, \(exactResetSelect) AS resets_at,
+                           s.resets_at AS normalized_resets_at,
+                           MIN(u.timestamp) AS started_at,
+                           \(observedAtSelect) AS resets_at_observed_at
                     FROM \(table) s
                     LEFT JOIN usage_log u ON u.\(fkColumn) = s.id
                     GROUP BY s.id, s.resets_at
@@ -146,8 +185,14 @@ final class AnalysisSchemeHandler: NSObject, WKURLSchemeHandler {
                     while sqlite3_step(stmt) == SQLITE_ROW {
                         var session: [String: Any] = [:]
                         if let id = SQLiteHelper.columnInt(stmt, 0) { session["id"] = id }
-                        if let ra = SQLiteHelper.columnInt(stmt, 1) { session["resets_at"] = ra }
-                        if let sa = SQLiteHelper.columnInt(stmt, 2) { session["started_at"] = sa }
+                        if let ra = self.columnNumber(stmt, 1) { session["resets_at"] = ra }
+                        if let normalized = SQLiteHelper.columnInt(stmt, 2) {
+                            session["normalized_resets_at"] = normalized
+                        }
+                        if let sa = SQLiteHelper.columnInt(stmt, 3) { session["started_at"] = sa }
+                        if let observedAt = self.columnNumber(stmt, 4) {
+                            session["resets_at_observed_at"] = observedAt
+                        }
                         sessions.append(session)
                     }
                     if hasUsageData || !sessions.isEmpty {
@@ -163,6 +208,36 @@ final class AnalysisSchemeHandler: NSObject, WKURLSchemeHandler {
     }
 
     // MARK: - Helpers
+
+    private func tableExists(_ db: OpaquePointer, name: String) -> Bool {
+        SQLiteHelper.withStatement(
+            db: db,
+            sql: "SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1"
+        ) { stmt in
+            SQLiteHelper.bindText(stmt, 1, name)
+            return sqlite3_step(stmt) == SQLITE_ROW
+        } ?? false
+    }
+
+    private func columnExists(_ db: OpaquePointer, table: String, name: String) -> Bool {
+        SQLiteHelper.withStatement(db: db, sql: "PRAGMA table_info(\(table))") { stmt in
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                if let text = sqlite3_column_text(stmt, 1), String(cString: text) == name {
+                    return true
+                }
+            }
+            return false
+        } ?? false
+    }
+
+    /// Preserve INTEGER legacy values and REAL exact values in JSON without rounding.
+    private func columnNumber(_ stmt: OpaquePointer, _ index: Int32) -> Any? {
+        switch sqlite3_column_type(stmt, index) {
+        case SQLITE_INTEGER: return Int(sqlite3_column_int64(stmt, index))
+        case SQLITE_FLOAT: return sqlite3_column_double(stmt, index)
+        default: return nil
+        }
+    }
 
     private func parseQueryParams(_ url: URL) -> [String: String] {
         guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),

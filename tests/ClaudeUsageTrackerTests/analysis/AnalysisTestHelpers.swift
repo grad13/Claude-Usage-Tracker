@@ -269,12 +269,18 @@ enum TemplateTestHelper {
             <canvas id="usageTimeline"></canvas>
         </div>
         <script>
-        // Stub Chart.js — captures chart configurations for test assertions
+        // Chart.js test double: exercise its object-data parser contract before
+        // capturing configurations. This intentionally reads point.x/point.y
+        // from every item so a literal null fails exactly where Chart.js 4 does.
         const _chartConfigs = {};
+        const _chartParsedData = {};
         class Chart {
             static register() {}
             constructor(canvas, config) {
                 const id = canvas?.id || 'unknown';
+                _chartParsedData[id] = (config?.data?.datasets ?? []).map(dataset =>
+                    (dataset.data ?? []).map(point => ({x: point.x, y: point.y}))
+                );
                 _chartConfigs[id] = config;
                 this.config = config;
                 this.data = config?.data;

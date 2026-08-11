@@ -1,4 +1,4 @@
-// meta: updated=2026-03-16 06:52 checked=2026-02-21 00:00
+// meta: updated=2026-08-11 checked=2026-02-21 00:00
 import Foundation
 import WebKit
 
@@ -26,7 +26,7 @@ enum UsageFetcher {
 
     /// Parse API response JSON string into UsageResult.
     /// Extracted from fetch() so it can be unit tested with real API response JSON.
-    static func parse(jsonString: String) throws -> UsageResult {
+    static func parse(jsonString: String, observedAt: Date = Date()) throws -> UsageResult {
         guard let data = jsonString.data(using: .utf8) else {
             throw UsageFetchError.decodingFailed
         }
@@ -63,7 +63,8 @@ enum UsageFetcher {
             fiveHourRemaining: fiveH?["remaining"] as? Double,
             sevenDayLimit: sevenD?["limit"] as? Double,
             sevenDayRemaining: sevenD?["remaining"] as? Double,
-            rawJSON: jsonString
+            rawJSON: jsonString,
+            resetTimesObservedAt: observedAt
         )
     }
 

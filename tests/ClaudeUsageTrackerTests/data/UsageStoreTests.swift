@@ -1,4 +1,4 @@
-// meta: updated=2026-03-04 06:28 checked=-
+// meta: updated=2026-08-11 checked=-
 import XCTest
 import SQLite3
 @testable import ClaudeUsageTracker
@@ -25,14 +25,50 @@ final class UsageStoreTests: XCTestCase {
         fiveHourPercent: Double? = nil,
         sevenDayPercent: Double? = nil,
         fiveHourResetsAt: Date? = nil,
-        sevenDayResetsAt: Date? = nil
+        sevenDayResetsAt: Date? = nil,
+        resetTimesObservedAt: Date? = nil
     ) -> UsageResult {
         UsageResultFactory.make(
             fiveHourPercent: fiveHourPercent,
             sevenDayPercent: sevenDayPercent,
             fiveHourResetsAt: fiveHourResetsAt,
-            sevenDayResetsAt: sevenDayResetsAt
+            sevenDayResetsAt: sevenDayResetsAt,
+            resetTimesObservedAt: resetTimesObservedAt
         )
+    }
+
+    private func createLegacyDatabase(at path: String) {
+        var db: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(path, &db), SQLITE_OK)
+        guard let db else { return }
+        defer { sqlite3_close(db) }
+
+        let sql = """
+            CREATE TABLE hourly_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                resets_at INTEGER NOT NULL UNIQUE
+            );
+            CREATE TABLE weekly_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                resets_at INTEGER NOT NULL UNIQUE
+            );
+            CREATE TABLE usage_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp INTEGER NOT NULL,
+                hourly_percent REAL,
+                weekly_percent REAL,
+                hourly_session_id INTEGER REFERENCES hourly_sessions(id),
+                weekly_session_id INTEGER REFERENCES weekly_sessions(id),
+                CHECK (hourly_percent IS NOT NULL OR weekly_percent IS NOT NULL)
+            );
+            INSERT INTO hourly_sessions (id, resets_at) VALUES (1, 1786453200);
+            INSERT INTO weekly_sessions (id, resets_at) VALUES (1, 1787058000);
+            INSERT INTO usage_log (
+                id, timestamp, hourly_percent, weekly_percent,
+                hourly_session_id, weekly_session_id
+            ) VALUES (1, 1786450000, 42.5, 18.25, 1, 1);
+            """
+        XCTAssertEqual(sqlite3_exec(db, sql, nil, nil, nil), SQLITE_OK)
     }
 
     // MARK: - Save
@@ -74,6 +110,48 @@ final class UsageStoreTests: XCTestCase {
         XCTAssertEqual(dp.sevenDayPercent!, 15.3, accuracy: 0.01)
         XCTAssertNotNil(dp.fiveHourResetsAt)
         XCTAssertNotNil(dp.sevenDayResetsAt)
+    }
+
+    func testSave_preservesExactResetAndObservationSubseconds() {
+        let fiveHourReset = Date(timeIntervalSince1970: 1_786_451_696.625)
+        let sevenDayReset = Date(timeIntervalSince1970: 1_787_023_269.125)
+        let observedAt = Date(timeIntervalSince1970: 1_786_450_123.875)
+
+        store.save(makeResult(
+            fiveHourPercent: 42.5,
+            sevenDayPercent: 18.25,
+            fiveHourResetsAt: fiveHourReset,
+            sevenDayResetsAt: sevenDayReset,
+            resetTimesObservedAt: observedAt
+        ))
+
+        let point = try! XCTUnwrap(store.loadAllHistory().first)
+        XCTAssertEqual(point.fiveHourResetsAt!.timeIntervalSince1970,
+                       fiveHourReset.timeIntervalSince1970, accuracy: 0.000_001)
+        XCTAssertEqual(point.sevenDayResetsAt!.timeIntervalSince1970,
+                       sevenDayReset.timeIntervalSince1970, accuracy: 0.000_001)
+        XCTAssertEqual(point.fiveHourResetsAtObservedAt!.timeIntervalSince1970,
+                       observedAt.timeIntervalSince1970, accuracy: 0.000_001)
+        XCTAssertEqual(point.sevenDayResetsAtObservedAt!.timeIntervalSince1970,
+                       observedAt.timeIntervalSince1970, accuracy: 0.000_001)
+    }
+
+    func testSave_partialExactResetKeepsObservationProvenancePerWindow() {
+        let fiveHourReset = Date(timeIntervalSince1970: 1_786_451_696.625)
+        let observedAt = Date(timeIntervalSince1970: 1_786_450_123.875)
+
+        store.save(makeResult(
+            fiveHourPercent: 42.5,
+            sevenDayPercent: 18.25,
+            fiveHourResetsAt: fiveHourReset,
+            sevenDayResetsAt: nil,
+            resetTimesObservedAt: observedAt
+        ))
+
+        let point = try! XCTUnwrap(store.loadAllHistory().first)
+        XCTAssertEqual(point.fiveHourResetsAtObservedAt, observedAt)
+        XCTAssertNil(point.sevenDayResetsAtObservedAt,
+                     "A 5h-only reset observation must not mark retained/missing 7d data as observed")
     }
 
     func testSave_bothPercentsNil_skipped() {
@@ -154,6 +232,88 @@ final class UsageStoreTests: XCTestCase {
         // But usage_log should have 2 rows
         let history = store.loadAllHistory()
         XCTAssertEqual(history.count, 2)
+    }
+
+    func testSave_normalizedSessionIdentityIsStableWhileExactValuesDiffer() {
+        let justBeforeHour = Date(timeIntervalSince1970: 1_740_405_599.939)
+        let justAfterHour = Date(timeIntervalSince1970: 1_740_405_600.082)
+
+        store.save(makeResult(fiveHourPercent: 10.0, fiveHourResetsAt: justBeforeHour))
+        store.save(makeResult(fiveHourPercent: 20.0, fiveHourResetsAt: justAfterHour))
+
+        var db: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(store.dbPath, &db), SQLITE_OK)
+        guard let db else { return }
+        defer { sqlite3_close(db) }
+
+        var stmt: OpaquePointer?
+        XCTAssertEqual(sqlite3_prepare_v2(db, "SELECT COUNT(*) FROM hourly_sessions", -1, &stmt, nil), SQLITE_OK)
+        XCTAssertEqual(sqlite3_step(stmt), SQLITE_ROW)
+        XCTAssertEqual(sqlite3_column_int(stmt, 0), 1,
+                       "Jitter around the boundary must keep one normalized session identity")
+        sqlite3_finalize(stmt)
+
+        let history = store.loadAllHistory()
+        XCTAssertEqual(history.count, 2)
+        XCTAssertEqual(history[0].fiveHourResetsAt!.timeIntervalSince1970,
+                       justBeforeHour.timeIntervalSince1970, accuracy: 0.000_001)
+        XCTAssertEqual(history[1].fiveHourResetsAt!.timeIntervalSince1970,
+                       justAfterHour.timeIntervalSince1970, accuracy: 0.000_001)
+    }
+
+    // MARK: - Legacy Schema Migration
+
+    func testInit_migratesLegacyUsageLogAdditivelyAndIdempotently() {
+        let legacyPath = tmpDir.appendingPathComponent("legacy-migration.db").path
+        createLegacyDatabase(at: legacyPath)
+
+        _ = UsageStore(dbPath: legacyPath)
+        _ = UsageStore(dbPath: legacyPath)
+
+        var db: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(legacyPath, &db), SQLITE_OK)
+        guard let db else { return }
+        defer { sqlite3_close(db) }
+
+        var stmt: OpaquePointer?
+        XCTAssertEqual(sqlite3_prepare_v2(db, "PRAGMA table_info(usage_log)", -1, &stmt, nil), SQLITE_OK)
+        var columnNames: [String] = []
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            columnNames.append(String(cString: sqlite3_column_text(stmt, 1)))
+        }
+        sqlite3_finalize(stmt)
+
+        for name in ["five_hour_resets_at", "seven_day_resets_at", "resets_at_observed_at"] {
+            XCTAssertEqual(columnNames.filter { $0 == name }.count, 1,
+                           "Repeated initialization must add each migration column exactly once")
+        }
+
+        XCTAssertEqual(sqlite3_prepare_v2(
+            db,
+            "SELECT COUNT(*), hourly_percent, weekly_percent FROM usage_log WHERE id = 1",
+            -1, &stmt, nil
+        ), SQLITE_OK)
+        XCTAssertEqual(sqlite3_step(stmt), SQLITE_ROW)
+        XCTAssertEqual(sqlite3_column_int(stmt, 0), 1)
+        XCTAssertEqual(sqlite3_column_double(stmt, 1), 42.5, accuracy: 0.001)
+        XCTAssertEqual(sqlite3_column_double(stmt, 2), 18.25, accuracy: 0.001)
+        sqlite3_finalize(stmt)
+    }
+
+    func testLoadAllHistory_legacyNullExactColumnsFallsBackToSessionValues() {
+        let legacyPath = tmpDir.appendingPathComponent("legacy-fallback.db").path
+        createLegacyDatabase(at: legacyPath)
+        let legacyStore = UsageStore(dbPath: legacyPath)
+
+        let point = try! XCTUnwrap(legacyStore.loadAllHistory().first)
+        XCTAssertEqual(point.fiveHourResetsAt!.timeIntervalSince1970,
+                       1_786_453_200, accuracy: 0.0)
+        XCTAssertEqual(point.sevenDayResetsAt!.timeIntervalSince1970,
+                       1_787_058_000, accuracy: 0.0)
+        XCTAssertNil(point.fiveHourResetsAtObservedAt,
+                     "Migrated legacy 5h rows keep NULL provenance while reset reads fall back to sessions")
+        XCTAssertNil(point.sevenDayResetsAtObservedAt,
+                     "Migrated legacy 7d rows keep NULL provenance while reset reads fall back to sessions")
     }
 
     func testSave_differentSession_separate() {

@@ -1,5 +1,5 @@
 ---
-updated: 2026-03-16 06:59
+updated: 2026-08-11
 checked: -
 Deprecated: -
 Format: spec-v2.1
@@ -55,6 +55,34 @@ final class AnalysisSchemeHandler: NSObject, WKURLSchemeHandler {
     // SQLiteHelper.columnInt(_ stmt: OpaquePointer, _ index: Int32) -> Int?
 }
 ```
+
+### Exact reset-time compatibility contract (authoritative)
+
+The handler supports both migrated and legacy databases by checking table and column existence before constructing SQL. Exact reset observations are preferred, while normalized session values remain the fallback and session identity.
+
+`usage.json` always emits these keys for every row; nullable values are JSON `null`:
+
+| Key | Meaning |
+|-----|---------|
+| `timestamp` | Observation timestamp (INTEGER epoch seconds) |
+| `hourly_percent`, `weekly_percent` | Optional usage percentages |
+| `hourly_resets_at`, `weekly_resets_at` | `COALESCE` of the REAL exact observation and the normalized session-table fallback; INTEGER and REAL JSON numbers are preserved without rounding |
+| `hourly_resets_at_observed_at`, `weekly_resets_at_observed_at` | Per-window provenance. Present only when the corresponding exact reset column is non-NULL |
+| `resets_at_observed_at` | Compatibility key for old consumers: 5-hour provenance first, then 7-day provenance, else `null` |
+
+`meta.json` aggregate keys are `latestSevenDayResetsAt`, `latestSevenDayResetsAtObservedAt`, `latestTimestamp`, and `oldestTimestamp`. The latest 7-day exact value and its observation time are selected from the newest row carrying `seven_day_resets_at`; if no exact value exists, `latestSevenDayResetsAt` falls back to `MAX(weekly_sessions.resets_at)` and its provenance is `null`.
+
+Each element of `weeklySessions` and `hourlySessions` can contain:
+
+| Key | Meaning |
+|-----|---------|
+| `id` | Normalized session-table identity |
+| `resets_at` | Latest exact reset observation within the session, falling back to the normalized value |
+| `normalized_resets_at` | Session table's normalized INTEGER reset value; always distinct from display authority |
+| `started_at` | Earliest `usage_log.timestamp` linked to the session |
+| `resets_at_observed_at` | Provenance of the exact value selected for this session |
+
+Nil session fields are omitted. Session arrays are emitted when usage data exists or the corresponding session table contains rows. `settings` remains conditional on a non-empty meta result.
 
 ## 2. State (Mermaid)
 
@@ -121,14 +149,18 @@ stateDiagram-v2
 | UT-08 | DB open fails | `"[]"` (Data) | `sqlite3_open_v2` does not return `SQLITE_OK` |
 | UT-09 | SQL prepare fails | `"[]"` (Data) | `sqlite3_prepare_v2` does not return `SQLITE_OK` |
 | UT-10 | 0 rows | `"[]"` (Data) | Table is empty |
-| UT-11 | N rows present | JSON array (N elements) | Each element: `timestamp`, `hourly_percent`, `weekly_percent`, `hourly_resets_at`, `weekly_resets_at` |
+| UT-11 | N rows present | JSON array (N elements) | Each element contains the eight keys in the exact reset-time compatibility contract |
 | UT-12 | NULL column | `null` in JSON | `columnText`/`columnDouble` returns nil -> converted to `NSNull()` |
 
 **SQL:**
 ```sql
 SELECT u.timestamp, u.hourly_percent, u.weekly_percent,
-       hs.resets_at AS hourly_resets_at,
-       ws.resets_at AS weekly_resets_at
+       COALESCE(u.five_hour_resets_at, hs.resets_at) AS hourly_resets_at,
+       COALESCE(u.seven_day_resets_at, ws.resets_at) AS weekly_resets_at,
+       CASE WHEN u.five_hour_resets_at IS NOT NULL
+            THEN u.resets_at_observed_at END AS hourly_resets_at_observed_at,
+       CASE WHEN u.seven_day_resets_at IS NOT NULL
+            THEN u.resets_at_observed_at END AS weekly_resets_at_observed_at
 FROM usage_log u
 LEFT JOIN hourly_sessions hs ON u.hourly_session_id = hs.id
 LEFT JOIN weekly_sessions ws ON u.weekly_session_id = ws.id
@@ -143,7 +175,7 @@ ORDER BY u.timestamp ASC
 | UT-M01 | DB open fails | `"{}"` (Data) | Usage DB does not exist |
 | UT-M02 | SQL prepare fails | `"{}"` (Data) | Schema mismatch, etc. |
 | UT-M03 | `sqlite3_step` does not return `SQLITE_ROW` | `"{}"` (Data) | Table is empty |
-| UT-M04 | Normal (data present) | `{ latestSevenDayResetsAt: Int, latestTimestamp: Int, oldestTimestamp: Int }` | NULL becomes `null` |
+| UT-M04 | Normal (data present) | Aggregate keys include exact-first latest 7-day reset and its provenance | NULL becomes `null` |
 | UT-M05 | weekly_sessions is empty (NULL from LEFT JOIN) | `{ latestSevenDayResetsAt: null, latestTimestamp: Int, oldestTimestamp: Int }` | LEFT JOIN returns SQLITE_ROW as long as usage_log has data |
 | UT-M06 | usage_log has data, weekly/hourly_sessions have data | `{ latestSevenDayResetsAt, latestTimestamp, oldestTimestamp, weeklySessions: [...], hourlySessions: [...] }` | All fields output |
 | UT-M07 | usage_log has data, sessions tables empty | `{ latestSevenDayResetsAt, latestTimestamp, oldestTimestamp, weeklySessions: [], hourlySessions: [] }` | hasUsageData=true so keys exist (empty arrays) |
@@ -155,7 +187,18 @@ ORDER BY u.timestamp ASC
 
 **SQL:**
 ```sql
-SELECT MAX(ws.resets_at), MAX(u.timestamp), MIN(u.timestamp)
+SELECT COALESCE(
+           (SELECT u2.seven_day_resets_at
+            FROM usage_log u2
+            WHERE u2.seven_day_resets_at IS NOT NULL
+            ORDER BY u2.timestamp DESC, u2.id DESC LIMIT 1),
+           MAX(ws.resets_at)
+       ),
+       (SELECT u2.resets_at_observed_at
+        FROM usage_log u2
+        WHERE u2.seven_day_resets_at IS NOT NULL
+        ORDER BY u2.timestamp DESC, u2.id DESC LIMIT 1),
+       MAX(u.timestamp), MIN(u.timestamp)
 FROM usage_log u
 LEFT JOIN weekly_sessions ws ON u.weekly_session_id = ws.id
 ```
@@ -164,11 +207,12 @@ LEFT JOIN weekly_sessions ws ON u.weekly_session_id = ws.id
 
 | Column Position | SQL | JSON Key | Type |
 |----------------|-----|----------|------|
-| 0 | `MAX(ws.resets_at)` | `latestSevenDayResetsAt` | `Int?` (epoch) |
-| 1 | `MAX(u.timestamp)` | `latestTimestamp` | `Int?` (epoch) |
-| 2 | `MIN(u.timestamp)` | `oldestTimestamp` | `Int?` (epoch) |
+| 0 | latest exact 7-day reset, else `MAX(ws.resets_at)` | `latestSevenDayResetsAt` | `Int` or `Double` epoch |
+| 1 | observation time paired with latest exact reset | `latestSevenDayResetsAtObservedAt` | `Double?` epoch |
+| 2 | `MAX(u.timestamp)` | `latestTimestamp` | `Int?` epoch |
+| 3 | `MIN(u.timestamp)` | `oldestTimestamp` | `Int?` epoch |
 
-All columns are read via `columnInt`; nil values are converted to `NSNull()` for JSON serialization.
+Exact-capable columns use `columnNumber` so SQLite INTEGER legacy values and REAL exact values retain their JSON numeric representation. Nil aggregate values are converted to `NSNull()`.
 
 ### queryMetaJSON: hasUsageData Condition Flag
 
@@ -189,9 +233,29 @@ After the aggregate query, session lists are fetched from `weekly_sessions` and 
 **SQL (per table):**
 
 ```sql
-SELECT id, resets_at FROM weekly_sessions ORDER BY resets_at ASC
-SELECT id, resets_at FROM hourly_sessions ORDER BY resets_at ASC
+SELECT s.id,
+       COALESCE(
+           (SELECT u2.{exact_reset_column}
+            FROM usage_log u2
+            WHERE u2.{session_fk} = s.id
+              AND u2.{exact_reset_column} IS NOT NULL
+            ORDER BY u2.timestamp DESC, u2.id DESC LIMIT 1),
+           s.resets_at
+       ) AS resets_at,
+       s.resets_at AS normalized_resets_at,
+       MIN(u.timestamp) AS started_at,
+       (SELECT u2.resets_at_observed_at
+        FROM usage_log u2
+        WHERE u2.{session_fk} = s.id
+          AND u2.{exact_reset_column} IS NOT NULL
+        ORDER BY u2.timestamp DESC, u2.id DESC LIMIT 1) AS resets_at_observed_at
+FROM {weekly_sessions|hourly_sessions} s
+LEFT JOIN usage_log u ON u.{session_fk} = s.id
+GROUP BY s.id, s.resets_at
+ORDER BY s.resets_at ASC
 ```
+
+For weekly sessions, `{session_fk}` / `{exact_reset_column}` are `weekly_session_id` / `seven_day_resets_at`; for hourly sessions they are `hourly_session_id` / `five_hour_resets_at`. On a legacy schema the exact and observation expressions are replaced with the session-table fallback and `NULL`.
 
 **JSON key mapping:**
 
@@ -200,7 +264,7 @@ SELECT id, resets_at FROM hourly_sessions ORDER BY resets_at ASC
 | `weeklySessions` | `weekly_sessions` |
 | `hourlySessions` | `hourly_sessions` |
 
-Each session element contains `id` (Int?) and `resets_at` (Int?, epoch). Keys with nil values are omitted from the object (not NSNull).
+Each session element uses the five-key mapping in the authoritative compatibility contract above. Keys with nil values are omitted from the object (not `NSNull`).
 
 **Output condition:**
 
@@ -250,13 +314,15 @@ Binding: Uses `sqlite3_bind_int64`. Type is `Int64`.
 | UT-F02 | `cut://usage.json?from=abc&to=1700003600` | from is non-numeric | Returns all rows | No WHERE clause |
 | UT-F03 | `cut://usage.json` | No parameters | Returns all rows | No WHERE clause |
 
-### columnInt Helper
+### Numeric column helpers
 
 Uses `SQLiteHelper.columnInt(_ stmt: OpaquePointer, _ index: Int32) -> Int?` (see Contract section).
 
 - If `sqlite3_column_type` is `SQLITE_NULL`: returns `nil`
 - Otherwise: returns `Int(sqlite3_column_int64(stmt, idx))`
-- Used for epoch timestamps in `queryUsageJSON` (`timestamp`, `hourly_resets_at`, `weekly_resets_at`) and all columns in `queryMetaJSON`
+- Used for INTEGER-only timestamps and identifiers.
+
+`columnNumber` inspects the SQLite storage class and returns `Int` for `SQLITE_INTEGER`, `Double` for `SQLITE_FLOAT`, and nil otherwise. Exact reset and observation values use it to preserve subsecond precision.
 
 Test cases belong to the `SQLiteHelper` spec.
 
@@ -326,6 +392,6 @@ private func parseQueryParams(_ url: URL) -> [String: String]
 - `serializeJSON` converts Optional nil to `NSNull()`. `JSONSerialization` cannot handle Swift Optionals directly
 - `SQLiteHelper.columnText`, `SQLiteHelper.columnDouble`, `SQLiteHelper.columnInt` include `SQLITE_NULL` checks. NULL columns return `nil`
 - SQLite operations are abstracted through the `SQLiteHelper` enum (`code/app/ClaudeUsageTrackerShared/SQLiteHelper.swift`). `withDatabase`/`withStatement` automatically manage the open/prepare/close/finalize lifecycle
-- `queryUsageJSON` reads epoch timestamps as `Int64` from SQLite, converts to `Int`, and includes them in the JSON
+- `queryUsageJSON` preserves exact REAL reset/observation epochs while retaining INTEGER legacy fallback values
 - Without filters, all records are SELECTed (performance depends on data volume)
 - `queryMetaJSON` always returns either a single row (aggregate query) or `{}` on failure

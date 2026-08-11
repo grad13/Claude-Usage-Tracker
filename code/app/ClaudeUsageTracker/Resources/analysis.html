@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- meta: updated=2026-03-16 06:52 checked=- -->
+<!-- meta: updated=2026-08-11 checked=- -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -406,6 +406,29 @@ function buildHourlySessions(data) {
   return sessions;
 }
 
+// Hourly fill continuity follows chronological samples, not reset/session
+// identity. Exact reset values remain authoritative for navigation, bands, and
+// metadata, but historical exact values can alternate between adjacent samples.
+function buildHourlyTimelineData(data, gapMs = 30 * 60 * 1000) {
+  const thresholdMs = Number.isFinite(gapMs) && gapMs >= 0
+    ? gapMs
+    : 30 * 60 * 1000;
+  const samples = data
+    .filter(d => Number.isFinite(d.timestamp) && Number.isFinite(d.hourly_percent))
+    .map(d => ({ x: d.timestamp * 1000, y: d.hourly_percent }))
+    .sort((a, b) => a.x - b.x);
+
+  const timeline = [];
+  for (const sample of samples) {
+    const previous = timeline[timeline.length - 1];
+    if (previous && previous.y !== null && sample.x - previous.x > thresholdMs) {
+      timeline.push({ x: previous.x + (sample.x - previous.x) / 2, y: null });
+    }
+    timeline.push(sample);
+  }
+  return timeline;
+}
+
 // Stripe pattern for session bands
 function createStripePattern(ctx, color, lineWidth, spacing) {
   const size = spacing;
@@ -441,15 +464,20 @@ function findNearest(sortedData, targetX) {
 function renderUsageTab() {
   const hourlySessions = buildHourlySessions(_usageData);
   const weeklySessions = buildWeeklySessions(_usageData);
-  const allHourlyData = hourlySessions.flatMap(s => s.data).sort((a, b) => a.x - b.x);
+  const hourlyData = buildHourlyTimelineData(_usageData);
+  const allHourlyData = hourlyData.filter(point => point.y !== null);
   const allWeeklyData = weeklySessions.flatMap(s => s.data).sort((a, b) => a.x - b.x);
 
-  const hourlyDatasets = hourlySessions.map((sess, i) => ({
-    label: i === 0 ? 'Hourly Usage' : '',
-    data: sess.data,
+  // Keep Hourly in one logical fill and separate only real elapsed-time gaps.
+  // A parser-safe {x, y:null} point prevents Chart.js line/fill bridging without
+  // creating a separate filled dataset that closes diagonally to the baseline.
+  const hourlyDatasets = hourlyData.length === 0 ? [] : [{
+    label: 'Hourly Usage',
+    data: hourlyData,
     borderColor: _hourlyColor, backgroundColor: hexToRgba(_hourlyColor, 0.6),
-    fill: true, borderWidth: 0.75, pointRadius: 1, tension: 0, stepped: 'before',
-  }));
+    fill: true, spanGaps: false,
+    borderWidth: 0.75, pointRadius: 1, tension: 0, stepped: 'before',
+  }];
 
   const weeklyDatasets = weeklySessions.map((sess, i) => ({
     label: i === 0 ? 'Weekly Usage' : '',

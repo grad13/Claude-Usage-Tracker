@@ -1,4 +1,4 @@
-// meta: updated=2026-04-25 05:00 checked=-
+// meta: updated=2026-08-11 checked=-
 import Foundation
 import WebKit
 import Combine
@@ -11,6 +11,8 @@ final class UsageViewModel: ObservableObject, WebViewCoordinatorDelegate {
     @Published var sevenDayPercent: Double?
     @Published var fiveHourResetsAt: Date?
     @Published var sevenDayResetsAt: Date?
+    var fiveHourResetsAtObservedAt: Date? = nil
+    var sevenDayResetsAtObservedAt: Date? = nil
     @Published var error: String?
     @Published var isFetching = false
     @Published var isLoggedIn = false
@@ -245,21 +247,33 @@ final class UsageViewModel: ObservableObject, WebViewCoordinatorDelegate {
     }
 
     func applyResult(_ result: UsageResult) {
+        var observedResult = result
+        let observedAt = result.resetTimesObservedAt ?? Date()
+        observedResult.resetTimesObservedAt = observedAt
+
         // Phase 1: Update @Published state
         fiveHourPercent = result.fiveHourPercent
         sevenDayPercent = result.sevenDayPercent
-        fiveHourResetsAt = result.fiveHourResetsAt
-        sevenDayResetsAt = result.sevenDayResetsAt
+        if let exact = result.fiveHourResetsAt,
+           fiveHourResetsAtObservedAt.map({ observedAt >= $0 }) ?? true {
+            fiveHourResetsAt = exact
+            fiveHourResetsAtObservedAt = observedAt
+        }
+        if let exact = result.sevenDayResetsAt,
+           sevenDayResetsAtObservedAt.map({ observedAt >= $0 }) ?? true {
+            sevenDayResetsAt = exact
+            sevenDayResetsAtObservedAt = observedAt
+        }
 
         // Phase 2: Persist to DB + reload history
-        usageStore.save(result)
+        usageStore.save(observedResult)
         reloadHistory()
 
         // Phase 2.5: Write snapshot file to App Group container for widget
-        writeWidgetSnapshot(result: result, isLoggedIn: true)
+        writeWidgetSnapshot(result: observedResult, isLoggedIn: true)
 
         // Phase 3: Evaluate alert thresholds
-        alertChecker.checkAlerts(result: result, settings: settings)
+        alertChecker.checkAlerts(result: observedResult, settings: settings)
 
         // Phase 4: Notify widget to reload (reads from same usage.db)
         widgetReloader.reloadAllTimelines()
@@ -294,13 +308,23 @@ final class UsageViewModel: ObservableObject, WebViewCoordinatorDelegate {
 
     func reloadHistory() {
         fiveHourHistory = usageStore.loadHistory(windowSeconds: 5 * 3600)
+        if fiveHourResetsAt == nil,
+           let latest = fiveHourHistory.last(where: { $0.fiveHourResetsAtObservedAt != nil })
+                ?? fiveHourHistory.last(where: { $0.fiveHourResetsAt != nil }) {
+            fiveHourResetsAt = latest.fiveHourResetsAt
+            fiveHourResetsAtObservedAt = latest.fiveHourResetsAtObservedAt
+        }
         if let session = usageStore.loadCurrentWeeklySession() {
             sevenDayHistory = session.dataPoints
             sevenDayStartedAt = session.startedAt
-            // Use session-scoped resetsAt (from DB) — stable across fetches within the
-            // session. Falls through to the API-provided value only when no session
-            // exists yet (nil branch below).
-            sevenDayResetsAt = session.resetsAt
+            // A fresh fetch already populated the exact value. The DB value is only
+            // restart/legacy fallback and may be a normalized session identity.
+            if sevenDayResetsAt == nil {
+                sevenDayResetsAt = session.resetsAt
+                sevenDayResetsAtObservedAt = session.dataPoints
+                    .last(where: { $0.sevenDayResetsAtObservedAt != nil })?
+                    .sevenDayResetsAtObservedAt
+            }
         } else {
             sevenDayHistory = []
             sevenDayStartedAt = nil
@@ -341,10 +365,10 @@ final class UsageViewModel: ObservableObject, WebViewCoordinatorDelegate {
             timestamp: Date(),
             fiveHourPercent: result.fiveHourPercent,
             sevenDayPercent: result.sevenDayPercent,
-            fiveHourResetsAt: result.fiveHourResetsAt,
-            // Prefer the session-scoped resetsAt (propagated via reloadHistory).
-            // Falls back to API-provided value when no session exists yet.
-            sevenDayResetsAt: sevenDayResetsAt ?? result.sevenDayResetsAt,
+            fiveHourResetsAt: fiveHourResetsAt,
+            sevenDayResetsAt: sevenDayResetsAt,
+            fiveHourResetsAtObservedAt: fiveHourResetsAtObservedAt,
+            sevenDayResetsAtObservedAt: sevenDayResetsAtObservedAt,
             sevenDayStartedAt: sevenDayStartedAt,
             fiveHourHistory: fiveHourHistory.map { HistoryPoint(timestamp: $0.timestamp, percent: $0.fiveHourPercent ?? 0) },
             sevenDayHistory: sevenDayHistory.map { HistoryPoint(timestamp: $0.timestamp, percent: $0.sevenDayPercent ?? 0) },

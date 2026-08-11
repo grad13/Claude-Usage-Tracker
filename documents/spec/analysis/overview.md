@@ -1,5 +1,5 @@
 ---
-updated: 2026-03-16 06:59
+updated: 2026-08-11
 checked: -
 Deprecated: -
 Format: spec-v2.1
@@ -31,7 +31,7 @@ Built with WKWebView + Chart.js. Dark theme (GitHub Dark: #0d1117).
 
 | DB | Table | Purpose | Key Columns |
 |----|-------|---------|-------------|
-| `usage.db` | `usage_log` | Time-series usage rate records | `timestamp`, `hourly_percent`, `weekly_percent`, `hourly_resets_at`, `weekly_resets_at` |
+| `usage.db` | `usage_log` | Time-series usage rate and exact reset observations | `timestamp`, `hourly_percent`, `weekly_percent`, `five_hour_resets_at`, `seven_day_resets_at`, `resets_at_observed_at` |
 | `usage.db` | `weekly_sessions` | Weekly session metadata | `id`, `resets_at` |
 | `usage.db` | `hourly_sessions` | Hourly session metadata | `id`, `resets_at` |
 
@@ -40,10 +40,12 @@ Built with WKWebView + Chart.js. Dark theme (GitHub Dark: #0d1117).
 ```
 Analysis window opens
   -> AnalysisSchemeHandler (cut:// scheme)
-  -> fetch cut://meta.json -> build session slots (weekly/daily)
+  -> fetch cut://meta.json -> build exact session slots and calendar slots
   -> fetch cut://usage.json?from=X&to=Y -> usage data for current session
   -> renderMain(usageData) -> usage chart rendering
 ```
+
+`AnalysisSchemeHandler` serves exact API reset observations first and falls back to normalized session-table values for legacy rows. Per-row JSON exposes independent 5-hour/7-day observation provenance. Meta JSON exposes exact-first aggregate/session `resets_at`, the normalized identity separately as `normalized_resets_at`, session `started_at`, and exact `resets_at_observed_at`. See `analysis-scheme-handler.md` for the authoritative key contract.
 
 ## Usage Chart
 
@@ -51,14 +53,15 @@ Analysis window opens
 - **Chart**: Line chart (Chart.js `line`)
   - Blue line: hourly%, Red line: weekly%
   - X: time series, Y: 0-100%
-- **Reset points**: Inserts a usage-rate-0 point at the `resets_at` timestamp (visualizes drops)
-- **Gap handling**: Segments exceeding the gap threshold (5-360 min, default 30 min) have their lines made transparent
-  - User can adjust the threshold via a slider
+- **Reset points**: Weekly session rendering can append usage-rate 0 at a completed `resets_at`. Hourly exact reset values remain metadata/display authority and do not inject points into the chronological Hourly fill.
+- **Hourly continuity authority**: Exact `hourly_resets_at` / session identity remains authoritative for metadata, navigation, reset display, and bands, but it does not split the Hourly fill. Historical reset identities can interleave between adjacent chronological samples and are not evidence of missing usage data.
+- **Hourly gap handling**: Valid Hourly samples are ordered by timestamp into one filled stepped dataset. Only elapsed time greater than the 30-minute default gap threshold inserts one parser-safe `{x: midpoint, y: null}` skipped point; `spanGaps: false` leaves that real interval empty. Literal `null` dataset items are forbidden because Chart.js object-data parsing dereferences each item's `x`. Reset/session identity changes alone never insert separators.
+- **Weekly rendering**: Weekly sessions remain separate datasets and retain their session-based reset behavior.
 
 ## Session Navigation
 
-- Entry point fetches `cut://meta.json` to get overall timestamp range
-- Builds weekly or daily slots from the timestamp range
+- Entry point fetches `cut://meta.json` for overall range plus exact weekly/hourly session bounds
+- Builds session-based weekly/hourly slots and calendar week/day slots
 - User navigates between slots via Prev/Next buttons
 - Each navigation triggers `loadData(from, to)` with epoch range
 

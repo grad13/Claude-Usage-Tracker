@@ -1,10 +1,16 @@
 ---
-updated: 2026-06-27
+updated: 2026-08-11
 checked: -
 ---
 # Changelog
 
 ## [Unreleased]
+
+## [1.0.5] - 2026-08-11
+
+### Fixed
+- **Analysis Hourly fill continuity**: Hourly area fill now follows chronological usage samples instead of reset/session identity, keeping one stepped filled dataset and splitting only at real data gaps. This prevents overlapping rectangles and diagonal fills between contiguous samples
+- **Exact 5-hour and 7-day reset timestamps**: Exact `resets_at` values from the authenticated usage API are parsed without normalization, persisted through an additive SQLite migration, and propagated through history, Analysis JSON, and the widget snapshot/display path. Legacy database rows and older snapshots continue to use normalized session timestamps and optional-field fallbacks
 
 ## [1.0.4] - 2026-06-27
 

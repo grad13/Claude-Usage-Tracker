@@ -1,5 +1,5 @@
 ---
-updated: 2026-04-25 05:00
+updated: 2026-08-11
 checked: -
 Deprecated: -
 Format: spec-v2.1
@@ -71,12 +71,15 @@ CREATE TABLE IF NOT EXISTS weekly_sessions (
 
 ```sql
 CREATE TABLE IF NOT EXISTS usage_log (
-    id                INTEGER PRIMARY KEY AUTOINCREMENT,
-    timestamp         INTEGER NOT NULL,
-    hourly_percent    REAL,
-    weekly_percent    REAL,
-    hourly_session_id INTEGER REFERENCES hourly_sessions(id),
-    weekly_session_id INTEGER REFERENCES weekly_sessions(id),
+    id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp             INTEGER NOT NULL,
+    hourly_percent        REAL,
+    weekly_percent        REAL,
+    hourly_session_id     INTEGER REFERENCES hourly_sessions(id),
+    weekly_session_id     INTEGER REFERENCES weekly_sessions(id),
+    five_hour_resets_at   REAL,
+    seven_day_resets_at   REAL,
+    resets_at_observed_at REAL,
     CHECK (hourly_percent IS NOT NULL OR weekly_percent IS NOT NULL)
 );
 ```
@@ -89,6 +92,23 @@ CREATE TABLE IF NOT EXISTS usage_log (
 | `weekly_percent` | REAL | YES | 7-day window utilization. Same constraint as above |
 | `hourly_session_id` | INTEGER | YES | Foreign key to `hourly_sessions(id)` |
 | `weekly_session_id` | INTEGER | YES | Foreign key to `weekly_sessions(id)` |
+| `five_hour_resets_at` | REAL | YES | Exact 5-hour `resets_at` observed in this API response, as epoch seconds. REAL preserves subsecond precision |
+| `seven_day_resets_at` | REAL | YES | Exact 7-day `resets_at` observed in this API response, as epoch seconds. REAL preserves subsecond precision |
+| `resets_at_observed_at` | REAL | YES | Time at which the API response carrying either exact reset value was observed, as epoch seconds |
+
+The observation timestamp is stored once because one authenticated API response covers both windows. Provenance is nevertheless per-window: readers expose an observation time for a window only when that row's corresponding exact reset column is non-NULL. A partial response therefore cannot make a retained value from the other window appear freshly observed.
+
+### Additive migration
+
+`UsageStore.init()` migrates an existing `usage_log`, and `save()` repeats the same check after `CREATE TABLE IF NOT EXISTS`. The migration inspects `PRAGMA table_info(usage_log)` and adds only missing columns:
+
+```sql
+ALTER TABLE usage_log ADD COLUMN five_hour_resets_at REAL;
+ALTER TABLE usage_log ADD COLUMN seven_day_resets_at REAL;
+ALTER TABLE usage_log ADD COLUMN resets_at_observed_at REAL;
+```
+
+This migration is additive and idempotent. It does not rewrite legacy rows; their new columns remain NULL, so reads continue to use the normalized session-table timestamps as fallback.
 
 ### CHECK constraint
 
@@ -133,6 +153,8 @@ fiveHourResetsAt -> normalizeResetsAt() -> hourly_sessions.resets_at -> hourly_s
 sevenDayResetsAt -> normalizeResetsAt() -> weekly_sessions.resets_at -> weekly_session_id
 ```
 
+The same INSERT also stores each non-nil reset value without normalization in the corresponding REAL observation column. If at least one exact reset exists, `resets_at_observed_at` is `UsageResult.resetTimesObservedAt`, or the save time when the result has no explicit observation timestamp. If both reset values are nil, all three observation columns are NULL.
+
 ## DataPoint struct
 
 `UsageStore.DataPoint` is a nested struct representing a history query result.
@@ -144,6 +166,8 @@ struct DataPoint {
     let sevenDayPercent: Double?
     let fiveHourResetsAt: Date?
     let sevenDayResetsAt: Date?
+    let fiveHourResetsAtObservedAt: Date?
+    let sevenDayResetsAtObservedAt: Date?
 }
 ```
 
@@ -152,14 +176,25 @@ struct DataPoint {
 | `timestamp` | `Date` | Record time (converted from epoch seconds) |
 | `fiveHourPercent` | `Double?` | 5-hour window utilization |
 | `sevenDayPercent` | `Double?` | 7-day window utilization |
-| `fiveHourResetsAt` | `Date?` | 5-hour window reset time (JOINed from `hourly_sessions.resets_at`) |
-| `sevenDayResetsAt` | `Date?` | 7-day window reset time (JOINed from `weekly_sessions.resets_at`) |
+| `fiveHourResetsAt` | `Date?` | Exact `usage_log.five_hour_resets_at`, falling back to normalized `hourly_sessions.resets_at` for legacy rows |
+| `sevenDayResetsAt` | `Date?` | Exact `usage_log.seven_day_resets_at`, falling back to normalized `weekly_sessions.resets_at` for legacy rows |
+| `fiveHourResetsAtObservedAt` | `Date?` | `resets_at_observed_at` only when the row has an exact 5-hour value |
+| `sevenDayResetsAtObservedAt` | `Date?` | `resets_at_observed_at` only when the row has an exact 7-day value |
+
+All history readers use exact-first legacy fallback:
+
+```sql
+COALESCE(u.five_hour_resets_at, hs.resets_at)
+COALESCE(u.seven_day_resets_at, ws.resets_at)
+CASE WHEN u.five_hour_resets_at IS NOT NULL THEN u.resets_at_observed_at END
+CASE WHEN u.seven_day_resets_at IS NOT NULL THEN u.resets_at_observed_at END
+```
 
 ## Differences between loadAllHistory() and loadHistory(windowSeconds:)
 
 | Aspect | `loadAllHistory()` | `loadHistory(windowSeconds:)` |
 |--------|-------------------|-------------------------------|
-| Selected columns | `timestamp`, `hourly_percent`, `weekly_percent` + `resets_at` via JOIN | `timestamp`, `hourly_percent`, `weekly_percent` + `resets_at` via JOIN |
+| Selected columns | Percentages + exact-first reset values + per-window observation times | Percentages + exact-first reset values + per-window observation times |
 | JOIN | `LEFT JOIN hourly_sessions`, `LEFT JOIN weekly_sessions` | `LEFT JOIN hourly_sessions`, `LEFT JOIN weekly_sessions` |
 | `resets_at` columns | retrieved | retrieved |
 | WHERE clause | none (all rows) | `timestamp >= ?` (from cutoff onward) |
@@ -179,7 +214,7 @@ Returns data points belonging only to the current weekly session (the latest `we
 struct WeeklySession {
     let dataPoints: [DataPoint]
     let startedAt: Date   // MIN(timestamp) within the session
-    let resetsAt: Date    // weekly_sessions.resets_at for the session
+    let resetsAt: Date    // latest exact observed value; normalized session value is fallback
 }
 func loadCurrentWeeklySession() -> WeeklySession?
 ```
@@ -190,8 +225,12 @@ Returns `nil` when no weekly session has ever been recorded (empty DB, or all ro
 
 ```sql
 SELECT u.timestamp, u.hourly_percent, u.weekly_percent,
-       hs.resets_at AS hourly_resets_at,
-       ws.resets_at AS weekly_resets_at
+       COALESCE(u.five_hour_resets_at, hs.resets_at) AS hourly_resets_at,
+       COALESCE(u.seven_day_resets_at, ws.resets_at) AS weekly_resets_at,
+       CASE WHEN u.five_hour_resets_at IS NOT NULL
+            THEN u.resets_at_observed_at END AS hourly_resets_at_observed_at,
+       CASE WHEN u.seven_day_resets_at IS NOT NULL
+            THEN u.resets_at_observed_at END AS weekly_resets_at_observed_at
 FROM usage_log u
 INNER JOIN weekly_sessions ws ON u.weekly_session_id = ws.id
 LEFT JOIN hourly_sessions hs ON u.hourly_session_id = hs.id
@@ -214,7 +253,7 @@ ORDER BY u.timestamp ASC;
 2. If no rows: return `nil`.
 3. Build `[DataPoint]` from rows via the shared `readDataPoints(stmt)` helper.
 4. `startedAt = dataPoints.first?.timestamp` (guaranteed non-nil when rows exist, since `ORDER BY u.timestamp ASC`).
-5. `resetsAt = ws.resets_at` from any row (stable within the session).
+5. `resetsAt` is taken from the last point with exact 7-day provenance; if none exists, use the last point's normalized legacy fallback.
 6. Return `WeeklySession(dataPoints:, startedAt:, resetsAt:)`.
 
 ### Interaction with loadHistory
@@ -337,7 +376,7 @@ func loadDailyUsage(since: Date) -> Double? {
 
 ### readDataPoints
 
-A helper that unifies row reading for `loadAllHistory` and `loadHistory`. Reads 5 columns (timestamp, hourly_percent, weekly_percent, hourly_resets_at, weekly_resets_at) and returns a DataPoint array.
+A helper shared by all history readers. It reads 7 columns: timestamp, both percentages, both exact-first reset values, and both per-window observation times.
 
 ### bindDouble
 

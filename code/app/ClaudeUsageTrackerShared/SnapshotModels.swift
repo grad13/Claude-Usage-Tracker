@@ -1,4 +1,4 @@
-// meta: updated=2026-04-25 05:00 checked=-
+// meta: updated=2026-08-11 checked=-
 import Foundation
 
 public struct UsageSnapshot: Codable {
@@ -7,6 +7,10 @@ public struct UsageSnapshot: Codable {
     public let sevenDayPercent: Double?
     public let fiveHourResetsAt: Date?
     public let sevenDayResetsAt: Date?
+    /// Observation times are separate per window so retaining one window when a
+    /// later response omits it cannot make that older value appear freshly observed.
+    public let fiveHourResetsAtObservedAt: Date?
+    public let sevenDayResetsAtObservedAt: Date?
     /// Start of the current weekly session. When non-nil the 7d chart uses
     /// [sevenDayStartedAt, sevenDayResetsAt] as its window bounds, avoiding
     /// cross-session rendering. Nil when no session exists yet (graceful
@@ -22,6 +26,8 @@ public struct UsageSnapshot: Codable {
         sevenDayPercent: Double?,
         fiveHourResetsAt: Date?,
         sevenDayResetsAt: Date?,
+        fiveHourResetsAtObservedAt: Date? = nil,
+        sevenDayResetsAtObservedAt: Date? = nil,
         sevenDayStartedAt: Date? = nil,
         fiveHourHistory: [HistoryPoint],
         sevenDayHistory: [HistoryPoint],
@@ -32,6 +38,8 @@ public struct UsageSnapshot: Codable {
         self.sevenDayPercent = sevenDayPercent
         self.fiveHourResetsAt = fiveHourResetsAt
         self.sevenDayResetsAt = sevenDayResetsAt
+        self.fiveHourResetsAtObservedAt = fiveHourResetsAtObservedAt
+        self.sevenDayResetsAtObservedAt = sevenDayResetsAtObservedAt
         self.sevenDayStartedAt = sevenDayStartedAt
         self.fiveHourHistory = fiveHourHistory
         self.sevenDayHistory = sevenDayHistory

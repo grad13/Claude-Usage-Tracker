@@ -1,4 +1,4 @@
-// meta: updated=2026-03-16 06:52 checked=-
+// meta: updated=2026-08-11 checked=-
 import Foundation
 
 struct UsageResult {
@@ -13,6 +13,9 @@ struct UsageResult {
     var sevenDayLimit: Double?
     var sevenDayRemaining: Double?
     var rawJSON: String?
+    /// Time at which the API response carrying the exact reset timestamps was observed.
+    /// One fetch produces both window values; nil is retained for legacy/test-created values.
+    var resetTimesObservedAt: Date? = nil
 }
 
 enum UsageFetchError: LocalizedError {

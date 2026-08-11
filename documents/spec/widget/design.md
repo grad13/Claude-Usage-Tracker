@@ -1,9 +1,9 @@
 ---
-updated: 2026-04-25 05:00
+updated: 2026-08-11
 checked: -
 Deprecated: -
 Format: spec-v2.1
-Source: code/app/ClaudeUsageTrackerWidget/UsageWidget.swift, code/app/ClaudeUsageTrackerWidget/WidgetMediumView.swift, code/app/ClaudeUsageTrackerWidget/WidgetMiniGraph.swift, code/app/ClaudeUsageTrackerWidget/WidgetColorThemeResolver.swift, code/app/ClaudeUsageTrackerWidget/RefreshIntent.swift
+Source: code/app/ClaudeUsageTrackerWidget/UsageWidget.swift, code/app/ClaudeUsageTrackerWidget/WidgetMediumView.swift, code/app/ClaudeUsageTrackerWidget/WidgetMiniGraph.swift, code/app/ClaudeUsageTrackerWidget/WidgetColorThemeResolver.swift, code/app/ClaudeUsageTrackerWidget/RefreshIntent.swift, code/app/ClaudeUsageTrackerShared/SnapshotModels.swift
 ---
 
 # Widget Design Specification
@@ -17,6 +17,7 @@ Source: code/app/ClaudeUsageTrackerWidget/UsageWidget.swift, code/app/ClaudeUsag
 | code/app/ClaudeUsageTrackerWidget/WidgetMiniGraph.swift | macOS |
 | code/app/ClaudeUsageTrackerWidget/WidgetColorThemeResolver.swift | macOS |
 | code/app/ClaudeUsageTrackerWidget/RefreshIntent.swift | macOS |
+| code/app/ClaudeUsageTrackerShared/SnapshotModels.swift | macOS |
 
 | Field | Value |
 |-------|-------|
@@ -198,6 +199,20 @@ struct RefreshIntent: AppIntent {
 - **2026-02-25**: Area extension -- horizontal extension from the last data point to min(current time, reset time). Restricted no-data gray to post-reset only. Moved marker position to the extension endpoint
 - **2026-03-15**: Removed Small and Large sizes (Medium only). Added diagnostic footer row (update time + next refresh countdown + manual refresh button via AppIntent)
 - **2026-04-25**: 7d chart switched to session-scoped window. `UsageSnapshot.sevenDayStartedAt: Date?` added (Optional, backward-compatible via `decodeIfPresent`). `WidgetMiniGraph` gains a `startedAt` prop; `WidgetMediumView` computes dynamic `sevenDayWindowSeconds = resetsAt - startedAt` (fallback `7 * 24 * 3600` when snapshot has nil). Fixes cross-session rendering in the 7d chart that showed previous session's peaks alongside current session data
+- **2026-08-11**: Snapshot adds independent optional `fiveHourResetsAtObservedAt` / `sevenDayResetsAtObservedAt` provenance. Exact API reset values remain authoritative through persistence/reload; missing fields decode as nil for legacy snapshots
+
+## UsageSnapshot Reset Contract
+
+The main app writes the snapshot after saving and reloading history. Reset-related fields are:
+
+| Field | Type | Contract |
+|-------|------|----------|
+| `fiveHourResetsAt`, `sevenDayResetsAt` | `Date?` | Fresh exact API values when available; otherwise exact-first persisted values or normalized legacy fallback |
+| `fiveHourResetsAtObservedAt` | `Date?` | Provenance only for the retained exact 5-hour reset value |
+| `sevenDayResetsAtObservedAt` | `Date?` | Provenance only for the retained exact 7-day reset value |
+| `sevenDayStartedAt` | `Date?` | Persisted current weekly-session start used for dynamic 7-day chart bounds |
+
+All three provenance/session additions are optional. Synthesized `Codable` decoding treats absent optional keys as nil, so snapshots written by older app versions remain readable. Observation times are independent per window: a partial refresh cannot label an older retained value from the other window as newly observed. The widget renders reset values but does not infer or fabricate provenance.
 
 ## WidgetKit Structure (UsageWidget.swift)
 

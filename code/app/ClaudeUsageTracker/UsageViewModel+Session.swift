@@ -109,6 +109,8 @@ extension UsageViewModel {
         sevenDayPercent = nil
         fiveHourResetsAt = nil
         sevenDayResetsAt = nil
+        fiveHourResetsAtObservedAt = nil
+        sevenDayResetsAtObservedAt = nil
         error = nil
 
         // Write logged-out snapshot file to App Group container for widget

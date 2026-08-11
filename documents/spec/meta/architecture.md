@@ -1,5 +1,5 @@
 ---
-updated: 2026-06-27 22:30
+updated: 2026-08-11
 checked: -
 Deprecated: -
 Format: spec-v2.1
@@ -149,6 +149,28 @@ The `/usage` API response exists in two formats, and the parser supports both.
 - Reset time: `resets_at` (Unix seconds, converted via `Date(timeIntervalSince1970:)`)
 
 Initially only Format A was supported, but Format B support was added based on the HTML/JS investigation results in `reference/2026-03-15_api-response.md`. See `data/usage-fetcher.md` for detailed parsing logic.
+
+### Reset-Time Authority and Provenance
+
+The authenticated `/api/organizations/{orgId}/usage` response is the primary reset/end-time source on every refresh. Production parses each window's `resets_at` exactly, without hour normalization, and records the fetch observation time. A live DOM/embedded-state fallback is intentionally deferred until it can be validated against the authenticated Usage page; the existing HTML scan is only an organization-ID fallback and does not supply reset times.
+
+Persistence separates display authority from session identity:
+
+```
+API exact resets_at + observedAt
+  -> usage_log.{five_hour_resets_at, seven_day_resets_at, resets_at_observed_at} (REAL)
+  -> exact-first readers and Analysis JSON
+
+API resets_at
+  -> nearest-hour normalization
+  -> hourly_sessions / weekly_sessions.resets_at (INTEGER, stable identity + legacy fallback)
+```
+
+The migration adds the three REAL `usage_log` columns independently and idempotently. Legacy rows remain NULL and use normalized session values through `COALESCE`. Provenance is exposed independently per window by returning `resets_at_observed_at` only when that row contains the corresponding exact reset value.
+
+`UsageViewModel` keeps per-window observation timestamps. A missing window does not clear or refresh the provenance of its retained value, an older response cannot replace a newer one, and history reload fills only nil state. Consequently a fresh API value is not overwritten by the rounded session identity created during the same save. The widget snapshot carries optional per-window provenance fields for backward-compatible decoding.
+
+Analysis output preserves this distinction: row JSON includes exact-first reset values plus per-window observation keys; meta/session JSON includes exact-first `resets_at`, exact provenance, `started_at`, and separate `normalized_resets_at` identity.
 
 ### Menu Bar Graph Rendering
 

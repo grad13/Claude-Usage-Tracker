@@ -96,6 +96,10 @@ The app targets (`ClaudeUsageTracker`, `ClaudeUsageTrackerShared`,
 
 ## Recent Changes
 
+### 1.0.5
+- Analysis Hourly now uses one chronological stepped fill, splitting only at real data gaps so contiguous samples no longer produce overlapping rectangles or diagonal fills
+- Exact 5h/7d usage API reset timestamps are parsed and persisted additively, then propagated through history, Analysis, and widget data, with fallback behavior for legacy rows and snapshots
+
 ### 1.0.4
 - **Fix widget not being addable on other Macs** — the bundled framework/widget had a deployment target above the advertised macOS 14.0, so `dyld` refused to load them on older systems and the widget never appeared. All targets are now unified to macOS 14.0, with a deploy gate that guards against future regressions
 - Fix 7d chart cross-session rendering — chart now shows only the current weekly session's data
@@ -107,10 +111,6 @@ The app targets (`ClaudeUsageTracker`, `ClaudeUsageTrackerShared`,
 ### 1.0.3
 - Fix widget data sharing (UserDefaults → file I/O for sandbox compatibility)
 - Fix session cookie destruction caused by test ViewModel
-
-### 1.0.2
-- Switch widget data sharing from SQLite to UserDefaults (App Group) snapshot
-- Widget timeline policy: `.after(5min)` → `.never` (driven by `reloadTimelines()` only)
 
 ## Acknowledgments
 
