@@ -1,4 +1,4 @@
-// meta: updated=2026-03-07 08:49 checked=-
+// meta: updated=2026-08-11 checked=-
 // Supplement for: docs/spec/meta/viewmodel-lifecycle.md
 // Covers: fetchSilently success/error state, retry/retryCount reset, debug() logging
 
@@ -106,8 +106,7 @@ final class ViewModelFetchSilentlyRetryTests: XCTestCase {
 
     /// Spec: isFetching guard prevents concurrent fetchSilently calls.
     func testFetchSilently_isFetchingGuard_skipsDuplicate() {
-        // Use a fetch that will take some time (the stub returns immediately,
-        // but the Task is async so we can test the guard).
+        // The isFetching guard is synchronous, so assert its result immediately.
         stubFetcher.fetchResult = .success(UsageResultFactory.make(
             fiveHourPercent: 10.0
         ))
@@ -117,10 +116,6 @@ final class ViewModelFetchSilentlyRetryTests: XCTestCase {
 
         let beforeCount = stubFetcher.fetchCallCount
         vm.fetchSilently()
-
-        let done = expectation(description: "guard check")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { done.fulfill() }
-        wait(for: [done], timeout: 1.0)
 
         XCTAssertEqual(stubFetcher.fetchCallCount, beforeCount,
                        "fetchSilently must skip when isFetching is already true")

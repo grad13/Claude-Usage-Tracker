@@ -126,49 +126,26 @@ def test_backup_database_rotation(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Test 36: verify_bundle_bits — detects missing bundle bit (lowercase b)
+# Test 36: verify_bundle_bits — requires the non-mutating .app convention
 # ---------------------------------------------------------------------------
 
-@patch("build_and_install.run")
-def test_bundle_bit_check_detects_missing(mock_run, tmp_path):
-    """verify_bundle_bits raises when bundle bit is not set."""
-    app_path = str(tmp_path / "ClaudeUsageTracker.app")
+def test_bundle_recognition_rejects_non_app_extension(tmp_path):
+    """Finder recognition is anchored to the .app extension."""
+    app_path = str(tmp_path / "ClaudeUsageTracker")
 
-    def run_side_effect(cmd, **kwargs):
-        result = MagicMock()
-        result.returncode = 0
-        if cmd[0] == "GetFileInfo":
-            result.stdout = f'directory: "{app_path}"\nattributes: avbstclinmedz\n'
-        else:
-            result.stdout = ""
-        return result
-
-    mock_run.side_effect = run_side_effect
-
-    with pytest.raises(RuntimeError, match="Bundle bit not set"):
+    with pytest.raises(RuntimeError, match=r"\.app extension"):
         bai.verify_bundle_bits(app_path)
 
 
 # ---------------------------------------------------------------------------
-# Test 37: verify_bundle_bits — passes with bundle bit set (uppercase B)
+# Test 37: verify_bundle_bits — does not invoke Finder metadata tools
 # ---------------------------------------------------------------------------
 
 @patch("build_and_install.run")
-def test_bundle_bit_check_passes(mock_run, tmp_path):
-    """verify_bundle_bits does not raise when bundle bit is set (uppercase B)."""
+def test_bundle_recognition_uses_app_extension_without_metadata(mock_run, tmp_path):
+    """The compatibility call never uses SetFile or GetFileInfo."""
     app_path = str(tmp_path / "ClaudeUsageTracker.app")
-
-    def run_side_effect(cmd, **kwargs):
-        result = MagicMock()
-        result.returncode = 0
-        if cmd[0] == "GetFileInfo":
-            result.stdout = f'directory: "{app_path}"\nattributes: avBstclinmedz\n'
-        else:
-            result.stdout = ""
-        return result
-
-    mock_run.side_effect = run_side_effect
 
     bai.verify_bundle_bits(app_path)
 
-    assert any(c.args[0][0] == "GetFileInfo" for c in mock_run.call_args_list)
+    mock_run.assert_not_called()

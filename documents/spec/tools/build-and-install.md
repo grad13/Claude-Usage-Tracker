@@ -120,33 +120,37 @@ def install_app(build_app_path: Path) -> None:
     ...
 
 def verify_installed_widget(build_app_path: Path, installed_app: Path) -> None:
-    """Verify installed widget binary matches build and set bundle bit.
+    """Verify installed widget binary matches build without mutating the signed app.
 
     Checks:
         - Binary size: installed vs source (RuntimeError on mismatch)
         - Binary mtime: installed must not be older than source (RuntimeError if stale)
-    Then: SetFile -a B (bundle bit)
+    No SetFile/FinderInfo mutation is permitted after signing.
     """
     ...
 
 def _verify_widget_deployment(app_path: str) -> None:
-    """Deployment verification gate: 3 conditions, all must pass.
+    """Deployment verification gate: 5 conditions, all must pass.
 
     | # | Condition | Check |
     |---|-----------|-------|
-    | 1 | Widget in pluginkit | WIDGET_ID in pluginkit -m stdout |
-    | 2 | No DerivedData ghost in pluginkit | "DerivedData" not in pluginkit -m stdout |
-    | 3 | No ghost LS registration | "DerivedData" not in dump_widget_registration() |
+    | 1 | Widget registration | pluginkit resolves the installed appex only |
+    | 2 | Main app registration | no live non-/Applications main-app registration |
+    | 3 | Strict signature compatibility | FinderInfo absent and codesign --verify --deep --strict passes |
+    | 4 | Launch smoke test | app process starts from the installed path |
+    | 5 | Widget runtime path | running widget, if present, resolves under the installed app |
 
-    Raises: RuntimeError with "GATE FAIL [N/3]" on any failure.
+    Gate 3 self-repair deletes only com.apple.FinderInfo; it never runs SetFile.
+    Raises: RuntimeError with "GATE FAIL [N/5]" on persistent failure.
     """
     ...
 
 def verify_bundle_bits(app_path: str) -> None:
-    """Verify bundle bit via GetFileInfo.
+    """Verify non-mutating Finder recognition (historical function name).
 
-    Parses "attributes:" line for "B" flag.
-    Raises: RuntimeError if bundle bit not set.
+    Requires the installed path to end in `.app`. Finder recognition relies on
+    that extension plus the existing LaunchServices registration, not FinderInfo.
+    Raises: RuntimeError if the path has no `.app` extension.
     """
     ...
 
@@ -231,13 +235,13 @@ stateDiagram-v2
     VerifyWidget --> WidgetFail: size/mtime mismatch
     VerifyWidget --> VerifyBundle: verify_installed_widget() OK
     WidgetFail --> [*]: RuntimeError
-    VerifyBundle --> BundleFail: bundle bit not set
+    VerifyBundle --> BundleFail: installed path lacks .app extension
     VerifyBundle --> Register: verify_bundle_bits() OK
     BundleFail --> [*]: RuntimeError
     Register --> EntitlementsFail: missing application-groups
     Register --> VerifyDeploy: register_and_clean() OK
     EntitlementsFail --> [*]: RuntimeError
-    VerifyDeploy --> GateFail: GATE FAIL [1-3/3]
+    VerifyDeploy --> GateFail: GATE FAIL [1-5/5]
     VerifyDeploy --> CheckIntegrity: verify_deployment() OK
     GateFail --> [*]: RuntimeError
     CheckIntegrity --> RowLoss: lost > 0
@@ -336,27 +340,30 @@ stateDiagram-v2
 
 | Case ID | Input | Expected | Notes |
 |---------|-------|----------|-------|
-| VW-01 | size一致 + mtime正常 | OK + SetFile | |
+| VW-01 | size一致 + mtime正常 | OK、外部コマンドなし | 署名後メタデータを変更しない |
 | VW-02 | sizeミスマッチ | RuntimeError | |
 | VW-03 | mtime古い（stale） | RuntimeError | |
-| VW-04 | widget_bin不存在 | SetFile実行のみ | 比較スキップ |
+| VW-04 | widget_bin不存在 | 外部コマンドなし | 比較スキップ |
 
 ### _verify_widget_deployment()
 
 | Case ID | Input | Expected | Notes |
 |---------|-------|----------|-------|
-| VD-01 | 3条件全てパス | OK (3/3) | |
-| VD-02 | WIDGET_ID not in pluginkit stdout | GATE FAIL [1/3] RuntimeError | |
-| VD-03 | "DerivedData" in pluginkit stdout | GATE FAIL [2/3] RuntimeError | |
-| VD-04 | "DerivedData" in dump_widget_registration | GATE FAIL [3/3] RuntimeError | |
+| VD-01 | 5条件全てパス | OK (5/5) | |
+| VD-02 | WIDGET_ID / installed appex が pluginkit にない | Gate 1 failure + repair/retry | |
+| VD-03 | live ghost main app registration | Gate 2 failure + repair/retry | |
+| VD-04 | FinderInfoあり | Gate 3 failure → xattr削除 → strict codesign再検証 | SetFile禁止 |
+| VD-05 | strict codesign失敗 | Gate 3 persistent failure | stderrを保持 |
+| VD-06 | installed pathから起動しない | Gate 4 failure + repair/retry | |
+| VD-07 | widget runtime pathがinstalled appex外 | Gate 5 failure + repair/retry | |
 
 ### verify_bundle_bits()
 
 | Case ID | Input | Expected | Notes |
 |---------|-------|----------|-------|
-| VB-01 | attributes に "B" あり | OK | |
-| VB-02 | attributes に "B" なし | RuntimeError | |
-| VB-03 | GetFileInfo 失敗 | スキップ（on_error="warn"） | |
+| VB-01 | path suffix が `.app` | OK、外部コマンドなし | FinderInfoを付与しない |
+| VB-02 | path suffix が `.app` 以外 | RuntimeError | |
+| VB-03 | Gate 3 repair | `xattr -d com.apple.FinderInfo` のみ | SetFile禁止 |
 
 ### register_and_clean()
 
@@ -385,8 +392,8 @@ stateDiagram-v2
 | Process | `xcodebuild clean build` — ビルド |
 | Process | `osascript quit` + `killall` — アプリ終了 |
 | Process | `cp -R` — ビルド成果物のコピー |
-| Process | `SetFile -a B` — バンドルビット設定 |
-| Process | `GetFileInfo` — バンドルビット確認 |
+| Process | `xattr -px/-d com.apple.FinderInfo` — 署名非互換メタデータの検出・限定削除 |
+| Process | `codesign --verify --deep --strict` — FinderInfo修復後を含む厳密署名検証 |
 | Process | `codesign -d --entitlements` — エンタイトルメント確認 |
 | Process | `pluginkit -m` — ウィジェットマニフェスト確認 |
 | Process | `pluginkit -e use` — ウィジェット有効化 |
@@ -424,8 +431,8 @@ Phase 2: Build
 Phase 3: Deploy
   8. quit_running_app()
   9. install_app(build_app_path) — atomic swap
-  10. verify_installed_widget() — size + mtime + bundle bit
-  11. verify_bundle_bits() — GetFileInfo
+  10. verify_installed_widget() — size + mtime; no signed-bundle mutation
+  11. verify_bundle_bits() — `.app` extension check only (historical name)
   12. register_and_clean() — entitlements + LS register + process kill
   13. verify_deployment() — widget self-repair gates + verify_min_os() (minos <= 14.0)
   14. check_data_integrity() — row loss detection

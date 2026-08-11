@@ -4,10 +4,10 @@
 Split from: test_build_and_install_supplement2.py
 
 Covers:
-  VW-01: Size match + mtime OK -> SetFile called
+  VW-01: Size match + mtime OK -> no bundle metadata mutation
   VW-02: Size mismatch -> RuntimeError
   VW-03: Installed mtime older than source -> RuntimeError
-  VW-04: Widget binary missing -> skip comparison, SetFile only
+  VW-04: Widget binary missing -> skip comparison without metadata mutation
 """
 
 import sys
@@ -25,7 +25,7 @@ class TestVerifyInstalledWidget:
 
     @patch("build_and_install.run")
     def test_size_and_mtime_match(self, mock_run, tmp_path, make_run_result, make_widget_binary):
-        """VW-01: Size match + mtime OK -> SetFile called, no exception."""
+        """VW-01: Size match + mtime OK -> no SetFile regression."""
         build_app = tmp_path / "build" / "App.app"
         installed_app = tmp_path / "installed" / "App.app"
 
@@ -36,8 +36,7 @@ class TestVerifyInstalledWidget:
 
         bai.verify_installed_widget(build_app, installed_app)
 
-        cmd = mock_run.call_args[0][0]
-        assert cmd[0] == "SetFile"
+        mock_run.assert_not_called()
 
     @patch("build_and_install.run")
     def test_size_mismatch_raises(self, mock_run, tmp_path, make_widget_binary):
@@ -64,8 +63,8 @@ class TestVerifyInstalledWidget:
             bai.verify_installed_widget(build_app, installed_app)
 
     @patch("build_and_install.run")
-    def test_widget_binary_missing_setfile_only(self, mock_run, tmp_path, make_run_result):
-        """VW-04: Widget binary does not exist -> skip comparison, SetFile only."""
+    def test_widget_binary_missing_without_metadata_mutation(self, mock_run, tmp_path, make_run_result):
+        """VW-04: Missing binaries do not trigger SetFile or another mutation."""
         build_app = tmp_path / "build" / "App.app"
         build_app.mkdir(parents=True)
         installed_app = tmp_path / "installed" / "App.app"
@@ -75,5 +74,4 @@ class TestVerifyInstalledWidget:
 
         bai.verify_installed_widget(build_app, installed_app)
 
-        cmd = mock_run.call_args[0][0]
-        assert cmd[0] == "SetFile"
+        mock_run.assert_not_called()

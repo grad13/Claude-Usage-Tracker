@@ -96,6 +96,11 @@ The app targets (`ClaudeUsageTracker`, `ClaudeUsageTrackerShared`,
 
 ## Recent Changes
 
+### 1.0.6 (2026-08-11)
+- Make Swift CI synchronization deterministic
+- Remove FinderInfo after signing and enforce strict-signature deploy protection
+- No product-scope expansion
+
 ### 1.0.5
 - Analysis Hourly now uses one chronological stepped fill, splitting only at real data gaps so contiguous samples no longer produce overlapping rectangles or diagonal fills
 - Exact 5h/7d usage API reset timestamps are parsed and persisted additively, then propagated through history, Analysis, and widget data, with fallback behavior for legacy rows and snapshots

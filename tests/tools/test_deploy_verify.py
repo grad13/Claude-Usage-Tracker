@@ -4,7 +4,7 @@
 Covers:
   Gate 1 (pluginkit):     correct path / wrong path / DerivedData ghost
   Gate 2 (lsregister):    clean / ghost path
-  Gate 3 (finderinfo):    bundle bit set / bit unset / xattr missing
+  Gate 3 (finderinfo):    attribute present / absent + strict signature result
   Gate 4 (smoke launch):  open success / open fail / wrong path
   Gate 5 (widget runtime): /Applications path / DerivedData path / no process
   Self-repair wrapper:    pass-after-repair / fail-after-repair
@@ -132,39 +132,57 @@ class TestGateLsregister:
 
 
 # ---------------------------------------------------------------------------
-# Gate 3: FinderInfo bundle bit
+# Gate 3: FinderInfo absence + strict signature compatibility
 # ---------------------------------------------------------------------------
 
 class TestGateFinderInfo:
-    def test_bundle_bit_set_passes(self, make_run_result):
+    def test_finderinfo_present_fails_before_strict_verification(self, make_run_result):
         import build_and_install as bi
-        # byte 8 = 0x20 (kHasBundle bit)
         hex_out = "00 00 00 00 00 00 00 00 20 00 00 00 00 00 00 00\n"
-        with patch.object(bi, "run", return_value=make_run_result(stdout=hex_out)):
-            bi._gate_finderinfo(APP_PATH)
+        with patch.object(bi, "run", return_value=make_run_result(stdout=hex_out)) as run:
+            with pytest.raises(bi.GateFailure) as exc:
+                bi._gate_finderinfo(APP_PATH)
+        assert "strict code-signature" in exc.value.detail
+        assert run.call_count == 1
 
-    def test_bundle_bit_unset_fails(self, make_run_result):
+    def test_any_finderinfo_fails_even_without_bundle_bit(self, make_run_result):
         import build_and_install as bi
-        # byte 8 = 0x00 (no bundle bit)
         hex_out = "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n"
         with patch.object(bi, "run", return_value=make_run_result(stdout=hex_out)):
             with pytest.raises(bi.GateFailure) as exc:
                 bi._gate_finderinfo(APP_PATH)
-            assert "Bundle bit" in exc.value.detail
+            assert "FinderInfo is present" in exc.value.detail
 
-    def test_finderinfo_missing_passes(self, make_run_result):
-        """xattr returns nonzero when the attribute is missing — that's OK."""
+    def test_finderinfo_missing_and_strict_signature_valid_passes(self, make_run_result):
+        """Missing FinderInfo plus a strict-valid signature is compatible."""
         import build_and_install as bi
-        with patch.object(bi, "run",
-                          return_value=make_run_result(returncode=1, stderr="No such xattr")):
+        with patch.object(
+            bi,
+            "run",
+            side_effect=[
+                make_run_result(returncode=1, stderr="No such xattr"),
+                make_run_result(returncode=0),
+            ],
+        ) as run:
             bi._gate_finderinfo(APP_PATH)  # should not raise
+        assert run.call_args_list[1].args[0] == [
+            "codesign", "--verify", "--deep", "--strict", APP_PATH,
+        ]
 
-    def test_finderinfo_truncated_fails(self, make_run_result):
+    def test_strict_signature_failure_is_reported(self, make_run_result):
         import build_and_install as bi
-        with patch.object(bi, "run", return_value=make_run_result(stdout="00 00 00")):
+        with patch.object(
+            bi,
+            "run",
+            side_effect=[
+                make_run_result(returncode=1, stderr="No such xattr"),
+                make_run_result(returncode=1, stderr="detritus not allowed"),
+            ],
+        ):
             with pytest.raises(bi.GateFailure) as exc:
                 bi._gate_finderinfo(APP_PATH)
-            assert "too short" in exc.value.detail
+        assert "codesign --verify --deep --strict failed" in exc.value.detail
+        assert "detritus not allowed" in exc.value.detail
 
 
 # ---------------------------------------------------------------------------

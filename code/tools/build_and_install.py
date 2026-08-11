@@ -269,9 +269,10 @@ def install_app(build_app_path: Path) -> None:
 
 
 def verify_installed_widget(build_app_path: Path, installed_app: Path) -> None:
-    """Verify installed widget binary matches the build and set bundle bit.
+    """Verify installed widget binary matches the build.
 
     Checks size and mtime to catch stale binaries from previous installs.
+    The signed app bundle must not be mutated with Finder metadata afterward.
     """
     widget_bin = (
         installed_app / "Contents/PlugIns/ClaudeUsageTrackerWidgetExtension.appex"
@@ -298,10 +299,6 @@ def verify_installed_widget(build_app_path: Path, installed_app: Path) -> None:
             )
         print(f"==> Widget binary verified: size={inst_stat.st_size}, "
               f"mtime={datetime.fromtimestamp(inst_stat.st_mtime)}")
-
-    # Set bundle bit so Finder treats it as an app, not a folder
-    run(["SetFile", "-a", "B", str(installed_app)], label="SetFile bundle bit")
-
 
 class GateFailure(RuntimeError):
     """Raised by individual gate functions on failure. Includes a label for
@@ -393,48 +390,35 @@ def _repair_lsregister(app_path: str) -> None:
     cleanup_stale_lsregister(APP_NAME, INSTALL_DIR)
 
 
-_FINDERINFO_BUNDLE_BIT_BYTE = 8
-_FINDERINFO_BUNDLE_BIT_MASK = 0x20  # bit 13 of the big-endian flags field
-
-
 def _gate_finderinfo(app_path: str) -> None:
-    """Gate-3: com.apple.FinderInfo has the bundle bit set so Finder treats
-    the .app as a bundle (not a folder)."""
+    """Gate-3: signed app has no FinderInfo detritus and verifies strictly."""
     result = run(["xattr", "-px", "com.apple.FinderInfo", app_path],
                  on_error="warn", label="xattr FinderInfo")
-    if result.returncode != 0:
-        # Missing xattr is OK — Finder will use the .app extension. But on
-        # some systems with corrupted FinderInfo this is the symptom.
-        return
-    # Output is hex bytes, e.g. "00 00 00 00 00 00 00 00 20 00 ..."
-    tokens = result.stdout.split()
-    if len(tokens) <= _FINDERINFO_BUNDLE_BIT_BYTE:
+    if result.returncode == 0:
         raise GateFailure(
             "3/5 finderinfo",
-            f"FinderInfo too short ({len(tokens)} bytes)\n"
-            f"       output: {result.stdout!r}"
+            "com.apple.FinderInfo is present on the signed app bundle; "
+            "strict code-signature verification rejects Finder/resource-fork "
+            "detritus"
         )
-    try:
-        flags_byte = int(tokens[_FINDERINFO_BUNDLE_BIT_BYTE], 16)
-    except ValueError:
+    signature = run(
+        ["codesign", "--verify", "--deep", "--strict", app_path],
+        on_error="warn",
+        label="codesign strict",
+    )
+    if signature.returncode != 0:
         raise GateFailure(
             "3/5 finderinfo",
-            f"FinderInfo unparseable\n       output: {result.stdout!r}"
-        )
-    if not (flags_byte & _FINDERINFO_BUNDLE_BIT_MASK):
-        raise GateFailure(
-            "3/5 finderinfo",
-            f"Bundle bit (0x{_FINDERINFO_BUNDLE_BIT_MASK:02x}) not set in flags "
-            f"byte 0x{flags_byte:02x}\n       output: {result.stdout!r}"
+            "codesign --verify --deep --strict failed\n"
+            f"       stdout: {signature.stdout.strip()}\n"
+            f"       stderr: {signature.stderr.strip()}"
         )
 
 
 def _repair_finderinfo(app_path: str) -> None:
-    """Repair Gate-3: delete FinderInfo so Finder rebuilds it on next access."""
+    """Repair Gate-3 by deleting only incompatible FinderInfo metadata."""
     run(["xattr", "-d", "com.apple.FinderInfo", app_path],
         on_error="warn", label="xattr -d FinderInfo")
-    # Re-set bundle bit explicitly to short-circuit Finder rebuild
-    run(["SetFile", "-a", "B", app_path], on_error="warn", label="SetFile B")
 
 
 def _gate_smoke_launch(app_path: str) -> None:
@@ -572,20 +556,18 @@ def _verify_widget_deployment(app_path: str) -> None:
 
 
 def verify_bundle_bits(app_path: str) -> None:
-    """Verify bundle bit is set (Finder shows as folder without it)."""
-    result = run(["GetFileInfo", app_path], on_error="warn", label="GetFileInfo")
-    if result.returncode == 0:
-        for line in result.stdout.splitlines():
-            if line.startswith("attributes:"):
-                attrs = line.split(":", 1)[1].strip()
-                if "B" not in attrs:
-                    raise RuntimeError(
-                        f"Bundle bit not set on {app_path}!\n"
-                        f"       attributes: {attrs}\n"
-                        f"       Finder will show it as a folder, not an app."
-                    )
-                print(f"==> Bundle bit verified: {attrs}")
-                break
+    """Verify Finder can recognize the bundle without post-signing metadata.
+
+    The historical name is retained for call-site compatibility. Finder uses
+    the `.app` extension and the pipeline registers the bundle with
+    LaunchServices; setting a FinderInfo bundle bit would invalidate strict
+    signature verification.
+    """
+    if Path(app_path).suffix != ".app":
+        raise RuntimeError(
+            f"Installed application path must use the .app extension: {app_path}"
+        )
+    print("==> Finder recognition verified via .app extension (no FinderInfo mutation)")
 
 
 def register_and_clean(app_path: str) -> None:

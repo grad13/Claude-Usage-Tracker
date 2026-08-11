@@ -1,4 +1,4 @@
-// meta: updated=2026-03-14 11:31 checked=-
+// meta: updated=2026-08-11 checked=-
 import XCTest
 import WebKit
 import ClaudeUsageTrackerShared
@@ -33,6 +33,7 @@ final class StubUsageFetcher: UsageFetching {
     var hasValidSessionResult = false
     var fetchCallCount = 0
     var hasValidSessionCallCount = 0
+    var onHasValidSession: (() -> Void)?
 
     @MainActor func fetch(from webView: WKWebView) async throws -> UsageResult {
         fetchCallCount += 1
@@ -40,6 +41,7 @@ final class StubUsageFetcher: UsageFetching {
     }
     @MainActor func hasValidSession(using webView: WKWebView) async -> Bool {
         hasValidSessionCallCount += 1
+        onHasValidSession?()
         return hasValidSessionResult
     }
 }

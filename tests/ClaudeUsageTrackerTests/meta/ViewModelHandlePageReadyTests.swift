@@ -1,4 +1,4 @@
-// meta: updated=2026-03-14 11:31 checked=-
+// meta: updated=2026-08-11 checked=-
 // Supplement for: docs/spec/meta/viewmodel-lifecycle.md
 // Covers: handlePageReady decision table (PR-01~04), common side effects,
 //         canRedirect cooldown, isOnUsagePage
@@ -51,21 +51,20 @@ final class ViewModelHandlePageReadyTests: XCTestCase {
         let vm = makeVM()
         XCTAssertFalse(vm.isLoggedIn)
 
-        // Wait for init's async side effects (loadUsagePage → handlePageReady) to settle
-        // CI runners are slower; 1.5s ensures init's async chain completes before counter reset
-        let settle = expectation(description: "init settles")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { settle.fulfill() }
-        wait(for: [settle], timeout: 3.0)
+        // Isolate the explicit call from init-owned navigation and login polling.
+        vm.loginPollTimer?.invalidate()
+        vm.loginPollTimer = nil
+        vm.webView.navigationDelegate = nil
+        vm.webView.stopLoading()
 
-        // Reset counters after init's side effects
+        // Establish the baseline only after init-owned work is disabled.
         stubFetcher.hasValidSessionCallCount = 0
         stubFetcher.fetchCallCount = 0
 
+        let sessionChecked = expectation(description: "handlePageReady checks the session")
+        stubFetcher.onHasValidSession = { sessionChecked.fulfill() }
         vm.handlePageReady()
-
-        let done = expectation(description: "handlePageReady completes")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { done.fulfill() }
-        wait(for: [done], timeout: 2.0)
+        wait(for: [sessionChecked], timeout: 2.0)
 
         XCTAssertEqual(stubFetcher.hasValidSessionCallCount, 1,
                        "handlePageReady must call hasValidSession")
