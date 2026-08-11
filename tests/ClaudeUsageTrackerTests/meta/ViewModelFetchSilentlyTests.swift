@@ -3,6 +3,7 @@
 // Covers: fetchSilently success/error state, retry/retryCount reset, debug() logging
 
 import XCTest
+import Combine
 import ClaudeUsageTrackerShared
 @testable import ClaudeUsageTracker
 
@@ -85,7 +86,7 @@ final class ViewModelFetchSilentlyRetryTests: XCTestCase {
     }
 
     /// Spec: On success, retryCount resets to 0 and isAutoRefreshEnabled = true.
-    func testFetchSilently_success_enablesAutoRefresh() {
+    func testFetchSilently_success_enablesAutoRefresh() async {
         stubFetcher.fetchResult = .success(UsageResultFactory.make(
             fiveHourPercent: 30.0, sevenDayPercent: 10.0
         ))
@@ -93,11 +94,20 @@ final class ViewModelFetchSilentlyRetryTests: XCTestCase {
         let vm = makeVM()
         vm.isAutoRefreshEnabled = false // was disabled by prior auth error
 
-        vm.fetchSilently()
+        let completed = expectation(description: "fetchSilently success")
+        completed.assertForOverFulfill = true
+        var observedFetching = false
+        let cancellable = vm.$isFetching.sink { isFetching in
+            if isFetching {
+                observedFetching = true
+            } else if observedFetching {
+                completed.fulfill()
+            }
+        }
 
-        let done = expectation(description: "fetchSilently success")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { done.fulfill() }
-        wait(for: [done], timeout: 2.0)
+        vm.fetchSilently()
+        await fulfillment(of: [completed], timeout: 2.0)
+        _ = cancellable
 
         XCTAssertEqual(vm.isAutoRefreshEnabled, true,
                        "fetchSilently success must re-enable auto-refresh")
