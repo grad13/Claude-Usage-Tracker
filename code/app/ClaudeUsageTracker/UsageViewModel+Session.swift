@@ -99,7 +99,7 @@ extension UsageViewModel {
 
     // MARK: - Sign Out
 
-    func signOut() {
+    func signOut(completion: (@MainActor () -> Void)? = nil) {
         refreshTimer?.invalidate()
         refreshTimer = nil
         isLoggedIn = false
@@ -144,8 +144,10 @@ extension UsageViewModel {
                 }
                 // Stage 3: Reload usage page and restart login detection
                 Task { @MainActor in
-                    self?.loadUsagePage()
-                    self?.startLoginPolling()
+                    guard let self else { return }
+                    self.loadUsagePage()
+                    self.startLoginPolling()
+                    completion?()
                 }
             }
         }

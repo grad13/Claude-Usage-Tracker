@@ -373,8 +373,9 @@ final class ViewModelSessionTests: XCTestCase {
 
     // MARK: - signOut: loginPollTimer 再開
 
-    /// signOut() は非同期コールバック完了後に startLoginPolling() を呼び、loginPollTimer を再設定する。
-    func testSignOut_restartsLoginPolling() async throws {
+    /// signOut() は非同期コールバック完了後に startLoginPolling() を呼び、
+    /// loginPollTimer 再設定後に completion を1回呼ぶ。
+    func testSignOut_restartsLoginPolling() async {
         let vm = makeVM()
         // init() calls startLoginPolling(), so timer is already set
         XCTAssertNotNil(vm.loginPollTimer)
@@ -384,12 +385,20 @@ final class ViewModelSessionTests: XCTestCase {
         vm.loginPollTimer = nil
         XCTAssertNil(vm.loginPollTimer)
 
-        vm.signOut()
+        let completed = expectation(description: "signOut asynchronous cleanup completed")
+        completed.assertForOverFulfill = true
+        var completionCount = 0
 
-        // startLoginPolling() は removeData → getAllCookies → Task @MainActor の
-        // 非同期コールバックチェーン内で呼ばれるため、十分な待機が必要
-        try await Task.sleep(nanoseconds: 1_000_000_000)
+        vm.signOut {
+            completionCount += 1
+            XCTAssertNotNil(vm.loginPollTimer,
+                "signOut completion must run after startLoginPolling()")
+            completed.fulfill()
+        }
 
+        await fulfillment(of: [completed], timeout: 5.0)
+        XCTAssertEqual(completionCount, 1,
+            "signOut completion should be called exactly once")
         XCTAssertNotNil(vm.loginPollTimer,
             "signOut should restart login polling via startLoginPolling()")
     }
