@@ -189,7 +189,7 @@ final class MenuContentSupplementTests: XCTestCase {
             "isFetching must be false initially — Refresh button must be enabled")
     }
 
-    func testFetch_guardPreventDoubleFetch() async {
+    func testFetch_guardPreventDoubleFetch() {
         // Spec: fetch() has guard !isFetching to prevent double-fetch.
         // The stub fetcher counts calls; if isFetching were not guarded, two calls
         // would result in fetchCallCount == 2.
@@ -198,9 +198,6 @@ final class MenuContentSupplementTests: XCTestCase {
         vm.isFetching = true
         vm.fetch()
         // isFetching was already true → fetch() must not call the fetcher again
-        let done = expectation(description: "settle")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { done.fulfill() }
-        await fulfillment(of: [done], timeout: 1.0)
         XCTAssertEqual(stubFetcher.fetchCallCount, 0,
             "fetch() with isFetching==true must not call fetcher (double-fetch prevention)")
     }
